@@ -216,6 +216,55 @@ test("Douyin never selects the whole page while clearing a failed rich +1", () =
   assert.match(contentSource, /cancelOwnMessageAnnouncement\(ownIntentId\);?[\s\S]*?setInputValue\(input, ["']["']\)/);
 });
 
+test("preserves colon-bearing danmaku through the Douyin +1 path", () => {
+  const contentSource = readFileSync(resolve(root, "src", "entries", "douyin-content.ts"), "utf8");
+  // Renderer/canvas text, editor input and chat rows share the same pure
+  // normalization: messages like "13:0了" must never be treated as an inline
+  // "用户名：消息" prefix, or sender correlation breaks for colon messages.
+  assert.match(
+    contentSource,
+    /shared\.parseMessageText\(canvasText, MAX_LENGTH\)[\s\S]*?plainText \|\|/,
+  );
+  assert.match(
+    contentSource,
+    /const message = shared\.parseMessageText\(data\.text, MAX_LENGTH\)/,
+  );
+  assert.match(
+    contentSource,
+    /richPayloadFromElement\(messageContentElement\(row\)\)/,
+  );
+  const sharedSource = readFileSync(resolve(root, "src", "core", "shared.ts"), "utf8");
+  assert.match(sharedSource, /export function parseMessageText/);
+  assert.doesNotMatch(sharedSource, /export function parseChatRowText/);
+});
+
+test("extracts Douyin senders before stopping at the chat root", () => {
+  const contentSource = readFileSync(resolve(root, "src", "entries", "douyin-content.ts"), "utf8");
+  // Real Douyin chat rows share the "webcast-chatroom" class with the chat
+  // root container. The sender must be read BEFORE the upward walk breaks on
+  // a chat-root selector, or every real row returns an empty sender and all
+  // replies fail with "未能识别到这条弹幕的发送者".
+  const senderFromChatRow = contentSource.match(
+    /function senderFromChatRow\(row\) \{[\s\S]*?\n  \}/,
+  )?.[0] || "";
+  assert.match(
+    senderFromChatRow,
+    /const sender = senderFromChatContext\(current, depth === 0\)[\s\S]*?if \(sender\) return sender[\s\S]*?if \(matchesAny\(current, CHAT_ROOT_SELECTORS\)\) break/,
+  );
+  assert.doesNotMatch(
+    senderFromChatRow,
+    /if \(matchesAny\(current, CHAT_ROOT_SELECTORS\)\) break[\s\S]*?senderFromChatContext/,
+  );
+  const sharedContentSource = readFileSync(resolve(root, "src", "entries", "content.ts"), "utf8");
+  const sharedSenderContext = sharedContentSource.match(
+    /function senderFromChatContext\(candidate\) \{[\s\S]*?\n  \}/,
+  )?.[0] || "";
+  assert.match(
+    sharedSenderContext,
+    /const sender = senderFromElement\(current\)[\s\S]*?if \(sender\) return sender[\s\S]*?if \(matchesAny\(current, config\.chatRoots\)\) break/,
+  );
+});
+
 test("favorites accepts complete rich payloads instead of rejecting image Emoji", () => {
   const launcherSource = readFileSync(resolve(root, "src", "features", "favorites", "launcher.ts"), "utf8");
   assert.doesNotMatch(launcherSource, /暂不支持收藏/);

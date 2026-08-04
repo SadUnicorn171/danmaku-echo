@@ -25,9 +25,11 @@ test("detects all supported live platforms", () => {
   assert.equal(shared.detectPlatform("example.com"), null);
 });
 
-test("normalizes a username-prefixed message", () => {
-  assert.equal(shared.parseMessageText("某位观众：  主播晚上好  "), "主播晚上好");
-  assert.equal(shared.parseMessageText("alice: nice shot"), "nice shot");
+test("keeps colon-containing danmaku text intact", () => {
+  assert.equal(shared.parseMessageText("13:0了"), "13:0了");
+  assert.equal(shared.parseMessageText("某位观众：主播晚上好"), "某位观众：主播晚上好");
+  assert.equal(shared.parseMessageText("alice: nice shot"), "alice: nice shot");
+  assert.equal(shared.parseMessageText("比分 3:0"), "比分 3:0");
 });
 
 test("keeps a URL instead of treating its scheme as a username", () => {

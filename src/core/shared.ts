@@ -178,11 +178,7 @@ export function parseMessageText(value: unknown, maxLength?: number): string {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !/^(举报|屏蔽|回复|复制|更多|关注)$/.test(line))
-  let text = lines.length > 1 ? lines.at(-1) || '' : lines[0] || ''
-  const userPrefix = text.match(/^([^：:\n]{1,32})[：:]\s*(.+)$/)
-  if (userPrefix && !/^(https?|ftp)$/i.test(userPrefix[1].trim())) {
-    text = userPrefix[2].trim()
-  }
+  const text = lines.length > 1 ? lines.at(-1) || '' : lines[0] || ''
   return sliceGraphemes(text, limit)
 }
 

@@ -45,7 +45,7 @@ function senderMatchesPlatform(senderUrl: unknown, platform: PlatformId): boolea
     if (platform === "bilibili") return host === "live.bilibili.com";
     if (platform === "huya") return host === "huya.com" || host.endsWith(".huya.com");
     if (platform === "douyu") return host === "douyu.com" || host.endsWith(".douyu.com");
-    return isDouyinLiveUrl(url.href);
+    return host === "live.douyin.com" || host === "www.douyin.com" || host.endsWith(".douyin.com");
   } catch {
     return false;
   }
@@ -145,7 +145,9 @@ function isDouyinRuntimeRequest(value: unknown): value is DouyinRuntimeRequest {
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (isFavoriteWriteRequest(message)) {
     const senderUrl = sender.url || sender.tab?.url;
-    if (!senderMatchesPlatform(senderUrl, message.room.platform)) {
+    const roomUrl = message.room.url;
+    if (!senderMatchesPlatform(senderUrl, message.room.platform)
+      && !senderMatchesPlatform(roomUrl, message.room.platform)) {
       sendResponse({ ok: false, error: "invalid-favorite-sender" } satisfies FavoriteWriteResponse);
       return false;
     }

@@ -49,6 +49,8 @@ import { t } from '../core/i18n'
   const RENDERER_HEARTBEAT_INTERVAL = 5000
   const TRUSTED_ACTION_WINDOW = 1500
   const OWN_CHAT_MESSAGE_TTL = 12_000
+  const MANUAL_INPUT_SNAPSHOT_TTL = 4_000
+  const MANUAL_INPUT_SNAPSHOT_LIMIT = 8
   const SENDER_CACHE_TTL = 10 * 60_000
   const SENDER_CACHE_LIMIT = 320
   const SENDER_HISTORY_LIMIT = 480
@@ -222,6 +224,7 @@ import { t } from '../core/i18n'
     ownChatIntents: [],
     confirmedOwnMessageIds: new Set(),
     pendingManualEmojiIntents: [],
+    manualInputSnapshots: new Map(),
     ownChatScanTimer: 0,
     ownChatObserver: null,
     senderCache: new Map(),
@@ -272,6 +275,7 @@ import { t } from '../core/i18n'
       confirmedOwnMessageIds: state.confirmedOwnMessageIds.size,
       ownChatIntents: state.ownChatIntents.length,
       pendingManualEmojiIntents: state.pendingManualEmojiIntents.length,
+      manualInputSnapshots: state.manualInputSnapshots.size,
       replyRequests: state.replyRequests.size,
       senderCache: state.senderCache.size,
       senderCorrelation: state.senderCorrelation.size,
@@ -888,6 +892,7 @@ import { t } from '../core/i18n'
     'data-nickname',
     'data-author-name',
     'data-sender-name',
+    'data-sender',
     'data-display-id',
     'data-user-id',
     'data-sender-id',
@@ -983,9 +988,13 @@ import { t } from '../core/i18n'
     if (!(row instanceof Element)) return ''
     let current = row
     for (let depth = 0; current && depth < 5; depth += 1) {
-      if (matchesAny(current, CHAT_ROOT_SELECTORS)) break
+      // Douyin chat rows carry the same "webcast-chatroom" classes as the
+      // chat root. The sender must be read from the element BEFORE stopping
+      // the upward walk, or every real row short-circuits here with an empty
+      // sender and replies always fail with "未能识别到这条弹幕的发送者".
       const sender = senderFromChatContext(current, depth === 0)
       if (sender) return sender
+      if (matchesAny(current, CHAT_ROOT_SELECTORS)) break
       current = current.parentElement
     }
     return ''
@@ -993,6 +1002,9 @@ import { t } from '../core/i18n'
 
   function richPayloadFromChatRow(row) {
     return {
+      // Chat rows and canvas barrages share the same pure normalization, so
+      // sender correlation and text matching stay consistent for messages
+      // that legitimately contain colons (e.g. scores like "13:0了").
       ...richPayloadFromElement(messageContentElement(row)),
       sender: senderFromChatRow(row),
     }
@@ -2340,11 +2352,12 @@ import { t } from '../core/i18n'
     state.ownChatScanTimer = setTimeout(scanOwnChatMessages, Number(delay) || 0)
   }
 
-  function queueOwnChatIntent(intentId, payload) {
+  function queueOwnChatIntent(intentId, payload, sourceType) {
     const rows = queryAll(CHAT_MESSAGE_SELECTORS).slice(-120)
     state.ownChatIntents.push({
       id: intentId,
       payload,
+      source: String(sourceType || 'unknown').slice(0, 40),
       at: Date.now(),
       baseline: new Map(rows.map((row) => [row, payloadSignature(richPayloadFromChatRow(row))])),
     })
@@ -2375,7 +2388,7 @@ import { t } from '../core/i18n'
       },
       '*',
     )
-    queueOwnChatIntent(intentId, payload)
+    queueOwnChatIntent(intentId, payload, sourceType)
     debugEvent('own-message-announced', {
       text,
       sourceType: sourceType || 'unknown',
@@ -2456,8 +2469,73 @@ import { t } from '../core/i18n'
     )
   }
 
+  const EDITABLE_ELEMENT_SELECTOR = [
+    'textarea',
+    'input:not([type="hidden"])',
+    "[contenteditable='true']",
+    "[contenteditable='plaintext-only']",
+    "[role='textbox']",
+  ].join(',')
+
+  function editableElementFrom(node) {
+    if (!(node instanceof Element)) {
+      return null
+    }
+    if (node.matches(EDITABLE_ELEMENT_SELECTOR)) {
+      return node
+    }
+    return node.closest(EDITABLE_ELEMENT_SELECTOR)
+  }
+
+  function rememberManualInputValue(input) {
+    // Input events on nested contenteditable editors can target an inner
+    // element while findInput() returns the outer editor. Normalize the
+    // snapshot key to the editable ancestor so the fallback always matches.
+    const editor = editableElementFrom(input)
+    if (!editor || !editor.isConnected) {
+      return
+    }
+    const text = shared.parseMessageText(richPayloadFromInput(editor).text || '', MAX_LENGTH)
+    if (!text) {
+      return
+    }
+    const now = Date.now()
+    state.manualInputSnapshots.forEach((snapshot, element) => {
+      if (now - snapshot.at > MANUAL_INPUT_SNAPSHOT_TTL || !element.isConnected) {
+        state.manualInputSnapshots.delete(element)
+      }
+    })
+    state.manualInputSnapshots.set(editor, { text, at: now })
+    if (state.manualInputSnapshots.size > MANUAL_INPUT_SNAPSHOT_LIMIT) {
+      let oldest = null
+      for (const [element, snapshot] of state.manualInputSnapshots) {
+        if (!oldest || snapshot.at < oldest.at) {
+          oldest = { element, at: snapshot.at }
+        }
+      }
+      if (oldest) {
+        state.manualInputSnapshots.delete(oldest.element)
+      }
+    }
+  }
+
+  function snapshotManualInputText(input) {
+    const snapshot = state.manualInputSnapshots.get(input)
+    if (snapshot && Date.now() - snapshot.at <= MANUAL_INPUT_SNAPSHOT_TTL) {
+      return snapshot.text
+    }
+    return ''
+  }
+
   function announceManualInput(input, sourceType) {
-    const base = normalizeRichPayload(richPayloadFromInput(input))
+    const editor = editableElementFrom(input) || input
+    let base = normalizeRichPayload(richPayloadFromInput(editor))
+    if (!base.text && !base.assets.length) {
+      const snapshotText = snapshotManualInputText(editor)
+      if (snapshotText) {
+        base = normalizeRichPayload({ text: snapshotText, plainText: snapshotText })
+      }
+    }
     const pending = recentManualEmojiIntents()
     if (!pending.length) {
       const intentId = announceOwnMessage(base, sourceType)
@@ -2938,6 +3016,7 @@ import { t } from '../core/i18n'
       state.ownChatIntents = []
       state.confirmedOwnMessageIds.clear()
       state.pendingManualEmojiIntents = []
+      state.manualInputSnapshots.clear()
       document.querySelectorAll("[data-bcp-douyin-own-chat='true']").forEach((row) => {
         delete row.dataset.bcpDouyinOwnChat
         delete row.dataset.bcpDouyinOwnChatSignature
@@ -3036,7 +3115,12 @@ import { t } from '../core/i18n'
       const input = findInput()
       const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
       const clickedSend = path.find(
-        (item) => item instanceof Element && matchesAny(item, SEND_BUTTON_SELECTORS),
+        (item) =>
+          item instanceof Element &&
+          (matchesAny(item, SEND_BUTTON_SELECTORS) ||
+            /^(发送|发 送|send)$/i.test(
+              shared.normalizeWhitespace(item.innerText || item.textContent || ''),
+            )),
       )
       let sharesInputContainer = false
       for (
@@ -3057,6 +3141,16 @@ import { t } from '../core/i18n'
   )
   document.addEventListener('click', onAltClick, true)
   document.addEventListener(
+    'input',
+    (event) => {
+      if (!event.isTrusted || !enabled()) {
+        return
+      }
+      rememberManualInputValue(event.target)
+    },
+    true,
+  )
+  document.addEventListener(
     'keydown',
     (event) => {
       if (event.key === 'Escape') {
@@ -3064,8 +3158,15 @@ import { t } from '../core/i18n'
       }
       if (event.isTrusted && event.key === 'Enter' && !event.shiftKey && enabled()) {
         const input = findInput()
-        if (input && (event.target === input || input.contains(event.target))) {
-          announceManualInput(input, 'manual-enter')
+        const ownsTarget = input && (event.target === input || input.contains(event.target))
+        // A nested contenteditable editor can retarget keydown to an inner
+        // element. When findInput() finds no editor at all, fall back to the
+        // editable ancestor of the event target so manual sends inside shadow
+        // roots or unusual wrappers are still announced.
+        const targetEditor = editableElementFrom(event.target)
+        const activeInput = ownsTarget ? input : input ? null : targetEditor
+        if (activeInput) {
+          announceManualInput(activeInput, 'manual-enter')
         }
       }
       if (event.ctrlKey && event.altKey && String(event.key).toLowerCase() === 'd') {
@@ -3159,6 +3260,7 @@ import { t } from '../core/i18n'
     state.senderCorrelation.clear()
     state.ownChatIntents = []
     state.pendingManualEmojiIntents = []
+    state.manualInputSnapshots.clear()
   }
 
   function onVisibilityChange() {

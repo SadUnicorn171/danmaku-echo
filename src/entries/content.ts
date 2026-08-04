@@ -1537,9 +1537,12 @@ import { t } from '../core/i18n'
   function senderFromChatContext(candidate) {
     let current = candidate instanceof Element ? candidate : null
     for (let depth = 0; current && depth < 5; depth += 1) {
-      if (matchesAny(current, config.chatRoots)) break
+      // Read the sender from the current element before stopping the upward
+      // walk: rows can match a chat-root selector (e.g. a broad class match)
+      // and would otherwise short-circuit without ever extracting a sender.
       const sender = senderFromElement(current)
       if (sender) return sender
+      if (matchesAny(current, config.chatRoots)) break
       current = current.parentElement
     }
     return ''
