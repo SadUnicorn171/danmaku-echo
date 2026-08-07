@@ -265,6 +265,29 @@ test("extracts Douyin senders before stopping at the chat root", () => {
   );
 });
 
+test("remembers senders from recycled Douyin chat rows", () => {
+  const contentSource = readFileSync(resolve(root, "src", "entries", "douyin-content.ts"), "utf8");
+  // Douyin's virtual chat list can recycle a row before the scheduled sender
+  // scan sees it. Senders must be extracted from mutation.removedNodes so a
+  // reply resolves even after the row is gone from the live DOM.
+  assert.match(
+    contentSource,
+    /function rememberRemovedChatSenders\(nodes\)/,
+  );
+  assert.match(
+    contentSource,
+    /const removedSenders = mutations\.flatMap\([\s\S]*?mutation\.removedNodes/,
+  );
+  assert.match(
+    contentSource,
+    /rememberRemovedChatSenders\(removedSenders\)/,
+  );
+  assert.match(
+    contentSource,
+    /const REPLY_RESOLVE_ATTEMPTS = 36/,
+  );
+});
+
 test("favorites accepts complete rich payloads instead of rejecting image Emoji", () => {
   const launcherSource = readFileSync(resolve(root, "src", "features", "favorites", "launcher.ts"), "utf8");
   assert.doesNotMatch(launcherSource, /暂不支持收藏/);

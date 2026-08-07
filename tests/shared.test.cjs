@@ -52,8 +52,17 @@ test("normalizes reply senders and builds a focused reply draft", () => {
   assert.equal(shared.normalizeSenderName("点击查看个人信息"), "");
   assert.equal(shared.replyMention("主播:"), "@主播 ");
   assert.equal(shared.replyDraftValue("", "测试用户"), "@测试用户 ");
-  assert.equal(shared.replyDraftValue("已有草稿", "测试用户"), "@测试用户 已有草稿");
-  assert.equal(shared.replyDraftValue("@测试用户 已有草稿", "测试用户"), "@测试用户 已有草稿");
+  assert.equal(shared.replyDraftValue("已有草稿", "测试用户"), "已有草稿@测试用户");
+  assert.equal(
+    shared.replyDraftValue("1232312 3234", "sadunicorn", 10),
+    "1232312 32@sadunicorn34"
+  );
+  assert.equal(
+    shared.replyDraftValue("1232312 3234", "sadunicorn", 10, 12),
+    "1232312 32@sadunicorn"
+  );
+  assert.equal(shared.replyDraftValue("yes @sadunicorn", "sadunicorn"), "yes @sadunicorn");
+  assert.equal(shared.replyDraftValue("hello", "sadunicorn", 5), "hello@sadunicorn");
 });
 
 test("merges partial settings with safe defaults", () => {

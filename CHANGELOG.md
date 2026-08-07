@@ -2,6 +2,16 @@
 
 All notable changes to Danmaku Echo are documented here.
 
+## [2.2.1] - 2026-08-05
+
+### Fixed
+
+- Douyin replies no longer fail with "未能识别到这条弹幕的发送者": sender extraction was skipped because real chat rows share the `webcast-chatroom` class with the chat root, and virtual-list recycling could remove a row before the sender scan ever saw it. Senders are now read before the chat-root walk stops and are also extracted from removed rows.
+- Douyin manual sends (typing in the fullscreen quick-send bar or side chat) are framed consistently in both the canvas renderer and side chat, including nested contenteditable editors and sends whose input is cleared before the click handler runs.
+- Danmaku containing colons (e.g. scores like "13:0了") are no longer truncated to "0了" during +1, favorites, or replies: chat rows and canvas barrages now share the same pure text normalization, so sender correlation and text matching stay consistent.
+- Bilibili danmaku freeze on hover now reads the position after pausing animations, so frozen clones no longer jump toward the cursor, and hover detection falls back to an immediate point lookup instead of waiting for the throttled move handler.
+- Douyin favorite writes no longer reject valid senders after SPA navigation or short-link redirects; the background sender check now accepts the reported room URL and any Douyin host that the manifest already restricts content scripts to.
+
 ## [2.2.0] - 2026-08-03
 
 ### Added

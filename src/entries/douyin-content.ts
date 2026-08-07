@@ -23,6 +23,8 @@ import { createDouyinOverlay } from '../components/live/douyin-overlay'
 import { createDiagnosticsCollector } from '../core/diagnostics'
 import {
   dispatchEditorEnter as pressEnter,
+  editorSelectionOffsets,
+  placeEditorCaretAt as placeCaretAt,
   placeEditorCaretAtEnd as placeCaretAtEnd,
   readEditorText as inputText,
 } from '../platforms/live/editor-dom'
@@ -54,7 +56,7 @@ import { t } from '../core/i18n'
   const SENDER_CACHE_TTL = 10 * 60_000
   const SENDER_CACHE_LIMIT = 320
   const SENDER_HISTORY_LIMIT = 480
-  const REPLY_RESOLVE_ATTEMPTS = 7
+  const REPLY_RESOLVE_ATTEMPTS = 36
   const REPLY_RESOLVE_INTERVAL = 70
   const REPLY_READY_WINDOW = 2_000
   const DOM_DANMAKU_SELECTORS = [
@@ -1692,14 +1694,18 @@ import { t } from '../core/i18n'
     }
   }
 
-  function focusReplyInput(input, expectedValue) {
+  function focusReplyInput(input, expectedValue, caretOffset) {
     const focus = () => {
       const editor = input.isConnected ? input : findInput()
       if (!editor || inputText(editor) !== expectedValue) {
         return
       }
       editor.focus({ preventScroll: true })
-      placeCaretAtEnd(editor)
+      if (Number.isFinite(caretOffset)) {
+        placeCaretAt(editor, caretOffset)
+      } else {
+        placeCaretAtEnd(editor)
+      }
     }
     focus()
     requestAnimationFrame(focus)
@@ -1748,14 +1754,21 @@ import { t } from '../core/i18n'
   function finishPreparedReply(candidate, input, sender, reason, requestKey, alreadyFilled) {
     const normalizedSender = shared.normalizeSenderName(sender) || mentionFromInput(input)
     const currentValue = inputText(input)
+    const offsets = editorSelectionOffsets(input)
+    const mention = `@${normalizedSender}`
+    const insertionStart = offsets ? offsets.start : currentValue.length
     const nextValue = alreadyFilled
       ? currentValue
-      : shared.replyDraftValue(currentValue, normalizedSender)
-    if (!alreadyFilled) setInputValue(input, nextValue)
+      : shared.replyDraftValue(currentValue, normalizedSender, offsets && offsets.start, offsets && offsets.end)
+    const caretOffset =
+      !alreadyFilled && nextValue !== currentValue ? insertionStart + mention.length : null
+    if (!alreadyFilled) {
+      setInputValue(input, nextValue)
+    }
     markReplyReady(candidate, normalizedSender)
     state.replyRequests.set(requestKey, { status: 'ready', at: Date.now() })
     hideCard(reason || 'reply-ready')
-    focusReplyInput(input, nextValue)
+    focusReplyInput(input, nextValue, caretOffset)
     debugEvent(
       alreadyFilled ? 'reply-already-ready' : 'reply-ready',
       {
@@ -3293,6 +3306,31 @@ import { t } from '../core/i18n'
   window.addEventListener('pagehide', onPageHide, { once: true })
   chrome.runtime.onMessage.addListener(onDiagnosticsMessage)
 
+  function rememberRemovedChatSenders(nodes) {
+    // Douyin's virtual chat list recycles rows: a row can be removed before
+    // the scheduled sender scan ever sees it in the live DOM. Extract the
+    // sender from removed rows immediately so replies still resolve after the
+    // row is gone.
+    for (const node of nodes) {
+      if (!(node instanceof Element)) continue
+      const rows = matchesAny(node, CHAT_MESSAGE_SELECTORS)
+        ? [node]
+        : Array.from(node.querySelectorAll(CHAT_MESSAGE_SELECTORS.join(',')))
+      for (const row of rows) {
+        if (isOwned(row) || row.dataset.bcpDouyinOwnChat === 'true') continue
+        const payload = richPayloadFromChatRow(row)
+        const ids = messageIdsFromRow(row)
+        rememberMessageSender(
+          payload.plainText || payload.text,
+          payload.sender,
+          Date.now(),
+          ids,
+          row,
+        )
+      }
+    }
+  }
+
   function startOwnChatObserver() {
     if (state.ownChatObserver || !document.documentElement) {
       return
@@ -3317,6 +3355,12 @@ import { t } from '../core/i18n'
               Boolean(node.querySelector(CHAT_MESSAGE_SELECTORS.join(',')))),
         )
       })
+      const removedSenders = mutations.flatMap(
+        (mutation) => Array.from(mutation.removedNodes || []),
+      )
+      if (removedSenders.length) {
+        rememberRemovedChatSenders(removedSenders)
+      }
       if (relevant) {
         scheduleSenderCacheScan(40)
         if (

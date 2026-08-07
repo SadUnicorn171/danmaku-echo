@@ -51,6 +51,8 @@ import {
 } from '../platforms/live/editor-config'
 import {
   dispatchEditorEnter as pressEnter,
+  editorSelectionOffsets,
+  placeEditorCaretAt as placeCaretAt,
   placeEditorCaretAtEnd as placeCaretAtEnd,
   readEditorText as inputText,
 } from '../platforms/live/editor-dom'
@@ -2320,14 +2322,18 @@ import { t } from '../core/i18n'
     }
   }
 
-  function focusReplyInput(input, expectedValue) {
+  function focusReplyInput(input, expectedValue, caretOffset) {
     const focus = () => {
       const editor = input.isConnected ? input : findInput({ reply: true })
       if (!editor || inputText(editor) !== expectedValue) {
         return
       }
       editor.focus({ preventScroll: true })
-      placeCaretAtEnd(editor)
+      if (Number.isFinite(caretOffset)) {
+        placeCaretAt(editor, caretOffset)
+      } else {
+        placeCaretAtEnd(editor)
+      }
     }
     focus()
     requestAnimationFrame(focus)
@@ -2372,10 +2378,15 @@ import { t } from '../core/i18n'
       showToast(t('toastEditorNotFound', platformName), 'error')
       return
     }
-    const nextValue = shared.replyDraftValue(inputText(input), sender)
+    const currentValue = inputText(input)
+    const offsets = editorSelectionOffsets(input)
+    const mention = `@${sender}`
+    const insertionStart = offsets ? offsets.start : currentValue.length
+    const nextValue = shared.replyDraftValue(currentValue, sender, offsets && offsets.start, offsets && offsets.end)
+    const caretOffset = nextValue !== currentValue ? insertionStart + mention.length : null
     setNativeValue(input, nextValue)
     clearSelection()
-    focusReplyInput(input, nextValue)
+    focusReplyInput(input, nextValue, caretOffset)
   }
 
   function buttonScore(button, input, selectorIndex, scopeBonus) {
@@ -3712,6 +3723,30 @@ import { t } from '../core/i18n'
             nativeCapsuleRelevant = true
           }
         })
+      }
+      // Virtualized chat lists can recycle a row before the scheduled scan
+      // ever sees it in the live DOM. Extract senders from removed rows so
+      // replies still resolve after the row is gone.
+      for (const mutation of mutations) {
+        for (const node of Array.from(mutation.removedNodes || [])) {
+          if (!(node instanceof Element) || isInsideBilibiliPlayerOutsideChat(node)) {
+            continue
+          }
+          const rows = matchesAny(node, config.messages)
+            ? [node]
+            : Array.from(node.querySelectorAll(config.messages.join(',')))
+          for (const row of rows) {
+            if (isOwned(row) || isBilibiliChatAdvertisement(row)) continue
+            const richPayload = richPayloadFromCandidate(row)
+            const message = (richPayload && richPayload.text) || textFromCandidate(row)
+            const sender = senderFromChatContext(row)
+            if (!sender || !shared.isPlausibleMessage(message, config.maxLength)) continue
+            state.senderCorrelation.remember(replyMessageValues(message, richPayload), sender, {
+              ids: messageIdsFromElement(row),
+              now: Date.now(),
+            })
+          }
+        }
       }
       const relevant = mutations.some((mutation) => {
         const target =
