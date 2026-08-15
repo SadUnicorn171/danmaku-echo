@@ -1,11 +1,13 @@
 <template>
   <ActionBar
     :actions="state.actions"
+    :cooldown-seconds="state.cooldownSeconds"
     :message="state.message"
     :sender="state.sender"
     :sending="state.sending"
     variant="common"
     :visible="state.actionVisible"
+    @copy="(event) => emit('copy', event)"
     @placeholder="(event, action) => emit('placeholder', event, action)"
     @favorite="(event) => emit('favorite', event)"
     @plus-one="(event) => emit('plusOne', event)"
@@ -24,23 +26,23 @@
 </template>
 
 <script setup lang="ts">
-import ActionBar from "./ActionBar.vue";
-import FeedbackToast from "./FeedbackToast.vue";
-import type { OverlayUiState } from "./content-overlay";
+import ActionBar from './ActionBar.vue'
+import FeedbackToast from './FeedbackToast.vue'
+import type { OverlayUiState } from './content-overlay'
 
 defineProps<{
-  state: OverlayUiState;
-}>();
+  state: OverlayUiState
+}>()
 
 const emit = defineEmits<{
-  favorite: [event: MouseEvent];
-  placeholder: [event: MouseEvent, action: "reply"];
-  plusOne: [event: MouseEvent];
-  pointerdown: [event: MouseEvent | PointerEvent];
-  pointerenter: [];
-  pointerleave: [];
-}>();
-
+  copy: [event: MouseEvent]
+  favorite: [event: MouseEvent]
+  placeholder: [event: MouseEvent, action: 'reply']
+  plusOne: [event: MouseEvent]
+  pointerdown: [event: MouseEvent | PointerEvent]
+  pointerenter: []
+  pointerleave: []
+}>()
 </script>
 
 <style lang="scss">
@@ -79,6 +81,17 @@ const emit = defineEmits<{
   display: none !important;
 }
 
+.bcp-one-hover-bridge {
+  all: initial;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: auto !important;
+  z-index: 2147483646 !important;
+}
+
 .bcp-one-action {
   all: initial;
   align-items: center;
@@ -108,7 +121,7 @@ const emit = defineEmits<{
   width: 56px;
 }
 
-.bcp-one-action[data-action="plus-one"] {
+.bcp-one-action[data-action='plus-one'] {
   font-size: 14.4px;
 }
 
@@ -118,6 +131,13 @@ const emit = defineEmits<{
 
 .bcp-one-action:active {
   transform: scale(0.96);
+}
+
+.bcp-one-action:disabled {
+  cursor: wait;
+  filter: grayscale(0.2);
+  opacity: 0.65;
+  transform: none;
 }
 
 .bcp-one-action:focus-visible {
@@ -144,6 +164,23 @@ const emit = defineEmits<{
   outline-offset: 2px !important;
 }
 
+/* Edge-clipped and fully visible danmaku use mutually exclusive frames:
+   normal clones keep the outside outline, while clipped clones replace it
+   with one inside frame that cannot leak into the side column. */
+.bcp-one-frozen.bcp-one-target[data-bcp-one-edge-clipped='true'] {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bcp-selection, #fd8101) 55%, transparent) !important;
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* Bilibili renders moving danmaku with a CSS `roll` animation that is not
+   always included in getAnimations(). Pause the renderer-owned timeline by
+   marker so the hidden original cannot move behind its fixed hover snapshot. */
+[data-bcp-bilibili-motion-paused='true'],
+[data-bcp-bilibili-motion-paused='true'] * {
+  animation-play-state: paused !important;
+}
+
 [data-bcp-douyu-own-chat-content='true'],
 [data-bcp-douyu-own-overlay='true'] [class*='text-'] {
   border-radius: 4px !important;
@@ -152,9 +189,7 @@ const emit = defineEmits<{
   outline-offset: 4px !important;
 }
 
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='interactive-element-'],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='reply-button-'],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='action-button-'],
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-'],
 html[data-bcp-douyu-native-capsule-hidden='true']
   :is(div, span):not([class*='danmuItem-']):has(> [class*='interactive-element-']):has(
     > [class*='reply-button-']
@@ -167,17 +202,41 @@ html[data-bcp-douyu-native-capsule-hidden='true']
   :is(div, span):not([class*='danmuItem-']):has(> [class*='reply-button-']):has(
     > [class*='action-button-']
   ),
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='plus-one' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='plusOne' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='reply' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='collect' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='favorite' i],
-html[data-bcp-douyu-native-capsule-hidden='true']
-  [class*='danmuItem-']
-  :is(div, span):has(> [class*='reply-button-']):has(> [class*='action-button-']),
 html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-hidden='true'] {
   display: none !important;
   pointer-events: none !important;
+}
+
+/* Keep Douyu's internal tail slot in layout. Its width participates in the
+   native CSS transition calculation; collapsing it causes a visible jump. */
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [class*='afterpic-'] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-bcp-douyu-native-capsule-hidden='true']
+  [class*='danmuItem-']
+  :is(
+    [class*='interactive-element-'],
+    [class*='reply-button-'],
+    [class*='action-button-'],
+    [data-action='plus-one' i],
+    [data-action='plusOne' i],
+    [data-action='reply' i],
+    [data-action='collect' i],
+    [data-action='favorite' i],
+    :is(div, span):has(> [class*='reply-button-']):has(> [class*='action-button-'])
+  ):not([data-bcp-one-owned]) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-']::before,
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-']::after,
+html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-hidden]::before,
+html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-hidden]::after {
+  content: none !important;
+  display: none !important;
 }
 
 .bcp-one-frozen,

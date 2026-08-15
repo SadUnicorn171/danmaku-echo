@@ -32,26 +32,38 @@
               <SettingSwitch
                 id="action-plus-one"
                 v-model="settings.actions.plusOne"
+                :disabled="isOnlyActionEnabled('plusOne')"
                 :title="t('settingsShowPlusOne')"
                 :description="t('settingsShowPlusOneDescription')"
                 :aria-label="t('ariaShowPlusOne')"
-                @change="save"
+                @change="saveActionSetting"
               />
               <SettingSwitch
                 id="action-reply"
                 v-model="settings.actions.reply"
+                :disabled="isOnlyActionEnabled('reply')"
                 :title="t('settingsShowReply')"
                 :description="t('settingsShowReplyDescription')"
                 :aria-label="t('ariaShowReply')"
-                @change="save"
+                @change="saveActionSetting"
               />
               <SettingSwitch
                 id="action-favorite"
                 v-model="settings.actions.favorite"
+                :disabled="isOnlyActionEnabled('favorite')"
                 :title="t('settingsShowFavorite')"
                 :description="t('settingsShowFavoriteDescription')"
                 :aria-label="t('ariaShowFavorite')"
-                @change="save"
+                @change="saveActionSetting"
+              />
+              <SettingSwitch
+                id="action-copy"
+                v-model="settings.actions.copy"
+                :disabled="isOnlyActionEnabled('copy')"
+                :title="t('settingsShowCopy')"
+                :description="t('settingsShowCopyDescription')"
+                :aria-label="t('ariaShowCopy')"
+                @change="saveActionSetting"
               />
               <SettingSwitch
                 id="altClick"
@@ -239,7 +251,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import type { ColorSettingKey, PlatformId } from "./core/types";
+import type { ActionSettings, ColorSettingKey, PlatformId } from "./core/types";
 import ColorPlatform from "./components/ColorPlatform.vue";
 import FavoritesDataTools from "./components/FavoritesDataTools.vue";
 import SettingSwitch from "./components/SettingSwitch.vue";
@@ -297,6 +309,16 @@ const activeSectionTitle = computed(() => ({
   "platform-connections": t("settingsPlatforms"),
   "side-chat-capsule": t("settingsSideCapsule")
 }[activeSection.value]));
+
+function isOnlyActionEnabled(action: keyof ActionSettings): boolean {
+  return settings.actions[action]
+    && Object.values(settings.actions).filter(Boolean).length === 1;
+}
+
+function saveActionSetting(): void {
+  if (!Object.values(settings.actions).some(Boolean)) settings.actions.plusOne = true;
+  save();
+}
 
 function setColor(platform: PlatformId, key: ColorSettingKey, value: string): void {
   settings.colors[platform][key] = value;

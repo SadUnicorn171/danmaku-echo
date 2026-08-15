@@ -20,7 +20,12 @@ import { createFavoritesRuntime } from '../features/favorites/launcher'
 import { unicodeEmojiFallbackText } from '../platforms/live/emoji-fallback'
 import { SenderCorrelationCache } from '../platforms/live/sender-correlation'
 import { createDouyinOverlay } from '../components/live/douyin-overlay'
+import { copyTextToClipboard } from '../core/clipboard'
 import { createDiagnosticsCollector } from '../core/diagnostics'
+import {
+  createPlatformFeedbackProbe,
+  createSendProtection,
+} from '../platforms/live/send-protection'
 import {
   dispatchEditorEnter as pressEnter,
   editorSelectionOffsets,
@@ -193,6 +198,8 @@ import { t } from '../core/i18n'
     "[class*='emojiItem']",
     "[class*='emoticon-item' i]",
   ]
+  const PLATFORM_FAILURE_FEEDBACK_WAIT_MS = 1_800
+  const PLATFORM_SUCCESS_FEEDBACK_WAIT_MS = 500
 
   const state = {
     settings: shared.mergeSettings(),
@@ -206,6 +213,7 @@ import { t } from '../core/i18n'
     favoriteButton: null,
     toast: null,
     candidate: null,
+    cooldownTimer: 0,
     hideTimer: 0,
     expiryTimer: 0,
     cardHovered: false,
@@ -213,6 +221,7 @@ import { t } from '../core/i18n'
     selectionPhase: 'idle',
     selectedAt: 0,
     lockedUntil: 0,
+    sendProtection: createSendProtection(),
     pointerX: 0,
     pointerY: 0,
     nextRequestId: 1,
@@ -221,7 +230,6 @@ import { t } from '../core/i18n'
     pageSnapshot: null,
     trustedAction: null,
     activationRequests: new Set(),
-    lastActionAt: 0,
     nextOwnAnnouncementId: 1,
     ownChatIntents: [],
     confirmedOwnMessageIds: new Set(),
@@ -513,6 +521,7 @@ import { t } from '../core/i18n'
         onCardEnter,
         onCardLeave,
         onCardMove,
+        onCopy: onCopyActionClick,
         onFavorite: onFavoriteActionClick,
         onPlaceholder: onPlaceholderActionClick,
         onPlusOne: onPlusOneClick,
@@ -635,6 +644,16 @@ import { t } from '../core/i18n'
     }
   }
 
+  async function onCopyActionClick(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelHide()
+    if (!state.settings.actions.copy || !state.candidate?.message) return
+    const copied = await copyTextToClipboard(state.candidate.message)
+    showToast(t(copied ? 'toastDanmakuCopied' : 'toastDanmakuCopyFailed'), copied ? 'success' : 'error')
+    armExpiry()
+  }
+
   function onFavoriteActionClick(event) {
     event.preventDefault()
     event.stopPropagation()
@@ -653,6 +672,64 @@ import { t } from '../core/i18n'
   function showToast(message, kind) {
     ensurePortal()
     state.ui.showToast(message, kind || 'info')
+  }
+
+  function updateCooldownUi(message) {
+    if (!state.ui) return
+    const remainingMs = state.sendProtection.remainingMs(message)
+    state.ui.setCooldown(remainingMs)
+    if (remainingMs > 0 && !state.cooldownTimer) {
+      state.cooldownTimer = setInterval(() => {
+        const currentMessage = state.candidate?.message || message
+        const currentRemaining = state.sendProtection.remainingMs(currentMessage)
+        if (state.ui) state.ui.setCooldown(currentRemaining)
+        if (currentRemaining <= 0) {
+          clearInterval(state.cooldownTimer)
+          state.cooldownTimer = 0
+        }
+      }, 250)
+    }
+  }
+
+  function showSendBlock(block, message) {
+    const seconds = Math.max(1, Math.ceil(block.remainingMs / 1_000))
+    if (block.reason === 'duplicate') {
+      showToast(t('toastDuplicateCooldown', String(seconds)), 'warning')
+    } else if (block.reason === 'in-flight') {
+      showToast(t('toastSendInProgress'), 'warning')
+    } else if (block.reason === 'cooldown') {
+      showToast(t('toastSendCooldown', String(seconds)), 'warning')
+    } else {
+      showToast(t('toastAccidentalSendBlocked'), 'warning')
+    }
+    updateCooldownUi(message)
+  }
+
+  function beginProtectedSend(message) {
+    const block = state.sendProtection.begin(message)
+    if (!block.allowed) showSendBlock(block, message)
+    return block.allowed
+  }
+
+  async function finishProtectedSend(message, success, feedbackProbe) {
+    const feedback = await feedbackProbe.wait(
+      success ? PLATFORM_SUCCESS_FEEDBACK_WAIT_MS : PLATFORM_FAILURE_FEEDBACK_WAIT_MS,
+    )
+    if (feedback) {
+      state.sendProtection.applyPlatformFeedback(feedback, message)
+      const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
+      showToast(
+        feedback.cooldownMs > 0
+          ? t('toastPlatformCooldown', [t('platformDouyin'), feedback.message, String(seconds)])
+          : t('toastPlatformRejected', [t('platformDouyin'), feedback.message]),
+        feedback.kind === 'rejected' ? 'error' : 'warning',
+      )
+      updateCooldownUi(message)
+      return 'feedback'
+    }
+    state.sendProtection.finish(message, success)
+    updateCooldownUi(message)
+    return success
   }
 
   function emojiTokenFromImage(image) {
@@ -1430,6 +1507,7 @@ import { t } from '../core/i18n'
       selectionId: String(state.selectionId),
       selectionPhase: state.selectionPhase,
     })
+    state.ui.setCooldown(state.sendProtection.remainingMs(candidate.message))
     requestAnimationFrame(() => positionCard(candidate))
     armExpiry()
     debugState.counters.cardsShown += 1
@@ -2638,12 +2716,7 @@ import { t } from '../core/i18n'
   }
 
   async function repeatMessage(message, richValue) {
-    const now = Date.now()
-    if (now - state.lastActionAt < 700) {
-      showToast(t('toastActionTooFast'), 'warning')
-      return false
-    }
-    state.lastActionAt = now
+    if (!beginProtectedSend(message)) return false
     debugState.counters.sendsAttempted += 1
     const richPayload = normalizeRichPayload(richValue || message)
     const emojiAssets = richPayload.assets
@@ -2659,11 +2732,13 @@ import { t } from '../core/i18n'
     )
     const input = findInput()
     if (!input) {
+      state.sendProtection.finish(message, false)
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: 'input-not-found' }, 'error')
       showToast(t('toastEditorNotFound', t('platformDouyin')), 'error')
       return false
     }
+    const feedbackProbe = createPlatformFeedbackProbe(document)
     const ownIntentId = announceOwnMessage(richPayload, 'plus-one')
     const prepared = await prepareRichInput(input, richPayload)
     await new Promise((resolve) => setTimeout(resolve, 80))
@@ -2672,12 +2747,15 @@ import { t } from '../core/i18n'
         prepared.reason === 'emoji-not-inserted' &&
         (await waitForOwnMessageConfirmation(ownIntentId, 3200))
       if (directSent) {
+        if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) return false
         debugState.counters.sendsSucceeded += 1
         debugEvent('send-succeeded', { message, mode: 'emoji-direct' }, 'info')
         showToast(t('toastRichPlusOneSent'), 'success')
         return true
       }
       cancelOwnMessageAnnouncement(ownIntentId)
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled === 'feedback') return false
       setInputValue(input, '')
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: prepared.reason }, 'error')
@@ -2712,6 +2790,8 @@ import { t } from '../core/i18n'
       cancelOwnMessageAnnouncement(ownIntentId)
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: 'input-not-consumed' }, 'error')
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled === 'feedback') return false
       showToast(t('toastAutomaticSendFailed'), 'error')
       return false
     }
@@ -2719,6 +2799,11 @@ import { t } from '../core/i18n'
       input.blur()
     } catch {
       // The controlled editor may be replaced during the send cycle.
+    }
+    if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) {
+      debugState.counters.sendsFailed += 1
+      debugEvent('send-failed', { message, reason: 'platform-feedback' }, 'warning')
+      return false
     }
     debugState.counters.sendsSucceeded += 1
     debugEvent('send-succeeded', { message, emojiCount: emojiAssets.length }, 'info')
@@ -3259,10 +3344,12 @@ import { t } from '../core/i18n'
     if (state.expiryTimer) clearTimeout(state.expiryTimer)
     if (state.ownChatScanTimer) clearTimeout(state.ownChatScanTimer)
     if (state.senderCacheTimer) clearTimeout(state.senderCacheTimer)
+    if (state.cooldownTimer) clearInterval(state.cooldownTimer)
     state.hideTimer = 0
     state.expiryTimer = 0
     state.ownChatScanTimer = 0
     state.senderCacheTimer = 0
+    state.cooldownTimer = 0
     state.ownChatObserver?.disconnect()
     state.ownChatObserver = null
     state.activationRequests.clear()

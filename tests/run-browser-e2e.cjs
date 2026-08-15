@@ -23,12 +23,30 @@ const scenarios = [
   { name: "settings-en", kind: "settings", locale: "en-US" },
   { name: "huya-side", host: "www.huya.com", platform: "huya", query: "platform=huya" },
   {
+    name: "huya-image-emoji",
+    host: "www.huya.com",
+    platform: "huya",
+    query: "platform=huya&nativeemoji=1&skipSide=1",
+  },
+  {
     name: "huya-fullscreen",
     host: "www.huya.com",
     platform: "huya",
-    query: "platform=huya&fullscreen=1",
+    query: "platform=huya&fullscreen=1&fullscreenViewportConflict=1",
   },
   { name: "douyu-side", host: "www.douyu.com", platform: "douyu", query: "platform=douyu" },
+  {
+    name: "douyu-image-emoji",
+    host: "www.douyu.com",
+    platform: "douyu",
+    query: "platform=douyu&nativeemoji=1&skipSide=1",
+  },
+  {
+    name: "douyu-pe3-image-emoji",
+    host: "www.douyu.com",
+    platform: "douyu",
+    query: "platform=douyu&nativeemoji=1&pe3emoji=1&skipSide=1",
+  },
   {
     name: "douyu-fullscreen",
     host: "www.douyu.com",
@@ -47,6 +65,34 @@ const scenarios = [
     platform: "bilibili",
     query: "platform=bilibili&rich=1&skipSide=1&emojionly=1",
     timeout: 100_000,
+  },
+  {
+    name: "bilibili-first-room-emoji",
+    host: "live.bilibili.com",
+    platform: "bilibili",
+    query: "platform=bilibili&rich=1&coldroomemoji=1&skipSide=1",
+    timeout: 40_000,
+  },
+  {
+    name: "bilibili-unrelated-emoji-guard",
+    host: "live.bilibili.com",
+    platform: "bilibili",
+    query: "platform=bilibili&rich=1&unrelatedemoji=1&skipSide=1",
+    timeout: 40_000,
+  },
+  {
+    name: "bilibili-badge-name-emoji",
+    host: "live.bilibili.com",
+    platform: "bilibili",
+    query: "platform=bilibili&rich=1&badgenameemoji=1&skipSide=1",
+    timeout: 40_000,
+  },
+  {
+    name: "bilibili-name-only-emoji",
+    host: "live.bilibili.com",
+    platform: "bilibili",
+    query: "platform=bilibili&rich=1&nameonlypanel=1&skipSide=1",
+    timeout: 180_000,
   },
   {
     name: "bilibili-rich",
@@ -214,6 +260,7 @@ function parsedAssertionFailures(parsed) {
     parsed.bilibiliRichRegression,
     parsed.douyinDomRegression,
     parsed.douyinRichRegression,
+    parsed.nativeEmojiRegression,
     parsed.sideChatRegression,
   ].flatMap((result) => Array.isArray(result?.assertionFailures)
     ? result.assertionFailures.map(String)
@@ -306,7 +353,11 @@ async function main() {
         if (startupFailure) {
           result = await runScenario(browser, fixturePort, scenario, 2);
         }
-        const passed = result.code === 0 && !result.timedOut && Boolean(result.parsed);
+        const assertionFailures = parsedAssertionFailures(result.parsed);
+        const passed = result.code === 0
+          && !result.timedOut
+          && Boolean(result.parsed)
+          && assertionFailures.length === 0;
         summary.push({
           attempt: result.attempt,
           browser: browser.name,
@@ -317,7 +368,7 @@ async function main() {
           stderr: result.stderr.slice(-2_000),
           stdout: result.stdout.slice(-2_000),
           timedOut: result.timedOut,
-          assertionFailures: parsedAssertionFailures(result.parsed),
+          assertionFailures,
         });
         process.stdout.write(`${passed ? "PASS" : "FAIL"} ${browser.name} ${scenario.name}\n`);
       }

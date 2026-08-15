@@ -14,51 +14,10 @@ export const TEXT_EDITOR_SELECTOR = [
   "[role='textbox']",
 ].join(',')
 
-export const HUYA_EMOJI_TOGGLE_SELECTORS = [
-  "[data-testid*='emoji' i]",
-  "[data-e2e*='emoji' i]",
-  "[aria-label*='表情']",
-  "[title*='表情']",
-  "[class*='emoji-btn' i]",
-  "[class*='emoticon-btn' i]",
-  "[class*='emotion-btn' i]",
-  "[class*='face-btn' i]",
-  "[class*='faceBtn']",
-  "button[class*='emoji' i]",
-  "button[class*='face' i]",
-  "[role='button'][class*='face' i]",
-]
-
-export const HUYA_EMOJI_SURFACE_SELECTORS = [
-  "[data-testid*='emoji-panel' i]",
-  "[data-e2e*='emoji-panel' i]",
-  "[class*='emoji-panel' i]",
-  "[class*='emoticon-panel' i]",
-  "[class*='emotion-panel' i]",
-  "[class*='face-panel' i]",
-  "[class*='facePanel']",
-  "[class*='emoji-list' i]",
-  "[class*='emoticon-list' i]",
-  "[class*='face-list' i]",
-  "[class*='faceList']",
-]
-
-export const DOUYU_EMOJI_TOGGLE_SELECTORS = [
-  '.EmotionSwitcher',
-  ".EmotionSwitcher[title='表情']",
-  '.ChatEmotion > [title]',
-  "[class*='EmotionSwitcher']",
-]
-
-export const DOUYU_EMOJI_SURFACE_SELECTORS = [
-  '.Emotion-wrap',
-  '.Emotion-container',
-  '.EmotionList',
-  '.AssembleExpressHeader',
-  "[class*='EmotionList']",
-]
-
 export const PLATFORM_EMOJI_ITEM_SELECTORS = [
+  '.EmotionList-item',
+  '.EmotionList-img',
+  '.EmotionList-item-title',
   '[data-emoji]',
   '[data-emoji-name]',
   '[data-emoji-text]',
@@ -79,9 +38,11 @@ export const PLATFORM_EMOJI_ITEM_SELECTORS = [
   "[class*='faceItem']",
   "[class*='emotion-item' i]",
   "[class*='EmotionList-item']",
+  "[class*='emot--']",
 ]
 
 export const PLATFORM_EMOJI_CATEGORY_SELECTORS = [
+  '.EmotionTab-item',
   "[role='tab']",
   "[class*='tab-item' i]",
   "[class*='tabItem']",
@@ -102,6 +63,10 @@ export const EMOJI_METADATA_ATTRIBUTES = [
   'alt',
   'title',
   'aria-label',
+  // Douyu's current player danmaku keeps the official Chinese Emoji name on
+  // the image itself (for example rel="狗骨头" / rel="梗就这"), while its URL
+  // contains only a pinyin slug or an opaque resource id.
+  'rel',
   'data-name',
   'data-emoji',
   'data-emoticon',
@@ -130,6 +95,7 @@ export const BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES = [
 
 export const NATIVE_PANEL_ASSET_KEY_PREFIX = 'native-panel:'
 export const LEGACY_BILIBILI_EXCLUSIVE_ASSET_KEY_PREFIX = 'bili-exclusive:'
+export const BILIBILI_AUTO_TEXT_ASSET_KEY_PREFIX = 'bili-auto-text:'
 export const EMOJI_DISPLAY_ATTRIBUTES = new Set([
   'data-text',
   'data-emoji-name',
@@ -139,5 +105,6 @@ export const EMOJI_DISPLAY_ATTRIBUTES = new Set([
   'alt',
   'title',
   'aria-label',
+  'rel',
   'data-name',
 ])

@@ -35,6 +35,12 @@ function compareFavorites(
   second: FavoriteDisplayItem,
   sort: FavoriteSort
 ): number {
+  if (first.pinned !== second.pinned) return Number(second.pinned) - Number(first.pinned);
+  if (sort === "custom") {
+    return first.customOrder - second.customOrder
+      || first.sortTimestamp - second.sortTimestamp
+      || first.id.localeCompare(second.id);
+  }
   if (sort === "time-asc") {
     return first.sortTimestamp - second.sortTimestamp
       || first.createdAt - second.createdAt
@@ -59,6 +65,8 @@ function displayItem(
   return {
     ...item,
     belongsToCurrentRoom: belongsToRoom(item, room.roomKey),
+    customOrder: Number(item.roomStats[roomKey || room.roomKey]?.customOrder) || 0,
+    pinned: Boolean(item.roomStats[roomKey || room.roomKey]?.pinned || (!roomKey && item.globalPinned)),
     sourceLabel: sourceLabel(item, room, roomKey),
     sortTimestamp: collectedAt(item, roomKey)
   };
@@ -91,7 +99,8 @@ export function rankedFavorites(
       const current = belongsToRoom(item, room.roomKey);
       if (view === "current" && !current) return false;
       if (view === "other" && current) return false;
-      return !query || item.normalizedText.includes(query);
+      return !query || item.normalizedText.includes(query)
+        || item.tags.some((tag) => tag.toLowerCase().includes(query));
     })
     .map((item) => displayItem(item, room, view === "current" ? room.roomKey : undefined))
     .sort((first, second) => compareFavorites(first, second, sort));
@@ -125,7 +134,8 @@ export function groupedFavorites(
     memberships.forEach((metadata, roomKey) => {
       if (view === "other" && roomKey === room.roomKey) return;
       const roomMatches = metadata.roomName.toLowerCase().includes(query);
-      if (query && !roomMatches && !item.normalizedText.includes(query)) return;
+      if (query && !roomMatches && !item.normalizedText.includes(query)
+          && !item.tags.some((tag) => tag.toLowerCase().includes(query))) return;
       const group = roomItems.get(roomKey) || { metadata, items: [] };
       group.items.push(item);
       roomItems.set(roomKey, group);

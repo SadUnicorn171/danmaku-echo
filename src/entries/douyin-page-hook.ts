@@ -16,6 +16,7 @@ import {
 } from "../platforms/douyin/protocol";
 import { serializedEmojiAssets } from "../platforms/douyin/rich-data";
 import { allAssetsMatch } from "../platforms/douyin/own-message";
+import { overlayCapsulePlacement } from "../platforms/live/capsule-position";
 import {
   canvasPixelSize,
   channelInfo,
@@ -46,7 +47,8 @@ import { extractSenderFromRecord } from "../core/reply";
   const DOM_ACTION_ITEM_WIDTHS = Object.freeze({
     plusOne: 56,
     reply: 56,
-    favorite: 56
+    favorite: 56,
+    copy: 56
   });
   const DOM_ACTION_DIVIDER_WIDTH = 2;
   const DOM_ACTION_GAP = 8;
@@ -75,19 +77,20 @@ import { extractSenderFromRecord } from "../core/reply";
   let nextReplyRequestId = 1;
   let rendererEnabled = false;
   let rendererHeartbeatAt = 0;
-  let rendererActions = { plusOne: true, reply: true, favorite: true };
+  let rendererActions = { copy: false, plusOne: true, reply: true, favorite: true };
 
   function normalizeRendererActions(value) {
     const actions = value && typeof value === "object" ? value : {};
     return {
       plusOne: typeof actions.plusOne === "boolean" ? actions.plusOne : true,
       reply: typeof actions.reply === "boolean" ? actions.reply : true,
-      favorite: typeof actions.favorite === "boolean" ? actions.favorite : true
+      favorite: typeof actions.favorite === "boolean" ? actions.favorite : true,
+      copy: typeof actions.copy === "boolean" ? actions.copy : false
     };
   }
 
   function enabledRendererActions() {
-    return ["plusOne", "reply", "favorite"].filter((key) => rendererActions[key]);
+    return ["plusOne", "reply", "favorite", "copy"].filter((key) => rendererActions[key]);
   }
 
   function rendererActionWidth() {
@@ -1101,6 +1104,48 @@ import { extractSenderFromRecord } from "../core/reply";
     }, "*");
   }
 
+  async function activateRendererCopy(track, event) {
+    const state = track.renderer;
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+    if (!state || !rendererEnabled || !rendererActions.copy || !track.description.text) return;
+    let copied = false;
+    try {
+      if (typeof navigator.clipboard?.writeText === "function") {
+        await navigator.clipboard.writeText(track.description.text);
+        copied = true;
+      }
+    } catch {
+      // Fall through to the selection-based copy path.
+    }
+    if (!copied) {
+      const input = document.createElement("textarea");
+      input.value = track.description.text;
+      input.readOnly = true;
+      input.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;pointer-events:none";
+      document.body.appendChild(input);
+      try {
+        input.focus({ preventScroll: true });
+        input.select();
+        copied = document.execCommand("copy");
+      } catch {
+        copied = false;
+      } finally {
+        input.remove();
+      }
+    }
+    state.copyButton.textContent = copied ? "已复制" : "复制失败";
+    state.copyButton.title = copied ? "弹幕内容已复制" : "复制失败，请重试";
+    setTimeout(() => {
+      if (track.renderer === state) {
+        state.copyButton.textContent = "复制";
+        state.copyButton.title = "复制弹幕内容";
+      }
+    }, copied ? 900 : 1400);
+  }
+
   function createRendererActionItem(label, action) {
     const item = document.createElement("button");
     item.type = "button";
@@ -1120,7 +1165,8 @@ import { extractSenderFromRecord } from "../core/reply";
     const visible = [
       ["plusOne", state.button],
       ["reply", state.replyButton],
-      ["favorite", state.favoriteButton]
+      ["favorite", state.favoriteButton],
+      ["copy", state.copyButton]
     ].filter(([key]) => rendererActions[key]);
     const fragment = document.createDocumentFragment();
     visible.forEach(([, item], index) => {
@@ -1228,6 +1274,10 @@ import { extractSenderFromRecord } from "../core/reply";
     const favoriteButton = createRendererActionItem("收藏", "favorite");
     favoriteButton.setAttribute("aria-label", `收藏弹幕：${track.description.text}`);
     setRendererMetadata(favoriteButton, track);
+    const copyButton = createRendererActionItem("复制", "copy");
+    copyButton.setAttribute("aria-label", `复制弹幕：${track.description.text}`);
+    copyButton.title = "复制弹幕内容";
+    setRendererMetadata(copyButton, track);
 
     barrage.appendChild(content);
     node.append(barrage, actionBar);
@@ -1239,6 +1289,7 @@ import { extractSenderFromRecord } from "../core/reply";
       button,
       replyButton,
       favoriteButton,
+      copyButton,
       hovered: false,
       sending: false,
       visualLeft: null,
@@ -1246,6 +1297,7 @@ import { extractSenderFromRecord } from "../core/reply";
       resumeOffset: 0,
       visualWidth: 0,
       visualHeight: 0,
+      actionSide: null,
       hoverTimer: 0,
       releaseTimer: 0
     };
@@ -1264,6 +1316,8 @@ import { extractSenderFromRecord } from "../core/reply";
     replyButton.addEventListener("click", (event) => activateRendererReply(track, event));
     favoriteButton.addEventListener("pointerdown", ignoreRendererPlaceholderAction);
     favoriteButton.addEventListener("click", (event) => activateRendererFavorite(track, event));
+    copyButton.addEventListener("pointerdown", ignoreRendererPlaceholderAction);
+    copyButton.addEventListener("click", (event) => void activateRendererCopy(track, event));
     layer.appendChild(node);
     debugState.counters.rendererNodesCreated += 1;
     return state;
@@ -1274,8 +1328,41 @@ import { extractSenderFromRecord } from "../core/reply";
     if (!state) {
       return;
     }
-    const targetLeft = barrageRect.left - canvasRect.left;
+    const nativeLeft = barrageRect.left - canvasRect.left;
     const targetTop = barrageRect.top - canvasRect.top;
+    const actionWidth = Math.max(0,
+      numberOr(track.description.actionWidth, rendererActionWidth()));
+    // `barrageRect` is already in CSS viewport pixels while the description
+    // may still be in the Canvas renderer's logical coordinate system. Derive
+    // the visible text box from the rendered track width so resized/fullscreen
+    // players use the correct edge for side selection.
+    const contentWidth = Math.max(
+      1,
+      barrageRect.width - actionWidth - DOM_ACTION_GAP - DOM_ACTION_TRAILING_SPACE
+    );
+    const placement = overlayCapsulePlacement({
+      anchorLeft: nativeLeft,
+      anchorRight: nativeLeft + contentWidth,
+      capsuleWidth: actionWidth,
+      viewportLeft: 0,
+      viewportRight: canvasRect.width,
+      gap: DOM_ACTION_GAP
+    });
+    // Lock the side while hovered. The hidden toolbar may switch sides during
+    // normal movement, but moving it under an active pointer would break the
+    // combined barrage/capsule hover target.
+    const actionSide = state.hovered && state.actionSide
+      ? state.actionSide
+      : placement.side;
+    state.actionSide = actionSide;
+    state.node.dataset.bcpOverlaySide = actionSide;
+    state.actionBar.dataset.bcpOverlaySide = actionSide;
+    state.actionBar.style.order = actionSide === "left" ? "-1" : "1";
+    state.barrage.style.order = "0";
+    // Reordering puts the action before the barrage. Shift the track left by
+    // the same reserved width so the barrage text itself never jumps.
+    const targetLeft = nativeLeft
+      - (actionSide === "left" ? actionWidth + DOM_ACTION_GAP : 0);
     state.targetLeft = targetLeft;
     if (!Number.isFinite(state.visualLeft)) {
       state.visualLeft = targetLeft;
@@ -1283,8 +1370,6 @@ import { extractSenderFromRecord } from "../core/reply";
       state.visualLeft = targetLeft + numberOr(state.resumeOffset, 0);
     }
     if (!state.hovered) {
-      const actionWidth = Math.max(0,
-        numberOr(track.description.actionWidth, rendererActionWidth()));
       const width = Math.max(
         actionWidth + DOM_ACTION_GAP + DOM_ACTION_TRAILING_SPACE + 1,
         barrageRect.width
@@ -2005,7 +2090,7 @@ import { extractSenderFromRecord } from "../core/reply";
   function updateRendererSettings(data) {
     const wasEnabled = rendererEnabled;
     const nextActions = normalizeRendererActions(data.actions);
-    const actionsChanged = ["plusOne", "reply", "favorite"]
+    const actionsChanged = ["plusOne", "reply", "favorite", "copy"]
       .some((key) => nextActions[key] !== rendererActions[key]);
     rendererHeartbeatAt = Date.now();
     rendererActions = nextActions;

@@ -8,6 +8,7 @@ export interface DouyinOverlayState {
   cardMounted: boolean;
   cardVisible: boolean;
   content: unknown[];
+  cooldownSeconds: number;
   left: number;
   measuring: boolean;
   message: string;
@@ -30,6 +31,7 @@ interface DouyinOverlayCallbacks {
   onCardEnter(): void;
   onCardLeave(): void;
   onCardMove(): void;
+  onCopy(event: MouseEvent): void;
   onFavorite(event: MouseEvent): void;
   onPlaceholder(event: MouseEvent, action: "reply"): void;
   onPlusOne(event: MouseEvent): void;
@@ -41,11 +43,12 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
   portal.className = "bcp-douyin-portal";
   portal.dataset.bcpDouyinOwned = "true";
   const state = reactive<DouyinOverlayState>({
-    actions: { plusOne: true, reply: true, favorite: true },
+    actions: { copy: false, plusOne: true, reply: true, favorite: true },
     cardActive: false,
     cardMounted: false,
     cardVisible: false,
     content: [],
+    cooldownSeconds: 0,
     left: 0,
     measuring: true,
     message: "",
@@ -62,6 +65,7 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     onCardEnter: callbacks.onCardEnter,
     onCardLeave: callbacks.onCardLeave,
     onCardMove: callbacks.onCardMove,
+    onCopy: callbacks.onCopy,
     onPlaceholder: callbacks.onPlaceholder,
     onFavorite: callbacks.onFavorite,
     onPlusOne: callbacks.onPlusOne,
@@ -147,6 +151,9 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     setActions(actions: ActionSettings): void {
       state.actions = { ...actions };
       if (!Object.values(actions).some(Boolean)) state.cardVisible = false;
+    },
+    setCooldown(remainingMs: number): void {
+      state.cooldownSeconds = Math.max(0, Math.ceil(Number(remainingMs) / 1_000));
     },
     setSelectionPhase(selectionPhase: string): void {
       state.metadata.selectionPhase = selectionPhase;

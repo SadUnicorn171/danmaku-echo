@@ -13,17 +13,20 @@ const html = String.raw`<!doctype html>
     </style>
   </head>
   <body>
-    <section id="player-wrap" style="position:relative;width:800px;height:450px;background:#111">
-      <div class="quality-option" style="position:absolute;left:20px;top:20px;color:white">高清</div>
-      <div class="danmu-item" style="position:absolute;left:220px;top:120px;color:white">全屏弹幕也能复读</div>
-      <div class="danmu-item second-danmu" style="position:absolute;left:280px;top:120px;color:white">后一个弹幕不能抢占</div>
-      <div class="player-fullscreen-danmu-input fixture-huya-quick-reply"
-        style="display:none;position:absolute;left:20px;bottom:20px;z-index:5">
-        <textarea class="player-danmu-input fixture-huya-quick-input"
-          data-fixture-reply-surface="quick" placeholder="发送弹幕"></textarea>
-        <button class="btn-send fixture-huya-quick-send" type="button">发送</button>
-      </div>
-    </section>
+    <div class="room-player-wrap fixture-huya-outer-player"
+      style="position:relative;width:800px;height:450px">
+      <section id="player-wrap" style="position:relative;width:800px;height:450px;background:#111">
+        <div class="quality-option" style="position:absolute;left:20px;top:20px;color:white">高清</div>
+        <div class="danmu-item" style="position:absolute;left:220px;top:120px;color:white">全屏弹幕也能复读</div>
+        <div class="danmu-item second-danmu" style="position:absolute;left:280px;top:120px;color:white">后一个弹幕不能抢占</div>
+        <div class="player-fullscreen-danmu-input fixture-huya-quick-reply"
+          style="display:none;position:absolute;left:20px;bottom:20px;z-index:5">
+          <textarea class="player-danmu-input fixture-huya-quick-input"
+            data-fixture-reply-surface="quick" placeholder="发送弹幕"></textarea>
+          <button class="btn-send fixture-huya-quick-send" type="button">发送</button>
+        </div>
+      </section>
+    </div>
     <section id="chat-room__list">
       <div class="J_msg">
         <span class="name" title="点击查看个人信息">测试用户：</span>
@@ -48,6 +51,23 @@ const html = String.raw`<!doctype html>
       const quickInput = document.querySelector(".fixture-huya-quick-input");
       const quickSend = document.querySelector(".fixture-huya-quick-send");
       const parameters = new URLSearchParams(location.search);
+      if (parameters.get("fullscreenViewportConflict") === "1") {
+        const outerPlayer = document.querySelector(".fixture-huya-outer-player");
+        Object.assign(outerPlayer.style, {
+          position: "fixed",
+          left: "520px",
+          top: "520px",
+          width: "600px",
+          height: "340px"
+        });
+        Object.assign(player.style, {
+          position: "fixed",
+          left: "0",
+          top: "0",
+          width: "800px",
+          height: "450px"
+        });
+      }
       if (parameters.get("fullscreen") === "1") {
         Object.defineProperty(document, "fullscreenElement", {
           configurable: true,
@@ -182,13 +202,22 @@ const bilibiliHtml = String.raw`<!doctype html>
       .bpx-player-container { position: relative; width: 800px; height: 450px; background: #111; }
       .bilibili-live-player-video-danmaku { position: absolute; inset: 0; transform: translateZ(0); }
       .bili-danmaku-x-dm { position: absolute; left: 260px; top: 120px; color: white; white-space: nowrap; }
+      @keyframes fixture-bilibili-roll {
+        from { transform: translate3d(0, 0, 0); }
+        to { transform: translate3d(-500px, 0, 0); }
+      }
+      .fixture-bilibili-motion {
+        animation: fixture-bilibili-roll 30s linear 1 forwards;
+        left: 620px;
+        will-change: transform;
+      }
     </style>
   </head>
   <body>
     <main class="live-player-mounter">
     <section class="bpx-player-container">
       <div class="bilibili-live-player-video-danmaku">
-        <div class="bili-danmaku-x-dm">
+        <div class="bili-danmaku-x-dm fixture-bilibili-motion">
           <span class="bili-danmaku-x-dm-content">B站单条弹幕</span>
         </div>
         <div class="bili-danmaku-x-dm fixture-video-emote-row"
@@ -229,13 +258,23 @@ const bilibiliHtml = String.raw`<!doctype html>
           </span>
         </div>
         <div class="bili-danmaku-x-dm fixture-bili-extra-emote-row"
-          style="display:none;top:340px">
+          style="display:none;top:320px">
+          <span class="bili-danmaku-x-dm-content fixture-cute-content"
+            data-emoji-name="[卖萌]">
+            <img class="bili-danmaku-x-dm-img fixture-cute-emote"
+              data-emoticon-id="official-cute"
+              src="/fixture/bili-cute.webp?source=chat"><span
+              style="display:none">[卖萌]</span>
+          </span>
+        </div>
+        <div class="bili-danmaku-x-dm fixture-bili-extra-emote-row"
+          data-danmaku="加油啊[大哭][大哭]" style="display:none;top:340px">
           <span class="bili-danmaku-x-dm-content fixture-mixed-cry-content">加油啊<img
               class="bili-danmaku-x-dm-img fixture-mixed-cry-emote"
-              data-emoji-name="[大哭]" data-emoticon-id="official-cry"
+              alt="[大哭]" data-emoticon-unique="official-cry"
               src="/fixture/bili-cry.webp?source=chat-a"><img
               class="bili-danmaku-x-dm-img"
-               data-emoji-name="[大哭]" data-emoticon-id="official-cry"
+               alt="[大哭]" data-emoticon-unique="official-cry"
                src="/fixture/bili-cry.webp?source=chat-b"></span>
         </div>
         <div class="bili-danmaku-x-dm fixture-bili-extra-emote-row"
@@ -291,6 +330,11 @@ const bilibiliHtml = String.raw`<!doctype html>
             <img data-emoticon-id="official-cry" alt="[大哭]"
               src="/fixture/bili-cry.webp?source=panel">
           </button>
+          <button class="emoticon-item fixture-cute-item"
+            data-emoticon-id="official-cute" title="[卖萌]" type="button">
+            <img data-emoticon-id="official-cute" alt="[卖萌]"
+              src="/fixture/bili-cute.webp?source=panel">
+          </button>
         </div>
         <div class="fixture-exclusive-pack" hidden>
           <button class="emoticon-item fixture-exclusive-item"
@@ -329,6 +373,7 @@ const bilibiliHtml = String.raw`<!doctype html>
       const exclusivePack = document.querySelector(".fixture-exclusive-pack");
       const wowItem = document.querySelector(".fixture-wow-item");
       const cryItem = document.querySelector(".fixture-cry-item");
+      const cuteItem = document.querySelector(".fixture-cute-item");
       const exclusiveItem = document.querySelector(".fixture-exclusive-item");
       const exclusiveItemDuplicate = document.querySelector(".fixture-exclusive-item-duplicate");
       const richChat = document.querySelector("#chat-history-list");
@@ -337,6 +382,35 @@ const bilibiliHtml = String.raw`<!doctype html>
       const lazyQuickMode = parameters.get("lazyquick") === "1";
       const lazyEmojiMode = parameters.get("lazyemoji") === "1";
       const nameOnlyPanelMode = parameters.get("nameonlypanel") === "1";
+      const coldRoomEmojiMode = parameters.get("coldroomemoji") === "1";
+      const unrelatedEmojiMode = parameters.get("unrelatedemoji") === "1";
+      const badgeNameEmojiMode = parameters.get("badgenameemoji") === "1";
+      if (badgeNameEmojiMode) {
+        const nativeRow = document.createElement("div");
+        nativeRow.className = "chat-item danmaku-item chat-emoticon bulge-emoticon fixture-hopeless-chat-row";
+        nativeRow.dataset.type = "1";
+        nativeRow.dataset.danmaku = "生无可恋";
+        nativeRow.dataset.fileId = "room_5236391_63397";
+        nativeRow.dataset.image = "/fixture/bili-hopeless.png";
+        nativeRow.innerHTML = '<div class="danmaku-item-left"><div class="wealth-medal-ctnr" title="这是 TA 的荣耀等级勋章 (●&#39;◡&#39;●)ノ♥"><img class="wealth-medal" src="/fixture/bili-wealth.png"></div><span class="user-name">测试用户：</span></div><span class="danmaku-item-right emoticon bulge"><img class="open-menu" src="/fixture/bili-hopeless.png?source=chat" alt="生无可恋"><span class="open-menu">生无可恋</span></span>';
+        richChat.prepend(nativeRow);
+        const oldRowFillers = document.createDocumentFragment();
+        for (let index = 0; index < 80; index += 1) {
+          const row = document.createElement("div");
+          row.className = "chat-item danmaku-item";
+          row.dataset.type = "0";
+          row.dataset.danmaku = "较新的普通弹幕" + index;
+          row.innerHTML = '<span class="danmaku-content">较新的普通弹幕' + index + '</span>';
+          oldRowFillers.appendChild(row);
+        }
+        richChat.appendChild(oldRowFillers);
+
+        const overlayRow = document.createElement("div");
+        overlayRow.className = "bili-danmaku-x-dm fixture-bili-extra-emote-row fixture-hopeless-overlay-row";
+        overlayRow.style.cssText = "display:none;top:400px";
+        overlayRow.innerHTML = '<span class="bili-danmaku-x-dm-content"><img class="bili-danmaku-x-dm-img fixture-hopeless-overlay-emote" src="/fixture/bili-hopeless.png?source=overlay" alt="这是 TA 的荣耀等级勋章 (●&#39;◡&#39;●)ノ♥"></span>';
+        container.appendChild(overlayRow);
+      }
       if (nameOnlyPanelMode) {
         exclusiveItem.removeAttribute("data-type");
         exclusiveItem.removeAttribute("data-file-id");
@@ -392,6 +466,17 @@ const bilibiliHtml = String.raw`<!doctype html>
           || "";
         emojiPanel.hidden = true;
       };
+      const appendTextEmojiEcho = (value) => {
+        const panelItem = Array.from(emojiPanel.querySelectorAll("button")).find(
+          (candidate) => candidate.getAttribute("title") === value
+            || candidate.querySelector("img")?.getAttribute("alt") === value
+        );
+        // Only ordinary Bilibili Emoji are recognized from literal [name]
+        // text. A room Emoji with only a visible name needs the native panel
+        // click to arm its hidden room identity/emoticonOptions state.
+        if (!panelItem?.hasAttribute("data-emoticon-id")) return;
+        appendEmojiEcho(panelItem, "data-emoticon-id");
+      };
       const recordEmojiItemClick = () => {
         document.body.dataset.bilibiliEmojiItemClicks = String(
           Number(document.body.dataset.bilibiliEmojiItemClicks || 0) + 1
@@ -399,6 +484,28 @@ const bilibiliHtml = String.raw`<!doctype html>
       };
       const sendEmojiItem = (nativeItem, identityAttribute) => {
         recordEmojiItemClick();
+        if (unrelatedEmojiMode
+            && !document.body.dataset.bilibiliUnrelatedEmojiInjected) {
+          document.body.dataset.bilibiliUnrelatedEmojiInjected = "true";
+          emojiPanel.hidden = true;
+          nativeItem.remove();
+          // Another viewer's unrelated image message must never confirm this
+          // failed target action.
+          setTimeout(() => appendEmojiEcho(wowItem, "data-emoticon-id"), 180);
+          return;
+        }
+        if (coldRoomEmojiMode
+            && !document.body.dataset.bilibiliColdRoomEmojiDispatched) {
+          document.body.dataset.bilibiliColdRoomEmojiDispatched = "true";
+          emojiPanel.hidden = true;
+          nativeItem.remove();
+          // Reproduce Bilibili's first-use race: the panel item is unmounted
+          // immediately, but the accepted room Emoji appears after the old
+          // 2.4 s confirmation window and during the feedback grace period.
+          // The delayed echo must win before the API fallback can run.
+          setTimeout(() => appendEmojiEcho(nativeItem, identityAttribute), 3_000);
+          return;
+        }
         appendEmojiEcho(nativeItem, identityAttribute);
       };
       const insertEmojiItem = (nativeItem) => {
@@ -427,6 +534,7 @@ const bilibiliHtml = String.raw`<!doctype html>
       emojiItem.addEventListener("click", () => sendEmojiItem(emojiItem, "data-emoticon"));
       wowItem.addEventListener("click", () => sendEmojiItem(wowItem, "data-emoticon-id"));
       cryItem.addEventListener("click", () => sendEmojiItem(cryItem, "data-emoticon-id"));
+      cuteItem.addEventListener("click", () => sendEmojiItem(cuteItem, "data-emoticon-id"));
       exclusiveItem.addEventListener("click", () => insertEmojiItem(exclusiveItem));
       exclusiveItemDuplicate.addEventListener("click", () => insertEmojiItem(exclusiveItemDuplicate));
       if (parameters.get("hashed") === "1" && !lazyQuickMode) {
@@ -448,8 +556,17 @@ const bilibiliHtml = String.raw`<!doctype html>
         document.body.dataset.bilibiliSendMethod = "button";
         document.body.dataset.bilibiliSent = input.value;
         if (input.value === "[主播表情9]" && exclusiveEmojiArmed) {
+          document.body.dataset.bilibiliSubmittedMsg =
+            exclusiveItem.getAttribute("data-fixture-resource-id") || "";
+          document.body.dataset.bilibiliSubmittedDmType = "1";
+          document.body.dataset.bilibiliSubmittedEmoticonOptions = "[object Object]";
           appendEmojiEcho(exclusiveItem, "data-file-id");
           exclusiveEmojiArmed = false;
+        } else {
+          document.body.dataset.bilibiliSubmittedMsg = input.value;
+          document.body.dataset.bilibiliSubmittedDmType = "0";
+          delete document.body.dataset.bilibiliSubmittedEmoticonOptions;
+          appendTextEmojiEcho(input.value);
         }
         input.value = "";
       });
@@ -460,8 +577,17 @@ const bilibiliHtml = String.raw`<!doctype html>
         document.body.dataset.bilibiliSendMethod = "enter";
         document.body.dataset.bilibiliSent = input.value;
         if (input.value === "[主播表情9]" && exclusiveEmojiArmed) {
+          document.body.dataset.bilibiliSubmittedMsg =
+            exclusiveItem.getAttribute("data-fixture-resource-id") || "";
+          document.body.dataset.bilibiliSubmittedDmType = "1";
+          document.body.dataset.bilibiliSubmittedEmoticonOptions = "[object Object]";
           appendEmojiEcho(exclusiveItem, "data-file-id");
           exclusiveEmojiArmed = false;
+        } else {
+          document.body.dataset.bilibiliSubmittedMsg = input.value;
+          document.body.dataset.bilibiliSubmittedDmType = "0";
+          delete document.body.dataset.bilibiliSubmittedEmoticonOptions;
+          appendTextEmojiEcho(input.value);
         }
         input.value = "";
       });

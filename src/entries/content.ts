@@ -4,18 +4,27 @@ import {
   shouldHideNativeDanmakuCapsule,
   visibleActionsForSurface,
 } from '../platforms/live/action-visibility'
-import {
-  orderedBracketEmojiText,
-  unicodeEmojiFallbackText,
-} from '../platforms/live/emoji-fallback'
+import { unicodeEmojiFallbackText } from '../platforms/live/emoji-fallback'
 import { SenderCorrelationCache } from '../platforms/live/sender-correlation'
+import { uniqueHighestScoringItem } from '../platforms/live/native-emoji'
+import {
+  clampBoxStart,
+  clipInsetsWithinRect,
+  intersectRectBounds,
+  pointInsideRect,
+} from '../platforms/live/overlay-viewport'
+import { overlayCapsulePlacement } from '../platforms/live/capsule-position'
 import {
   DOUYU_NATIVE_DANMAKU_ACTION_MARKER,
   DOUYU_NATIVE_DANMAKU_ACTION_SELECTORS,
   DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTORS,
+  DOUYU_NATIVE_DANMAKU_CAPSULE_DECORATION_SELECTORS,
+  DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS,
   DouyuNativeCapsuleVisibilityController,
   findDouyuNativeDanmakuCapsuleTargets,
 } from '../platforms/douyu/native-capsule'
+import { DouyuNativeHoverController } from '../platforms/douyu/native-hover'
+import { DouyuOverlayMotionController } from '../platforms/douyu/overlay-motion'
 import {
   BILIBILI_CHAT_ACTION_SURFACES,
   BILIBILI_CHAT_ACTION_TEXT,
@@ -29,20 +38,40 @@ import {
   isBilibiliAdvertisementLabel,
   isBilibiliAdvertisementMarker,
 } from '../platforms/bilibili/dom-config'
+import { BilibiliOverlayMotionController } from '../platforms/bilibili/overlay-motion'
+import { bilibiliAutoRecognizedEmojiText } from '../platforms/bilibili/rich-message-sender'
+import {
+  bilibiliNativeEmoticonToken,
+  isBilibiliDecorativeImageDescription,
+  isBilibiliEmoticonFallbackLabel,
+} from '../platforms/bilibili/emoticon-metadata'
+import {
+  BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE,
+  bilibiliRoomEmoticonIdentity,
+} from '../platforms/bilibili/direct-emoticon-send'
+import { createBilibiliEmoticonDebugAttempt } from '../platforms/bilibili/emoticon-debug'
+import {
+  BILIBILI_INSTALL_NATIVE_SEND_OBSERVER,
+  isBilibiliNativeSendObservation,
+} from '../platforms/bilibili/native-send-observer'
 import { normalizedAssetKeys as normalizedRichAssetKeys } from '../platforms/douyin/rich-data'
 import { createFavoritesRuntime } from '../features/favorites/launcher'
 import { createContentOverlay } from '../components/live/content-overlay'
+import { copyTextToClipboard } from '../core/clipboard'
 import { createDiagnosticsCollector } from '../core/diagnostics'
 import { createLivePlatformAdapter } from '../platforms/live/adapters'
+import { liveRichMessageSender } from '../platforms/live/rich-message-sender'
+import {
+  classifyPlatformSendFeedback,
+  createPlatformFeedbackProbe,
+  createSendProtection,
+} from '../platforms/live/send-protection'
 import {
   BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES,
-  DOUYU_EMOJI_SURFACE_SELECTORS,
-  DOUYU_EMOJI_TOGGLE_SELECTORS,
+  BILIBILI_AUTO_TEXT_ASSET_KEY_PREFIX,
   EDITABLE_CONTROL_SELECTOR,
   EMOJI_DISPLAY_ATTRIBUTES,
   EMOJI_METADATA_ATTRIBUTES,
-  HUYA_EMOJI_SURFACE_SELECTORS,
-  HUYA_EMOJI_TOGGLE_SELECTORS,
   LEGACY_BILIBILI_EXCLUSIVE_ASSET_KEY_PREFIX,
   NATIVE_PANEL_ASSET_KEY_PREFIX,
   PLATFORM_EMOJI_CATEGORY_SELECTORS,
@@ -77,27 +106,38 @@ import { t } from '../core/i18n'
   globalThis.__bulletPlusOneLoaded = true
 
   const config = LIVE_PLATFORM_CONFIG[platformId]
-  const platformName = t(platformId === 'bilibili'
-    ? 'platformBilibili'
-    : platformId === 'douyu'
-      ? 'platformDouyu'
-      : 'platformHuya')
+  const platformName = t(
+    platformId === 'bilibili'
+      ? 'platformBilibili'
+      : platformId === 'douyu'
+        ? 'platformDouyu'
+        : 'platformHuya',
+  )
   const platformAdapter = createLivePlatformAdapter(platformId)
+  const richMessageSender = liveRichMessageSender(platformId)
   const INERT_SNAPSHOT_SKIP_SELECTOR = inertSnapshotSkipSelector([
     `[${DOUYU_NATIVE_DANMAKU_ACTION_MARKER}]`,
     ...DOUYU_NATIVE_DANMAKU_ACTION_SELECTORS,
+    ...(platformId === 'douyu' ? DOUYU_NATIVE_DANMAKU_CAPSULE_DECORATION_SELECTORS : []),
   ])
   const DOUYU_NATIVE_DANMAKU_ACTION_SELECTOR = DOUYU_NATIVE_DANMAKU_ACTION_SELECTORS.join(',')
   const DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTOR =
     DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTORS.join(',')
+  const DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTOR =
+    DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS.join(',')
   const OVERLAY_HOVER_PADDING = 14
   const OVERLAY_LEAVE_DELAY = 160
+  const OVERLAY_HYDRATION_DELAY = 24
+  const OVERLAY_MESSAGE_CACHE_TTL = 240
+  const OVERLAY_SNAPSHOT_NODE_LIMIT = 48
   const BILIBILI_OVERLAY_ROW_SELECTOR = '.bili-danmaku-x-dm'
   const BILIBILI_OVERLAY_CACHE_TTL = 180
   const BILIBILI_OVERLAY_CACHE_LIMIT = 240
   const SENDER_SCAN_MIN_INTERVAL = 240
   const REPLY_RESOLVE_ATTEMPTS = 7
   const REPLY_RESOLVE_INTERVAL = 70
+  const PLATFORM_FAILURE_FEEDBACK_WAIT_MS = 1_800
+  const PLATFORM_SUCCESS_FEEDBACK_WAIT_MS = 500
   const state = {
     settings: shared.mergeSettings(),
     candidate: null,
@@ -112,8 +152,12 @@ import { t } from '../core/i18n'
     senderScanTimer: 0,
     senderLastScanAt: 0,
     richPayload: null,
+    overlayHydratedId: -1,
+    overlayHydrationId: 0,
+    overlayHydrationTimer: 0,
     hideTimer: 0,
-    lastActionAt: 0,
+    cooldownTimer: 0,
+    sendProtection: createSendProtection(),
     roots: [document],
     rootsCachedAt: 0,
     ui: null,
@@ -124,8 +168,10 @@ import { t } from '../core/i18n'
     favoriteButton: null,
     toast: null,
     frozenClone: null,
+    hoverBridge: null,
     originalVisibility: null,
     pausedAnimations: [],
+    overlayViewport: null,
     pointerFrame: 0,
     pointerX: 0,
     pointerY: 0,
@@ -146,7 +192,10 @@ import { t } from '../core/i18n'
     }),
     observerCounts: () => ({
       sender: state.senderObserver ? 1 : 0,
-      timers: Number(Boolean(state.hideTimer)) + Number(Boolean(state.senderScanTimer)),
+      timers:
+        Number(Boolean(state.hideTimer)) +
+        Number(Boolean(state.senderScanTimer)) +
+        Number(Boolean(state.overlayHydrationTimer)),
     }),
     selectorHits: () => ({
       chatRoot: queryAllDeep(config.chatRoots).length > 0,
@@ -154,6 +203,11 @@ import { t } from '../core/i18n'
       videoRoot: queryAllDeep(config.videoRoots).length > 0,
     }),
   })
+  const douyuNativeHover = platformId === 'douyu' ? new DouyuNativeHoverController() : null
+  const douyuOverlayMotion = platformId === 'douyu' ? new DouyuOverlayMotionController() : null
+  const bilibiliOverlayMotion =
+    platformId === 'bilibili' ? new BilibiliOverlayMotionController() : null
+  const overlayMessageCache = new WeakMap()
   diagnostics.record({ type: 'runtime.initialized', stage: 'content' })
 
   function storageGet() {
@@ -607,9 +661,9 @@ import { t } from '../core/i18n'
     const overlayMatch = closestFromPath(path, config.overlayMessages)
     if (overlayMatch) {
       const overlay = normalizeOverlayCandidate(overlayMatch)
-      return overlay && isOverlayMessageElement(overlay)
-        ? { element: overlay, kind: 'overlay' }
-        : null
+      if (overlay && isOverlayMessageElement(overlay)) {
+        return { element: overlay, kind: 'overlay' }
+      }
     }
 
     if (
@@ -645,7 +699,13 @@ import { t } from '../core/i18n'
 
       const rect = node.getBoundingClientRect()
       const text = shared.normalizeWhitespace(node.innerText || node.textContent)
-      if (rect.height >= 12 && rect.height <= 180 && text.length >= 1 && text.length <= 260) {
+      const namedImageEmoji =
+        !(node instanceof HTMLImageElement) && richEmojiMessageForValidation(node)
+      if (
+        rect.height >= 12 &&
+        rect.height <= 180 &&
+        ((text.length >= 1 && text.length <= 260) || namedImageEmoji)
+      ) {
         return { element: node, kind: 'chat' }
       }
     }
@@ -653,32 +713,155 @@ import { t } from '../core/i18n'
     return null
   }
 
-  function pointInside(rect, x, y, padding) {
-    const margin = Number.isFinite(padding) ? padding : 0
-    return (
-      x >= rect.left - margin &&
-      x <= rect.right + margin &&
-      y >= rect.top - margin &&
-      y <= rect.bottom + margin
+  function composedParentElement(element) {
+    if (element.parentElement) return element.parentElement
+    const root = typeof element.getRootNode === 'function' ? element.getRootNode() : null
+    return root instanceof ShadowRoot ? root.host : null
+  }
+
+  function overlayViewportRect(candidate) {
+    if (!(candidate instanceof Element)) return null
+
+    const rootRects = []
+    let current = candidate
+    while (current) {
+      if (matchesAny(current, config.videoRoots)) {
+        const rect = current.getBoundingClientRect()
+        if (rect.width > 8 && rect.height > 8) {
+          // Use the nearest visual player root. Huya's page-theater/fullscreen
+          // mode lets #player-wrap escape an older .room-player-wrap ancestor;
+          // intersecting both rectangles incorrectly rejects every barrage in
+          // the expanded portion of the real player.
+          rootRects.push(rect)
+          break
+        }
+      }
+      current = composedParentElement(current)
+    }
+
+    // Some live sites portal the danmaku layer beside the player instead of
+    // nesting it. In that case choose the smallest visible video root that
+    // actually intersects the candidate; never fall back to the whole page.
+    if (!rootRects.length) {
+      const candidateRect = candidate.getBoundingClientRect()
+      const intersectingRoots = queryAllDeep(config.videoRoots)
+        .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+        .filter(
+          ({ element, rect }) =>
+            !isOwned(element) &&
+            rect.width > 8 &&
+            rect.height > 8 &&
+            intersectRectBounds([candidateRect, rect]),
+        )
+        .sort((a, b) => a.rect.width * a.rect.height - b.rect.width * b.rect.height)
+      if (intersectingRoots[0]) rootRects.push(intersectingRoots[0].rect)
+    }
+
+    if (!rootRects.length) return null
+    return intersectRectBounds([
+      { bottom: innerHeight, left: 0, right: innerWidth, top: 0 },
+      ...rootRects,
+    ])
+  }
+
+  function pointInsideOverlayViewport(candidate, x, y) {
+    const viewport =
+      candidate === state.candidate && state.overlayViewport
+        ? state.overlayViewport
+        : overlayViewportRect(candidate)
+    return pointInsideRect(viewport, x, y)
+  }
+
+  function richEmojiMessageForValidation(element) {
+    if (!(element instanceof Element) || !element.querySelector('img')) return ''
+    const payload = richPayloadFromCandidate(element)
+    const hasNamedEmoji = payload.assets.some((asset) => {
+      const token = shared.normalizeWhitespace(asset && asset.token)
+      return /^\[[^\]\n]{1,40}\]$/.test(token) || /\p{Extended_Pictographic}/u.test(token)
+    })
+    return hasNamedEmoji && shared.isPlausibleMessage(payload.text, config.maxLength)
+      ? payload.text
+      : ''
+  }
+
+  function overlayRichEmojiMessageForValidation(element) {
+    if (!(element instanceof Element) || !element.querySelector('img')) return ''
+    const payload = richPayloadFromCandidate(element)
+    const hasImageIdentity = payload.assets.some(
+      (asset) => asset && Array.isArray(asset.keys) && asset.keys.length > 0,
     )
+    return hasImageIdentity && shared.isPlausibleMessage(payload.text, config.maxLength)
+      ? payload.text
+      : ''
+  }
+
+  function overlayMessageSignature(element) {
+    if (!(element instanceof Element)) return ''
+    const images = element.getElementsByTagName('img')
+    const imageIdentity = []
+    for (let index = 0; index < Math.min(images.length, 4); index += 1) {
+      const image = images[index]
+      imageIdentity.push(
+        [
+          image.currentSrc || image.getAttribute('src'),
+          image.getAttribute('data-src'),
+          image.getAttribute('alt'),
+          image.getAttribute('rel'),
+          image.getAttribute('title'),
+        ]
+          .filter(Boolean)
+          .join('|'),
+      )
+    }
+    return [
+      element.childElementCount,
+      element.getAttribute('data-danmaku') || '',
+      String(element.textContent || '').slice(0, config.maxLength + 80),
+      imageIdentity.join(';'),
+    ].join('\u0000')
   }
 
   function overlayMessageForValidation(element) {
-    const plainText = textFromCandidate(element)
-    if (shared.isPlausibleMessage(plainText, config.maxLength)) {
-      return plainText
-    }
-    if (platformId !== 'bilibili') {
-      return ''
+    if (!(element instanceof Element)) return ''
+    const signature = overlayMessageSignature(element)
+    const now = performance.now()
+    const cached = overlayMessageCache.get(element)
+    if (
+      cached &&
+      cached.signature === signature &&
+      now - cached.cachedAt <= OVERLAY_MESSAGE_CACHE_TTL
+    ) {
+      return cached.message
     }
 
-    // Bilibili renders image-only video emoticons without textContent. Reuse
-    // the rich payload parser here so known danmaku nodes are not rejected
-    // before selectCandidate() can preserve and resend their image asset.
-    const payload = richPayloadFromCandidate(element)
-    return payload.assets.length && shared.isPlausibleMessage(payload.text, config.maxLength)
-      ? payload.text
-      : ''
+    if (platformId === 'bilibili' && element.matches(BILIBILI_OVERLAY_ROW_SELECTOR)) {
+      const content = element.querySelector('.bili-danmaku-x-dm-content') || element
+      const rowMessage = shared.parseMessageText(
+        element.getAttribute('data-danmaku') ||
+          content.getAttribute('data-danmaku') ||
+          content.textContent,
+        config.maxLength,
+      )
+      if (shared.isPlausibleMessage(rowMessage, config.maxLength)) {
+        overlayMessageCache.set(element, { cachedAt: now, message: rowMessage, signature })
+        return rowMessage
+      }
+    }
+
+    const plainText = textFromCandidate(element)
+    if (shared.isPlausibleMessage(plainText, config.maxLength)) {
+      overlayMessageCache.set(element, { cachedAt: now, message: plainText, signature })
+      return plainText
+    }
+
+    // Player danmaku rows are already constrained by the platform overlay
+    // selectors and viewport checks. Their image Emoji often expose only a
+    // resource URL (or a generic "图片表情" label), so accept a parsed asset
+    // identity here. Side-chat fallback keeps the stricter named-Emoji check
+    // above to avoid treating advertisements and decorative images as messages.
+    const richMessage = overlayRichEmojiMessageForValidation(element)
+    overlayMessageCache.set(element, { cachedAt: now, message: richMessage, signature })
+    return richMessage
   }
 
   function normalizeOverlayCandidate(element) {
@@ -696,15 +879,18 @@ import { t } from '../core/i18n'
       return false
     }
 
+    // Douyu reuses danmuItem-like class names in some side-chat revisions.
+    // A node mounted in the chat column must never inherit overlay behavior,
+    // otherwise it bypasses the independently disabled side-chat capsule.
+    if (platformId === 'douyu' && closestMatching(element, config.chatRoots)) {
+      return false
+    }
+
     const bilibiliOverlayRow =
       platformId === 'bilibili' && element.matches(BILIBILI_OVERLAY_ROW_SELECTOR)
     if (bilibiliOverlayRow) {
       const rect = element.getBoundingClientRect()
-      return (
-        rect.height >= 8 &&
-        rect.height <= Math.min(120, innerHeight * 0.22) &&
-        rect.width >= 4
-      )
+      return rect.height >= 8 && rect.height <= Math.min(120, innerHeight * 0.22) && rect.width >= 4
     }
 
     if (!isVisible(element)) {
@@ -807,29 +993,49 @@ import { t } from '../core/i18n'
   }
 
   function isInsideFrozenHoverZone(x, y) {
-    const frozenTarget =
-      state.frozenClone && state.frozenClone.isConnected ? state.frozenClone : null
+    const frozenTarget = state.frozenClone?.isConnected
+      ? state.frozenClone
+      : platformId === 'douyu' && state.candidate?.isConnected
+        ? state.candidate
+        : null
     return (
       state.candidateKind === 'overlay' &&
       frozenTarget &&
-      pointInside(frozenTarget.getBoundingClientRect(), x, y, OVERLAY_HOVER_PADDING)
+      pointInsideOverlayViewport(state.candidate, x, y) &&
+      pointInsideRect(frozenTarget.getBoundingClientRect(), x, y, OVERLAY_HOVER_PADDING)
+    )
+  }
+
+  function isInsideSelectedHoverBody(target) {
+    if (!(target instanceof Node)) return false
+    return Boolean(
+      state.candidate?.contains(target) ||
+      state.actionBar?.contains(target) ||
+      state.hoverBridge?.contains(target),
     )
   }
 
   function findOverlayAtPoint(x, y) {
+    const pointElements =
+      typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : []
+
+    // The side chat can be visually adjacent to a danmaku whose un-clipped DOM
+    // box extends beyond the player. A chat hit always wins over that invisible
+    // part of the moving overlay.
+    if (pointElements.some((element) => closestMatching(element, config.chatRoots))) {
+      return null
+    }
+
     if (isInsideFrozenHoverZone(x, y)) {
       return state.candidate
     }
 
-    const pointElements =
-      typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : []
-
     for (const element of pointElements) {
       const exact = normalizeOverlayCandidate(closestMatching(element, config.overlayMessages))
-      if (exact) {
+      if (exact && isOverlayMessageElement(exact) && pointInsideOverlayViewport(exact, x, y)) {
         return exact
       }
-      if (isGenericOverlayElement(element)) {
+      if (isGenericOverlayElement(element) && pointInsideOverlayViewport(element, x, y)) {
         return element
       }
     }
@@ -843,7 +1049,7 @@ import { t } from '../core/i18n'
       }
 
       const rect = candidate.getBoundingClientRect()
-      if (pointInside(rect, x, y)) {
+      if (pointInsideRect(rect, x, y) && pointInsideOverlayViewport(candidate, x, y)) {
         const normalizedX = (x - (rect.left + rect.width / 2)) / Math.max(rect.width, 1)
         const normalizedY = (y - (rect.top + rect.height / 2)) / Math.max(rect.height, 1)
         const centerDistance = Math.hypot(normalizedX, normalizedY)
@@ -930,6 +1136,7 @@ import { t } from '../core/i18n'
   function normalizedEmojiToken(value, marker) {
     const normalized = shared.normalizeWhitespace(value)
     if (!normalized || isGenericEmojiLabel(normalized)) return ''
+    if (platformId === 'bilibili' && isBilibiliDecorativeImageDescription(normalized)) return ''
     if (/^\[[^\]\n]{1,40}\]$/.test(normalized)) return normalized
     if (/\p{Extended_Pictographic}/u.test(normalized)) return normalized
     if (
@@ -951,6 +1158,8 @@ import { t } from '../core/i18n'
   function emojiTokenFromElement(element) {
     if (!(element instanceof Element)) return ''
     const image = element instanceof HTMLImageElement ? element : element.querySelector('img')
+    const douyuRelToken = douyuImageRelToken(image)
+    if (douyuRelToken) return douyuRelToken
     for (const metadataElement of emojiMetadataElements(element, image)) {
       const marker = elementMarker(metadataElement)
       for (const attribute of EMOJI_METADATA_ATTRIBUTES) {
@@ -972,6 +1181,40 @@ import { t } from '../core/i18n'
 
   function emojiTokenFromImage(image) {
     return emojiTokenFromElement(image)
+  }
+
+  function douyuImageRelToken(element) {
+    if (platformId !== 'douyu' || !(element instanceof HTMLImageElement)) return ''
+    if (!/(?:^|\s)EmotImage(?:Pe3?)?(?:-|\s|$)/i.test(elementMarker(element))) return ''
+    return normalizedEmojiToken(element.getAttribute('rel'), 'douyu emoji')
+  }
+
+  function douyuEmojiPanelToken(element) {
+    if (platformId !== 'douyu' || !(element instanceof Element)) return ''
+    const item = element.matches('.EmotionList-item')
+      ? element
+      : element.closest('.EmotionList-item')
+    const title = item && item.querySelector('.EmotionList-item-title')
+    if (!(title instanceof Element)) return ''
+    return normalizedEmojiToken(title.textContent, elementMarker(title))
+  }
+
+  function huyaEmojiPanelToken(element) {
+    if (platformId !== 'huya' || !(element instanceof Element)) return ''
+    const item = element.matches("[class*='emot--']")
+      ? element
+      : element.closest("[class*='emot--']")
+    if (!(item instanceof Element)) return ''
+    const values = [
+      item.querySelector("img[class*='emot-icon--'][alt]")?.getAttribute('alt'),
+      item.querySelector("[class*='emot-preview--'] span")?.textContent,
+      item.querySelector("[class*='emot-preview--'] img[alt]")?.getAttribute('alt'),
+    ]
+    for (const value of values) {
+      const token = normalizedEmojiToken(value, 'huya emoticon')
+      if (token) return token
+    }
+    return ''
   }
 
   function assetDescriptorFromElement(element) {
@@ -1018,16 +1261,50 @@ import { t } from '../core/i18n'
                 ),
             )
             .map((metadataElement) =>
-              shared.normalizeWhitespace(metadataElement.getAttribute('data-danmaku')),
+              bilibiliNativeEmoticonToken(metadataElement.getAttribute('data-danmaku')),
             )
-            .find((value) => /^\[[^\]\n]{1,40}\]$/.test(value)) || ''
+            .find(Boolean) || ''
         : ''
-    const token = authoritativeBilibiliToken || emojiTokenFromElement(element)
+    const token =
+      authoritativeBilibiliToken ||
+      huyaEmojiPanelToken(element) ||
+      douyuEmojiPanelToken(element) ||
+      emojiTokenFromElement(element)
     const keys = new Set()
+    if (platformId === 'huya') {
+      metadataElements.forEach((metadataElement) => {
+        const marker = elementMarker(metadataElement)
+        const id = shared.normalizeWhitespace(metadataElement.getAttribute('data-id'))
+        if (id && /(?:^|\s)emot(?:--|-icon--|-preview--)/i.test(marker)) {
+          keys.add(`huya-emoticon-id:${id.toLowerCase().slice(0, 120)}`)
+        }
+      })
+      sources.forEach((source) => {
+        const matches = String(source).matchAll(
+          /(?:web_base_material_|material[_/-])([0-9]{8,})(?:_pic)?/gi,
+        )
+        for (const match of matches) {
+          keys.add(`huya-material:${match[1]}`)
+        }
+      })
+    }
     if (platformId === 'bilibili') {
       let nativePanelIdentity = ''
       let isNativePanelAsset = false
       metadataElements.forEach((metadataElement) => {
+        const standardEmoticonId = shared.normalizeWhitespace(
+          metadataElement.getAttribute('data-emoticon-id'),
+        )
+        if (standardEmoticonId) {
+          // Bilibili's ordinary built-in Emoji are recognized from their
+          // bracket names by the official editor. Keep a positive identity so
+          // other bracketed image resources never enter that text-only path.
+          keys.add(
+            `${BILIBILI_AUTO_TEXT_ASSET_KEY_PREFIX}${standardEmoticonId
+              .toLowerCase()
+              .slice(0, 180)}`,
+          )
+        }
         if (metadataElement.getAttribute('data-type') === '1') {
           isNativePanelAsset = true
         }
@@ -1069,7 +1346,12 @@ import { t } from '../core/i18n'
   }
 
   function messageEmojiImages(candidate, messageElement) {
-    const roots = candidate === messageElement ? [messageElement] : [messageElement, candidate]
+    const messageContainsImage =
+      messageElement instanceof HTMLImageElement || Boolean(messageElement.querySelector('img'))
+    const roots =
+      candidate === messageElement || (platformId === 'bilibili' && messageContainsImage)
+        ? [messageElement]
+        : [messageElement, candidate]
     const images = []
     const seen = new Set()
     roots.forEach((root) => {
@@ -1100,7 +1382,8 @@ import { t } from '../core/i18n'
         Boolean(token) ||
         /(?:emoji|emote|emoticon|sticker|emotion|face|表情)/i.test(`${marker} ${source}`)
       const decorative =
-        /(?:avatar|badge|medal|level|grade|rank|fansclub|fan-club|guard|noble)/i.test(marker)
+        /(?:avatar|badge|medal|level|grade|rank|fansclub|fan-club|guard|noble)/i.test(marker) ||
+        (platformId === 'bilibili' && isBilibiliDecorativeImageDescription(marker))
       return !decorative && (messageElement.contains(image) || positive)
     })
   }
@@ -1162,7 +1445,159 @@ import { t } from '../core/i18n'
           .filter(Boolean)
           .join(' ') || '图片表情'
     }
+    // Bilibili danmaku rows carry the full message (including bracketed Emoji
+    // names) in their data-danmaku attribute even when the rendered images
+    // expose no nameable token. Prefer that authoritative text whenever the
+    // DOM-derived text lost every Emoji name or picked up a neighboring badge
+    // description, so mixed sends stay lossless.
+    // This lookup is intentionally cheap (attribute reads only): the heavier
+    // side-chat asset recovery runs once at send time, not on every hover.
+    const bilibiliTextHasReliableEmojiName =
+      /\[[^\]\n]{1,40}\]/.test(text) && !isBilibiliDecorativeImageDescription(text)
+    if (platformId === 'bilibili' && assets.length && !bilibiliTextHasReliableEmojiName) {
+      const row = candidate.matches('[data-danmaku]')
+        ? candidate
+        : candidate.closest('[data-danmaku]')
+      const content = element.querySelector('.bili-danmaku-x-dm-content') || element
+      const rowText = shared.parseMessageText(
+        (row && row.getAttribute('data-danmaku')) || content.getAttribute('data-danmaku') || '',
+        config.maxLength,
+      )
+      if (rowText && shared.isPlausibleMessage(rowText, config.maxLength)) {
+        text = rowText
+      }
+    }
     return { text, plainText, assets, parts: richPartsFromElement(element) }
+  }
+
+  const bilibiliChatAssetCache = new Map()
+  const BILIBILI_CHAT_ASSET_CACHE_TTL = 2_000
+  const huyaChatAssetCache = new Map()
+  const HUYA_CHAT_ASSET_CACHE_TTL = 2_000
+
+  function bilibiliChatAssetDescriptor(asset) {
+    if (platformId !== 'bilibili' || !asset || !Array.isArray(asset.keys)) return null
+    const cacheKey = Array.from(asset.keys).slice(0, 8).sort().join('|')
+    const cached = bilibiliChatAssetCache.get(cacheKey)
+    if (cached) {
+      if (cached.expiresAt > Date.now()) return cached.value
+      bilibiliChatAssetCache.delete(cacheKey)
+    }
+    const rows = queryAllDeep(config.messages)
+    let result = null
+    for (let rowIndex = rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+      const row = rows[rowIndex]
+      if (isOwned(row) || isBilibiliChatAdvertisement(row)) continue
+      const isNativeEmoticonRow =
+        row.getAttribute('data-type') === '1' ||
+        BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES.some((attribute) =>
+          row.hasAttribute(attribute),
+        )
+      if (!isNativeEmoticonRow) continue
+      const messageElement = messageElementFromCandidate(row)
+      if (!(messageElement instanceof Element)) continue
+      // A Bilibili chat row can contain wealth/fan-medal images before the
+      // actual message. Only the message body may provide the Emoji asset.
+      for (const image of messageEmojiImages(row, messageElement)) {
+        const descriptor = assetDescriptorFromElement(image)
+        if (!descriptor || !descriptor.token) continue
+        if (assetMatchScore(image, asset) >= 4) {
+          result = descriptor
+          break
+        }
+      }
+      if (result) break
+    }
+    bilibiliChatAssetCache.set(cacheKey, {
+      expiresAt: Date.now() + BILIBILI_CHAT_ASSET_CACHE_TTL,
+      value: result,
+    })
+    return result
+  }
+
+  function bilibiliCompleteEmojiTokens(payload) {
+    if (platformId !== 'bilibili' || !payload) return
+    const prepareAssetForRecovery = (asset) => {
+      if (!asset) return false
+      if (isBilibiliDecorativeImageDescription(asset.token)) {
+        asset.token = ''
+      }
+      if (Array.isArray(asset.keys)) {
+        asset.keys = asset.keys.filter((key) => {
+          const match = /^(?:name|raw):(.*)$/i.exec(String(key || ''))
+          return !match || !isBilibiliDecorativeImageDescription(match[1])
+        })
+      }
+      return !asset.token
+    }
+    const emojiParts = Array.isArray(payload.parts)
+      ? payload.parts.filter((part) => part && part.type === 'emoji')
+      : []
+    if (Array.isArray(payload.assets)) {
+      payload.assets.forEach((asset) => {
+        if (!prepareAssetForRecovery(asset)) return
+        const chatDescriptor = bilibiliChatAssetDescriptor(asset)
+        if (chatDescriptor) mergeEmojiAssetMetadata(asset, chatDescriptor)
+      })
+    }
+    emojiParts.forEach((part) => {
+      if (!prepareAssetForRecovery(part.asset)) return
+      const chatDescriptor = bilibiliChatAssetDescriptor(part.asset)
+      if (chatDescriptor) mergeEmojiAssetMetadata(part.asset, chatDescriptor)
+    })
+  }
+
+  function huyaChatAssetDescriptor(asset) {
+    if (platformId !== 'huya' || !asset || !Array.isArray(asset.keys)) return null
+    const cacheKey = Array.from(asset.keys).slice(0, 8).sort().join('|')
+    const cached = huyaChatAssetCache.get(cacheKey)
+    if (cached) {
+      if (cached.expiresAt > Date.now()) return cached.value
+      huyaChatAssetCache.delete(cacheKey)
+    }
+
+    let result = null
+    const rows = queryAllDeep(config.messages).slice(-100)
+    for (const row of rows) {
+      if (isOwned(row)) continue
+      const messageElement = messageElementFromCandidate(row)
+      if (!(messageElement instanceof Element)) continue
+      for (const image of messageEmojiImages(row, messageElement)) {
+        const descriptor = assetDescriptorFromElement(image)
+        if (!descriptor || !descriptor.token || isGenericEmojiLabel(descriptor.token)) continue
+        if (assetMatchScore(image, asset) >= 4) {
+          result = descriptor
+          break
+        }
+      }
+      if (result) break
+    }
+
+    huyaChatAssetCache.set(cacheKey, {
+      expiresAt: Date.now() + HUYA_CHAT_ASSET_CACHE_TTL,
+      value: result,
+    })
+    return result
+  }
+
+  function huyaCompleteEmojiTokens(payload) {
+    if (platformId !== 'huya' || !payload) return
+    const emojiParts = Array.isArray(payload.parts)
+      ? payload.parts.filter((part) => part && part.type === 'emoji')
+      : []
+    if (Array.isArray(payload.assets)) {
+      payload.assets.forEach((asset) => {
+        if (!asset || emojiTokenQuality(asset.token) >= 3) return
+        const chatDescriptor = huyaChatAssetDescriptor(asset)
+        if (chatDescriptor) mergeEmojiAssetMetadata(asset, chatDescriptor)
+      })
+    }
+    emojiParts.forEach((part) => {
+      if (!part.asset || emojiTokenQuality(part.asset.token) >= 3) return
+      const chatDescriptor = huyaChatAssetDescriptor(part.asset)
+      if (chatDescriptor) mergeEmojiAssetMetadata(part.asset, chatDescriptor)
+    })
+    refreshRichPayloadText(payload)
   }
 
   function richPartsFromElement(element) {
@@ -1209,14 +1644,15 @@ import { t } from '../core/i18n'
   function isBilibiliNativePanelAsset(asset) {
     return Boolean(
       asset &&
-        Array.isArray(asset.keys) &&
-        asset.keys.some((key) => {
-          const normalized = String(key || '').toLowerCase()
-          return (
-            normalized.startsWith(NATIVE_PANEL_ASSET_KEY_PREFIX) ||
-            normalized.startsWith(LEGACY_BILIBILI_EXCLUSIVE_ASSET_KEY_PREFIX)
-          )
-        }),
+      Array.isArray(asset.keys) &&
+      asset.keys.some((key) => {
+        const normalized = String(key || '').toLowerCase()
+        return (
+          (normalized.startsWith(NATIVE_PANEL_ASSET_KEY_PREFIX) &&
+            !normalized.startsWith(`${NATIVE_PANEL_ASSET_KEY_PREFIX}resolved:`)) ||
+          normalized.startsWith(LEGACY_BILIBILI_EXCLUSIVE_ASSET_KEY_PREFIX)
+        )
+      }),
     )
   }
 
@@ -1224,12 +1660,44 @@ import { t } from '../core/i18n'
     if (
       platformId !== 'bilibili' ||
       !payload ||
-      !Array.isArray(payload.assets) ||
-      payload.assets.some(isBilibiliNativePanelAsset)
+      !Array.isArray(payload.parts) ||
+      !payload.parts.length
     ) {
       return ''
     }
-    return orderedBracketEmojiText(payload)
+    // Rebuild the message strictly from the ordered parts. The native panel
+    // path can insert only one asset and drops the surrounding text plus any
+    // remaining Emoji, so mixed content must always resolve to a text send.
+    // Assets and parts are not required to match 1:1 here: some rendered
+    // Emoji rows expose only a partial image list, and the ordered parts are
+    // the authoritative DOM order.
+    const pieces = []
+    let emojiCount = 0
+    for (const part of payload.parts) {
+      if (!part || typeof part !== 'object') return ''
+      if (part.type === 'text') {
+        pieces.push(String(part.text || ''))
+        continue
+      }
+      if (part.type !== 'emoji' || !part.asset || typeof part.asset !== 'object') return ''
+      const raw = String(part.asset.token || '').trim()
+      if (!raw) return ''
+      if (/^\[[^\]\n]{1,80}\]$/.test(raw) || /\p{Extended_Pictographic}/u.test(raw)) {
+        pieces.push(raw)
+      } else if (
+        !isGenericEmojiLabel(raw) &&
+        !/^(?:data|blob|https?):/i.test(raw) &&
+        !/[\\/]/.test(raw) &&
+        Array.from(raw).length <= 40
+      ) {
+        pieces.push(`[${raw}]`)
+      } else {
+        return ''
+      }
+      emojiCount += 1
+    }
+    if (!emojiCount) return ''
+    return pieces.join('').replace(/\s+/g, ' ').trim()
   }
 
   function assetMatchScore(element, asset) {
@@ -1241,13 +1709,22 @@ import { t } from '../core/i18n'
     let score = 0
     descriptor.keys.forEach((key) => {
       if (expected.has(key)) {
-        score += key.startsWith('raw:') ? 8 : key.startsWith('path:') ? 6 : 4
+        score += key.startsWith('digest:')
+          ? 10
+          : key.startsWith('raw:')
+            ? 8
+            : key.startsWith('path:')
+              ? 6
+              : key.startsWith('slug:')
+                ? 6
+                : 4
       }
     })
     return score
   }
 
   function emojiTokenQuality(value) {
+    if (platformId === 'bilibili' && isBilibiliDecorativeImageDescription(value)) return 0
     const token = normalizedEmojiToken(value, 'emoji')
     if (!token) return 0
     if (/\p{Extended_Pictographic}/u.test(token)) return 6
@@ -1319,25 +1796,27 @@ import { t } from '../core/i18n'
   async function enrichRichPayloadAssetNames(payload, options) {
     if (!payload || !Array.isArray(payload.assets) || !payload.assets.length) return payload
     const resolveBilibiliNative = Boolean(options && options.resolveBilibiliNative)
+    if (
+      platformId === 'bilibili' &&
+      resolveBilibiliNative &&
+      bilibiliAutoRecognizedEmojiText(payload)
+    ) {
+      // A reliable ordinary bracket name is already lossless through
+      // Bilibili's official editor. Do not open the Emoji panel or attach a
+      // synthetic native-panel identity while preparing a hover/favorite.
+      refreshRichPayloadText(payload)
+      return payload
+    }
     let resolvedSingleBilibiliItem = null
-    const input =
-      platformId === 'bilibili' ? findBilibiliEmojiEditor() || findInput() : findInput()
+    const input = platformId === 'bilibili' ? findBilibiliEmojiEditor() || findInput() : findInput()
     for (let index = 0; index < payload.assets.length; index += 1) {
       const asset = payload.assets[index]
       const shouldResolveNative =
-        platformId === 'bilibili' &&
-        resolveBilibiliNative &&
-        !isBilibiliNativePanelAsset(asset)
+        platformId === 'bilibili' && resolveBilibiliNative && !isBilibiliNativePanelAsset(asset)
       if (emojiTokenQuality(asset && asset.token) >= 3 && !shouldResolveNative) continue
-      let item =
-        platformId === 'bilibili'
-          ? findUniqueBilibiliPlatformEmoji(asset, fullscreenActive())
-          : findMatchingPlatformEmoji(asset)
+      let item = findUniqueBilibiliPlatformEmoji(asset, fullscreenActive())
       if (!item && input) {
-        item =
-          platformId === 'bilibili'
-            ? await openUniqueBilibiliPlatformEmoji(input, asset)
-            : await openPlatformEmojiForAsset(input, asset)
+        item = await openUniqueBilibiliPlatformEmoji(input, asset)
       }
       if (item) {
         enrichRichPayloadAsset(payload, index, item)
@@ -1538,13 +2017,27 @@ import { t } from '../core/i18n'
 
   function senderFromChatContext(candidate) {
     let current = candidate instanceof Element ? candidate : null
+    let boundary = current
+    let boundaryCursor = current
+    for (let depth = 0; boundaryCursor && depth < 5; depth += 1) {
+      // Some platforms put a message id on the content span and also match the
+      // surrounding row. Use the outermost matching message node, stopping
+      // before the whole chat list, so row-local usernames remain available.
+      if (matchesAny(boundaryCursor, config.messages)) boundary = boundaryCursor
+      if (matchesAny(boundaryCursor, config.chatRoots)) break
+      boundaryCursor = boundaryCursor.parentElement
+    }
     for (let depth = 0; current && depth < 5; depth += 1) {
       // Read the sender from the current element before stopping the upward
       // walk: rows can match a chat-root selector (e.g. a broad class match)
       // and would otherwise short-circuit without ever extracting a sender.
       const sender = senderFromElement(current)
       if (sender) return sender
-      if (matchesAny(current, config.chatRoots)) break
+      // Never walk from a senderless message row into the whole chat list: a
+      // descendant query on that container would return an unrelated user's
+      // name. Broad platform selectors can make the row itself a chat root,
+      // so the concrete message row remains the authoritative boundary.
+      if (current === boundary) break
       current = current.parentElement
     }
     return ''
@@ -1635,6 +2128,9 @@ import { t } from '../core/i18n'
     queryAllDeep(DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTORS)
       .filter((element) => !isOwned(element))
       .forEach((target) => activeTargets.add(target))
+    queryAllDeep(DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS)
+      .filter((element) => !isOwned(element))
+      .forEach((target) => activeTargets.add(target))
     roots.forEach((root) => {
       findDouyuNativeDanmakuCapsuleTargets(root).forEach((target) => {
         if (!isOwned(target)) activeTargets.add(target)
@@ -1656,6 +2152,18 @@ import { t } from '../core/i18n'
     elements.forEach((element) => {
       if (isOwned(element)) return
       try {
+        const detachedDecoration = element.matches(
+          DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTOR,
+        )
+          ? element
+          : element.querySelector(DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTOR)
+        if (detachedDecoration) {
+          state.douyuNativeCapsuleMutationRoots.add(
+            detachedDecoration.parentElement || detachedDecoration,
+          )
+          found = true
+          return
+        }
         const action = element.matches(DOUYU_NATIVE_DANMAKU_ACTION_SELECTOR)
           ? element
           : element.querySelector(DOUYU_NATIVE_DANMAKU_ACTION_SELECTOR)
@@ -1789,6 +2297,7 @@ import { t } from '../core/i18n'
     const host = fullscreenElement() || document.documentElement
     if (!state.ui) {
       state.ui = createContentOverlay({
+        onCopy: onCopyActionClick,
         onFavorite: onFavoriteActionClick,
         onPlaceholder: onPlaceholderActionClick,
         onPlusOne: onPlusOneClick,
@@ -1823,10 +2332,31 @@ import { t } from '../core/i18n'
     }
   }
 
+  async function onCopyActionClick(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelHide()
+    const candidate = state.candidate
+    if (
+      !visibleActionsForSurface(state.settings, platformId, state.candidateKind).copy ||
+      !state.message
+    ) {
+      return
+    }
+    ensureSelectedOverlayHydrated()
+    if (candidate !== state.candidate) return
+    const copied = await copyTextToClipboard(state.message)
+    showToast(
+      t(copied ? 'toastDanmakuCopied' : 'toastDanmakuCopyFailed'),
+      copied ? 'success' : 'error',
+    )
+  }
+
   async function onFavoriteActionClick(event) {
     event.preventDefault()
     event.stopPropagation()
     cancelHide()
+    const candidate = state.candidate
     if (
       !visibleActionsForSurface(state.settings, platformId, state.candidateKind).favorite ||
       !state.message ||
@@ -1834,16 +2364,25 @@ import { t } from '../core/i18n'
     ) {
       return
     }
+    ensureSelectedOverlayHydrated()
+    if (candidate !== state.candidate) return
     let message = state.message
     const payload = state.richPayload
     if (payload && payload.assets && payload.assets.length) {
+      if (platformId === 'bilibili') {
+        bilibiliCompleteEmojiTokens(payload)
+      }
       await enrichRichPayloadAssetNames(payload, { resolveBilibiliNative: true })
-      if (shared.isPlausibleMessage(payload.text, config.maxLength)) {
-        message = payload.text
+      const favoritePayload =
+        platformId === 'bilibili' ? bilibiliFavoriteImagePayload(payload) || payload : payload
+      if (shared.isPlausibleMessage(favoritePayload.text, config.maxLength)) {
+        message = favoritePayload.text
         if (payload === state.richPayload) {
           state.message = message
         }
       }
+      await state.favoritesRuntime.favoriteText(message, favoritePayload)
+      return
     }
     await state.favoritesRuntime.favoriteText(message, payload)
   }
@@ -1854,14 +2393,125 @@ import { t } from '../core/i18n'
     }
   }
 
+  function cancelOverlayHydration() {
+    if (state.overlayHydrationTimer) {
+      clearTimeout(state.overlayHydrationTimer)
+      state.overlayHydrationTimer = 0
+    }
+    state.overlayHydrationId += 1
+    state.overlayHydratedId = -1
+  }
+
+  function hydrateSelectedOverlay(selectionId) {
+    if (
+      state.candidateKind !== 'overlay' ||
+      !(state.candidate instanceof Element) ||
+      selectionId !== state.overlayHydrationId
+    ) {
+      return false
+    }
+    if (state.overlayHydratedId === selectionId) return true
+
+    const candidate = state.candidate
+    const selectedAt = state.selectedAt
+    const hydrationStartedAt = performance.now()
+    const richPayload = richPayloadFromCandidate(candidate)
+    const message = (richPayload && richPayload.text) || overlayMessageForValidation(candidate)
+    if (
+      selectionId !== state.overlayHydrationId ||
+      candidate !== state.candidate ||
+      state.candidateKind !== 'overlay'
+    ) {
+      return false
+    }
+
+    state.richPayload = richPayload
+    if (shared.isPlausibleMessage(message, config.maxLength)) {
+      state.message = message
+    }
+    state.sender = senderFromCandidate(candidate, state.message, 'overlay', selectedAt, {
+      scanDom: false,
+    })
+    state.overlayHydratedId = selectionId
+    if (state.ui) {
+      state.ui.showActionBar(state.message, state.sender)
+      state.ui.setCooldown(state.sendProtection.remainingMs(state.message))
+      requestAnimationFrame(updateButtonPosition)
+    }
+    diagnostics.record({
+      type: 'candidate.hydrated',
+      stage: 'overlay',
+      durationMs: performance.now() - hydrationStartedAt,
+      outcome: 'success',
+    })
+    return true
+  }
+
+  function scheduleOverlayHydration(selectionId) {
+    state.overlayHydrationTimer = setTimeout(() => {
+      state.overlayHydrationTimer = 0
+      hydrateSelectedOverlay(selectionId)
+    }, OVERLAY_HYDRATION_DELAY)
+  }
+
+  function ensureSelectedOverlayHydrated() {
+    if (state.candidateKind !== 'overlay') return true
+    if (state.overlayHydrationTimer) {
+      clearTimeout(state.overlayHydrationTimer)
+      state.overlayHydrationTimer = 0
+    }
+    return hydrateSelectedOverlay(state.overlayHydrationId)
+  }
+
+  function restoreInlineStyleProperty(element, property, saved) {
+    if (!(element instanceof HTMLElement) || !saved) return
+    if (saved.value) {
+      element.style.setProperty(property, saved.value, saved.priority)
+    } else {
+      element.style.removeProperty(property)
+    }
+  }
+
+  function resumeOverlayAnimations(pausedAnimations) {
+    for (const item of pausedAnimations || []) {
+      if (!item.shouldResume) continue
+      try {
+        item.animation.play()
+      } catch {
+        // Ignore animations removed by the site's danmaku renderer.
+      }
+    }
+  }
+
   function freezeOverlayCandidate(candidate) {
-    state.pausedAnimations =
-      typeof candidate.getAnimations === 'function'
-        ? candidate.getAnimations({ subtree: true }).map((animation) => ({
-            animation,
-            shouldResume: animation.playState === 'running',
-          }))
-        : []
+    if (platformId === 'douyu' && candidate instanceof HTMLElement) {
+      // Douyu's computed transform comes from a renderer-owned Web Animation,
+      // not an inline transform or CSS transition. Pause that exact timeline
+      // and keep the original node visible; cloning or rewriting transform
+      // would desynchronise the renderer and cause a release jump.
+      douyuOverlayMotion?.pause(candidate)
+      state.pausedAnimations = []
+      return
+    }
+
+    if (platformId === 'bilibili' && candidate instanceof HTMLElement) {
+      // Bilibili's current `roll` animation is not reliably returned by
+      // getAnimations({ subtree: true }). Pausing that incomplete list leaves
+      // the hidden original moving behind the fixed snapshot, so revealing it
+      // later looks like a jump or a backward/forward twitch. A CSS pause
+      // marker covers the renderer-owned animation without rewriting its
+      // currentTime, startTime, transform or inline animation declaration.
+      bilibiliOverlayMotion?.pause(candidate)
+      state.pausedAnimations = []
+    } else {
+      state.pausedAnimations =
+        typeof candidate.getAnimations === 'function'
+          ? candidate.getAnimations({ subtree: true }).map((animation) => ({
+              animation,
+              shouldResume: animation.playState === 'running',
+            }))
+          : []
+    }
 
     for (const item of state.pausedAnimations) {
       try {
@@ -1876,6 +2526,7 @@ import { t } from '../core/i18n'
     // custom elements or clonable shadow roots that initialize a new media
     // pipeline during a deep DOM clone, before media descendants can be removed.
     const snapshot = createInertOverlaySnapshot(candidate, {
+      nodeLimit: OVERLAY_SNAPSHOT_NODE_LIMIT,
       skipSelector: INERT_SNAPSHOT_SKIP_SELECTOR,
     })
     snapshot.classList.add('bcp-one-frozen', 'bcp-one-target')
@@ -1897,6 +2548,22 @@ import { t } from '../core/i18n'
     snapshot.style.setProperty('pointer-events', 'none', 'important')
     snapshot.style.setProperty('z-index', '2147483646', 'important')
 
+    const overlayViewport = state.overlayViewport || overlayViewportRect(candidate)
+    if (overlayViewport) {
+      const clip = clipInsetsWithinRect(rect, overlayViewport)
+      // clip-path also clips outlines painted outside the element. Apply it
+      // only when the danmaku content really crosses a player edge; ordinary
+      // in-player hovers must retain the normal selection outline.
+      if (Object.values(clip).some((value) => value > 0)) {
+        snapshot.dataset.bcpOneEdgeClipped = 'true'
+        snapshot.style.setProperty(
+          'clip-path',
+          `inset(${clip.top}px ${clip.right}px ${clip.bottom}px ${clip.left}px)`,
+          'important',
+        )
+      }
+    }
+
     state.originalVisibility = {
       value: candidate.style.getPropertyValue('visibility'),
       priority: candidate.style.getPropertyPriority('visibility'),
@@ -1909,35 +2576,75 @@ import { t } from '../core/i18n'
 
   function unfreezeOverlayCandidate() {
     const frozenClone = state.frozenClone
-    if (frozenClone) {
-      frozenClone.remove()
-      state.frozenClone = null
-    }
-
-    if (state.candidate && state.candidate.isConnected && state.originalVisibility) {
-      if (state.originalVisibility.value) {
-        state.candidate.style.setProperty(
-          'visibility',
-          state.originalVisibility.value,
-          state.originalVisibility.priority,
-        )
-      } else {
-        state.candidate.style.removeProperty('visibility')
-      }
-    }
-
-    for (const item of state.pausedAnimations) {
-      if (item.shouldResume) {
-        try {
-          item.animation.play()
-        } catch {
-          // Ignore animations removed by the site's danmaku renderer.
-        }
-      }
-    }
-
+    const candidate = state.candidate
+    const originalVisibility = state.originalVisibility
+    const pausedAnimations = state.pausedAnimations
+    state.frozenClone = null
     state.originalVisibility = null
     state.pausedAnimations = []
+
+    if (!frozenClone) {
+      resumeOverlayAnimations(pausedAnimations)
+      douyuOverlayMotion?.release(candidate instanceof HTMLElement ? candidate : null)
+      bilibiliOverlayMotion?.release(candidate instanceof HTMLElement ? candidate : null)
+      return
+    }
+
+    if (candidate?.isConnected && originalVisibility) {
+      restoreInlineStyleProperty(candidate, 'visibility', originalVisibility)
+    }
+
+    frozenClone.remove()
+    resumeOverlayAnimations(pausedAnimations)
+    // Reveal the paused original at the same viewport coordinate as the
+    // snapshot, then let Bilibili continue its own timeline from that point.
+    bilibiliOverlayMotion?.release(candidate instanceof HTMLElement ? candidate : null)
+  }
+
+  function removeOverlayHoverBridge() {
+    state.hoverBridge?.remove()
+    state.hoverBridge = null
+  }
+
+  function ensureOverlayHoverBridge(parent, position) {
+    if (!(parent instanceof HTMLElement)) return null
+    let bridge = state.hoverBridge
+    if (
+      !(bridge instanceof HTMLElement) ||
+      !bridge.isConnected ||
+      bridge.parentElement !== parent
+    ) {
+      removeOverlayHoverBridge()
+      bridge = document.createElement('div')
+      bridge.className = 'bcp-one-hover-bridge'
+      bridge.dataset.bcpOneOwned = 'true'
+      bridge.setAttribute('aria-hidden', 'true')
+      bridge.addEventListener('pointerenter', cancelHide)
+      bridge.addEventListener('pointerleave', scheduleHide)
+      parent.appendChild(bridge)
+      state.hoverBridge = bridge
+    }
+    bridge.style.setProperty('position', position, 'important')
+    return bridge
+  }
+
+  function setOverlayHoverBridgeRect(bridge, left, top, width, height) {
+    if (!(bridge instanceof HTMLElement)) return
+    bridge.style.setProperty('left', `${left}px`, 'important')
+    bridge.style.setProperty('top', `${top}px`, 'important')
+    bridge.style.setProperty('width', `${Math.max(1, width)}px`, 'important')
+    bridge.style.setProperty('height', `${Math.max(1, height)}px`, 'important')
+  }
+
+  function showSelectedActionBar(candidate, message, sender) {
+    if (state.candidate !== candidate) return false
+    ensureButton()
+    state.ui.showActionBar(message, sender)
+    state.ui.setCooldown(state.sendProtection.remainingMs(message))
+    requestAnimationFrame(() => {
+      if (state.candidate === candidate) updateButtonPosition()
+    })
+    return true
   }
 
   function updateButtonPosition() {
@@ -1953,18 +2660,87 @@ import { t } from '../core/i18n'
 
     const rect = positionTarget.getBoundingClientRect()
     const buttonRect = state.actionBar.getBoundingClientRect()
-    const preferredLeft = rect.right + 8
-    const fallbackLeft = rect.right - buttonRect.width - 4
-    const left = preferredLeft + buttonRect.width <= innerWidth - 8 ? preferredLeft : fallbackLeft
+    const browserViewport = {
+      bottom: innerHeight,
+      height: innerHeight,
+      left: 0,
+      right: innerWidth,
+      top: 0,
+      width: innerWidth,
+    }
+    const actionViewport =
+      state.candidateKind === 'overlay' && state.candidate
+        ? state.overlayViewport || overlayViewportRect(state.candidate) || browserViewport
+        : browserViewport
+
+    const placement = overlayCapsulePlacement({
+      anchorLeft: rect.left,
+      anchorRight: rect.right,
+      capsuleWidth: buttonRect.width,
+      viewportLeft: actionViewport.left,
+      viewportRight: actionViewport.right,
+    })
     const top = rect.top + (rect.height - buttonRect.height) / 2
 
-    state.actionBar.style.left = `${Math.max(8, Math.min(left, innerWidth - buttonRect.width - 8))}px`
-    state.actionBar.style.top = `${Math.max(8, Math.min(top, innerHeight - buttonRect.height - 8))}px`
+    state.actionBar.dataset.bcpOverlaySide = placement.side
+    const actionTop = clampBoxStart(
+      top,
+      buttonRect.height,
+      actionViewport.top,
+      actionViewport.bottom,
+      8,
+    )
+    state.actionBar.style.left = `${placement.left}px`
+    state.actionBar.style.top = `${actionTop}px`
+    if (state.candidateKind === 'overlay' && state.portal instanceof HTMLElement) {
+      const bridgeLeft = placement.side === 'right' ? rect.right : placement.left + buttonRect.width
+      const bridgeRight = placement.side === 'right' ? placement.left : rect.left
+      const bridgeTop = Math.min(rect.top, actionTop)
+      const bridgeBottom = Math.max(rect.bottom, actionTop + buttonRect.height)
+      // Mount beside the Vue portal rather than inside its managed children;
+      // later action-label/cooldown renders must not discard the hit bridge.
+      const bridgeHost = state.portal.parentElement || document.documentElement
+      const bridge = ensureOverlayHoverBridge(bridgeHost, 'fixed')
+      setOverlayHoverBridgeRect(
+        bridge,
+        bridgeLeft,
+        bridgeTop,
+        bridgeRight - bridgeLeft,
+        bridgeBottom - bridgeTop,
+      )
+    }
   }
 
-  function selectCandidate(candidate, kind, allowNoVisibleActions) {
+  function selectCandidate(candidate, kind, allowNoVisibleActions, pointer, nativeTarget = null) {
     const selectionStartedAt = performance.now()
-    if (kind === 'overlay' && !isOverlayMessageElement(candidate)) {
+    // Overlay candidates have already passed the platform-specific validation
+    // in findCandidate/findOverlayAtPoint. Repeating it here forced another
+    // visibility check, media scan, layout read and message parse in the same
+    // pointer frame.
+    if (
+      kind === 'overlay' &&
+      (!(candidate instanceof Element) || isOwned(candidate) || !candidate.isConnected)
+    ) {
+      return false
+    }
+    if (
+      platformId === 'douyu' &&
+      kind === 'overlay' &&
+      (!(nativeTarget instanceof Node) ||
+        !candidate.contains(nativeTarget) ||
+        isOwned(nativeTarget))
+    ) {
+      // Douyu moves danmaku by writing transform every frame. A geometric hit
+      // without a real event target inside the native row cannot activate the
+      // site's pause state and must not create a travelling capsule.
+      return false
+    }
+    const selectedOverlayViewport = kind === 'overlay' ? overlayViewportRect(candidate) : null
+    if (
+      kind === 'overlay' &&
+      pointer &&
+      !pointInsideRect(selectedOverlayViewport, pointer.x, pointer.y)
+    ) {
       return false
     }
     if (kind !== 'overlay' && isBilibiliChatAdvertisement(candidate)) {
@@ -1976,8 +2752,11 @@ import { t } from '../core/i18n'
       return false
     }
 
-    const richPayload = richPayloadFromCandidate(candidate)
-    const message = (richPayload && richPayload.text) || textFromCandidate(candidate)
+    const richPayload = candidateKind === 'overlay' ? null : richPayloadFromCandidate(candidate)
+    const message =
+      candidateKind === 'overlay'
+        ? overlayMessageForValidation(candidate)
+        : (richPayload && richPayload.text) || textFromCandidate(candidate)
     if (!shared.isPlausibleMessage(message, config.maxLength)) {
       return false
     }
@@ -1985,25 +2764,36 @@ import { t } from '../core/i18n'
     clearSelection()
     state.candidate = candidate
     state.candidateKind = candidateKind
+    if (platformId === 'douyu' && candidateKind === 'overlay' && candidate instanceof HTMLElement) {
+      douyuNativeHover?.select(candidate, nativeTarget)
+    } else {
+      douyuNativeHover?.reset()
+    }
+    state.overlayViewport = selectedOverlayViewport
+    if (pointer) {
+      state.pointerX = pointer.x
+      state.pointerY = pointer.y
+    }
     state.message = message
     state.richPayload = richPayload
     state.selectedAt = Date.now()
     state.sender = ''
+    const selectionId = state.overlayHydrationId
     candidate.classList.add('bcp-one-target')
     if (state.candidateKind === 'overlay') {
       freezeOverlayCandidate(candidate)
     }
-    state.sender = senderFromCandidate(
-      candidate,
-      message,
-      state.candidateKind,
-      state.selectedAt,
-      { scanDom: false },
-    )
+    // Direct sender metadata and the correlation cache are bounded lookups.
+    // Resolve them only after the moving danmaku is frozen so the reply target
+    // is accurate from the first painted action bar without delaying the stop.
+    state.sender = senderFromCandidate(candidate, message, state.candidateKind, state.selectedAt, {
+      scanDom: false,
+    })
 
-    ensureButton()
-    state.ui.showActionBar(message, state.sender)
-    requestAnimationFrame(updateButtonPosition)
+    showSelectedActionBar(candidate, message, state.sender)
+    if (state.candidateKind === 'overlay') {
+      scheduleOverlayHydration(selectionId)
+    }
     diagnostics.record({
       type: 'candidate.selected',
       stage: candidateKind,
@@ -2014,18 +2804,36 @@ import { t } from '../core/i18n'
   }
 
   function clearSelection() {
+    const douyuCandidate =
+      platformId === 'douyu' &&
+      state.candidateKind === 'overlay' &&
+      state.candidate instanceof HTMLElement
+        ? state.candidate
+        : null
+    cancelOverlayHydration()
     if (state.candidate && state.candidate.isConnected) {
       state.candidate.classList.remove('bcp-one-target')
     }
 
     unfreezeOverlayCandidate()
+    removeOverlayHoverBridge()
+    if (state.ui) state.ui.hideActionBar()
+    if (douyuCandidate) {
+      const released = douyuNativeHover?.release(douyuCandidate.parentElement, {
+        x: state.pointerX,
+        y: state.pointerY,
+      })
+      if (!released) douyuNativeHover?.reset()
+    } else {
+      douyuNativeHover?.reset()
+    }
     state.candidate = null
     state.candidateKind = null
+    state.overlayViewport = null
     state.message = ''
     state.sender = ''
     state.selectedAt = 0
     state.richPayload = null
-    if (state.ui) state.ui.hideActionBar()
   }
 
   function cancelHide() {
@@ -2053,6 +2861,64 @@ import { t } from '../core/i18n'
   function showToast(message, kind) {
     ensurePortal()
     state.ui.showToast(message, kind || 'info')
+  }
+
+  function updateCooldownUi(message) {
+    if (!state.ui) return
+    const remainingMs = state.sendProtection.remainingMs(message)
+    state.ui.setCooldown(remainingMs)
+    if (remainingMs > 0 && !state.cooldownTimer) {
+      state.cooldownTimer = setInterval(() => {
+        const currentMessage = state.message || message
+        const currentRemaining = state.sendProtection.remainingMs(currentMessage)
+        if (state.ui) state.ui.setCooldown(currentRemaining)
+        if (currentRemaining <= 0) {
+          clearInterval(state.cooldownTimer)
+          state.cooldownTimer = 0
+        }
+      }, 250)
+    }
+  }
+
+  function showSendBlock(block, message) {
+    const seconds = Math.max(1, Math.ceil(block.remainingMs / 1_000))
+    if (block.reason === 'duplicate') {
+      showToast(t('toastDuplicateCooldown', String(seconds)), 'warning')
+    } else if (block.reason === 'in-flight') {
+      showToast(t('toastSendInProgress'), 'warning')
+    } else if (block.reason === 'cooldown') {
+      showToast(t('toastSendCooldown', String(seconds)), 'warning')
+    } else {
+      showToast(t('toastAccidentalSendBlocked'), 'warning')
+    }
+    updateCooldownUi(message)
+  }
+
+  function beginProtectedSend(message) {
+    const block = state.sendProtection.begin(message)
+    if (!block.allowed) showSendBlock(block, message)
+    return block.allowed
+  }
+
+  async function finishProtectedSend(message, success, feedbackProbe) {
+    const feedback = await feedbackProbe.wait(
+      success ? PLATFORM_SUCCESS_FEEDBACK_WAIT_MS : PLATFORM_FAILURE_FEEDBACK_WAIT_MS,
+    )
+    if (feedback) {
+      state.sendProtection.applyPlatformFeedback(feedback, message)
+      const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
+      showToast(
+        feedback.cooldownMs > 0
+          ? t('toastPlatformCooldown', [platformName, feedback.message, String(seconds)])
+          : t('toastPlatformRejected', [platformName, feedback.message]),
+        feedback.kind === 'rejected' ? 'error' : 'warning',
+      )
+      updateCooldownUi(message)
+      return 'feedback'
+    }
+    state.sendProtection.finish(message, success)
+    updateCooldownUi(message)
+    return success
   }
 
   function inputSurfaceScore(element, index) {
@@ -2348,6 +3214,8 @@ import { t } from '../core/i18n'
       return
     }
     const candidate = state.candidate
+    ensureSelectedOverlayHydrated()
+    if (candidate !== state.candidate) return
     const message = state.message
     const kind = state.candidateKind
     const observedAt = state.selectedAt
@@ -2382,7 +3250,12 @@ import { t } from '../core/i18n'
     const offsets = editorSelectionOffsets(input)
     const mention = `@${sender}`
     const insertionStart = offsets ? offsets.start : currentValue.length
-    const nextValue = shared.replyDraftValue(currentValue, sender, offsets && offsets.start, offsets && offsets.end)
+    const nextValue = shared.replyDraftValue(
+      currentValue,
+      sender,
+      offsets && offsets.start,
+      offsets && offsets.end,
+    )
     const caretOffset = nextValue !== currentValue ? insertionStart + mention.length : null
     setNativeValue(input, nextValue)
     clearSelection()
@@ -2753,18 +3626,6 @@ import { t } from '../core/i18n'
     }
   }
 
-  function platformEmojiToggleSelectors() {
-    if (platformId === 'bilibili') return BILIBILI_EMOJI_TOGGLE_SELECTORS
-    if (platformId === 'douyu') return DOUYU_EMOJI_TOGGLE_SELECTORS
-    return HUYA_EMOJI_TOGGLE_SELECTORS
-  }
-
-  function platformEmojiSurfaceSelectors() {
-    if (platformId === 'bilibili') return BILIBILI_EMOJI_SURFACE_SELECTORS
-    if (platformId === 'douyu') return DOUYU_EMOJI_SURFACE_SELECTORS
-    return HUYA_EMOJI_SURFACE_SELECTORS
-  }
-
   function platformEmojiItemCandidates(includeHidden = false) {
     const results = []
     const seen = new Set()
@@ -2783,7 +3644,7 @@ import { t } from '../core/i18n'
       results.push(element)
     }
     queryAllDeep(PLATFORM_EMOJI_ITEM_SELECTORS).forEach(add)
-    queryAllDeep(platformEmojiSurfaceSelectors()).forEach((surface) => {
+    queryAllDeep(BILIBILI_EMOJI_SURFACE_SELECTORS).forEach((surface) => {
       if (
         (!includeHidden && !isVisible(surface)) ||
         closestMatching(surface, config.messages) ||
@@ -2810,31 +3671,24 @@ import { t } from '../core/i18n'
         )
         .forEach(add)
     })
-    return results.slice(0, platformId === 'bilibili' ? 1200 : 500)
-  }
-
-  function findMatchingPlatformEmoji(asset, includeHidden = false) {
-    let best = null
-    let bestScore = 0
-    platformEmojiItemCandidates(includeHidden).forEach((element) => {
-      const score = assetMatchScore(element, asset)
-      if (score > bestScore) {
-        bestScore = score
-        best = element
-      }
-    })
-    if (!best || bestScore < 4) {
-      return null
-    }
-    return platformEmojiInteractiveItem(best)
+    return results.slice(0, 1200)
   }
 
   function platformEmojiInteractiveItem(element) {
     const interactive = element.closest("button,[role='button'],li")
     if (interactive) return interactive
     const parentItem =
-      element.parentElement && element.parentElement.closest(PLATFORM_EMOJI_ITEM_SELECTORS.join(','))
+      element.parentElement &&
+      element.parentElement.closest(PLATFORM_EMOJI_ITEM_SELECTORS.join(','))
     return parentItem || element.closest(PLATFORM_EMOJI_ITEM_SELECTORS.join(',')) || element
+  }
+
+  function findMatchingBilibiliPlatformEmoji(asset, includeHidden = false) {
+    return uniqueHighestScoringItem(
+      platformEmojiItemCandidates(includeHidden),
+      platformEmojiInteractiveItem,
+      (element) => assetMatchScore(element, asset),
+    )
   }
 
   function findUniqueBilibiliPlatformEmoji(asset, includeHidden = false) {
@@ -2883,7 +3737,7 @@ import { t } from '../core/i18n'
   function platformEmojiCategoryCandidates(includeHidden = false) {
     const results = []
     const seen = new Set()
-    queryAllDeep(platformEmojiSurfaceSelectors()).forEach((surface) => {
+    queryAllDeep(BILIBILI_EMOJI_SURFACE_SELECTORS).forEach((surface) => {
       if (
         (!includeHidden && !isVisible(surface)) ||
         closestMatching(surface, config.messages) ||
@@ -2907,9 +3761,9 @@ import { t } from '../core/i18n'
     return results.slice(0, 16)
   }
 
-  function findPlatformEmojiToggle(input, includeHidden = false) {
+  function platformEmojiToggleCandidates(input, includeHidden = false) {
     const inputRect = input && input.getBoundingClientRect()
-    const candidates = queryAllDeep(platformEmojiToggleSelectors()).filter(
+    const candidates = queryAllDeep(BILIBILI_EMOJI_TOGGLE_SELECTORS).filter(
       (element) =>
         element.isConnected &&
         (includeHidden || isVisible(element)) &&
@@ -2921,9 +3775,10 @@ import { t } from '../core/i18n'
         const marker = elementMarker(element)
         const rect = element.getBoundingClientRect()
         const visible = isVisible(element)
-        const distance = inputRect && visible
-          ? Math.abs(rect.left - inputRect.right) + Math.abs(rect.top - inputRect.top)
-          : 0
+        const distance =
+          inputRect && visible
+            ? Math.abs(rect.left - inputRect.right) + Math.abs(rect.top - inputRect.top)
+            : 0
         let scopeBonus = 0
         let parent = input && input.parentElement
         for (let depth = 0; parent && depth < 6; depth += 1, parent = parent.parentElement) {
@@ -2934,24 +3789,18 @@ import { t } from '../core/i18n'
         }
         return (
           scopeBonus +
-          (/(emoji|emoticon|emotion|face|表情)/i.test(marker) ? 500 : 0) -
+          (/(emoji|emot|emotion|face|smile|表情)/i.test(marker) ? 500 : 0) -
           (visible ? 0 : 180) -
           Math.min(300, distance / 5)
         )
       }
       return score(second) - score(first)
     })
-    return candidates[0] || null
+    return candidates
   }
 
-  async function waitForPlatformEmoji(asset, timeout) {
-    const deadline = Date.now() + timeout
-    let match = findMatchingPlatformEmoji(asset)
-    while (!match && Date.now() < deadline) {
-      await new Promise((resolve) => setTimeout(resolve, 50))
-      match = findMatchingPlatformEmoji(asset)
-    }
-    return match
+  function findPlatformEmojiToggle(input, includeHidden = false) {
+    return platformEmojiToggleCandidates(input, includeHidden)[0] || null
   }
 
   async function waitForUniqueBilibiliPlatformEmoji(asset, timeout, includeHidden = false) {
@@ -2960,6 +3809,16 @@ import { t } from '../core/i18n'
     while (!match && Date.now() < deadline) {
       await new Promise((resolve) => setTimeout(resolve, 50))
       match = findUniqueBilibiliPlatformEmoji(asset, includeHidden)
+    }
+    return match
+  }
+
+  async function waitForMatchingBilibiliPlatformEmoji(asset, timeout, includeHidden = false) {
+    const deadline = Date.now() + timeout
+    let match = findMatchingBilibiliPlatformEmoji(asset, includeHidden)
+    while (!match && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 50))
+      match = findMatchingBilibiliPlatformEmoji(asset, includeHidden)
     }
     return match
   }
@@ -2986,45 +3845,57 @@ import { t } from '../core/i18n'
     return findUniqueBilibiliPlatformEmoji(asset, true)
   }
 
-  async function findPlatformEmojiAcrossCategories(asset) {
-    let match = findMatchingPlatformEmoji(asset)
-    if (match || platformId !== 'bilibili') return match
-
-    for (const category of platformEmojiCategoryCandidates()) {
-      if (!category.isConnected || typeof category.click !== 'function') continue
-      category.click()
-      match = await waitForPlatformEmoji(asset, 320)
-      if (match) return match
-    }
-
-    // Some Bilibili builds keep every pack mounted and hide inactive packs
-    // without exposing semantic tab markup. A programmatic click on the exact
-    // hidden native item still runs Bilibili's own event handler.
-    return findMatchingPlatformEmoji(asset, true)
-  }
-
-  async function openPlatformEmojiForAsset(input, asset) {
-    let item = findMatchingPlatformEmoji(asset)
+  async function openMatchingBilibiliPlatformEmoji(input, asset) {
+    const includeHidden = fullscreenActive()
+    let item =
+      findMatchingBilibiliPlatformEmoji(asset) ||
+      (includeHidden ? findMatchingBilibiliPlatformEmoji(asset, true) : null)
     if (item) return item
-    const toggle = findPlatformEmojiToggle(input)
+    const toggle = findPlatformEmojiToggle(input, includeHidden)
     if (toggle && typeof toggle.click === 'function') {
       toggle.click()
       state.emojiPanelOpenedByPlugin = true
-      item = await waitForPlatformEmoji(asset, 900)
+      item = await waitForMatchingBilibiliPlatformEmoji(asset, 900, includeHidden)
+      if (item) return item
     }
-    return item || findPlatformEmojiAcrossCategories(asset)
+    for (const category of platformEmojiCategoryCandidates(includeHidden)) {
+      if (!category.isConnected || typeof category.click !== 'function') continue
+      category.click()
+      item = await waitForMatchingBilibiliPlatformEmoji(asset, 320, includeHidden)
+      if (item) return item
+    }
+    return findMatchingBilibiliPlatformEmoji(asset, true)
   }
 
-  function countMatchingChatAssets(asset) {
+  function countMatchingPlatformEmojiAssets(asset) {
     let count = 0
-    queryAllDeep(config.messages)
-      .slice(-120)
+    const rows = messageRows().slice(-120)
+    if (platformId === 'bilibili') {
+      rows.push(...overlayMessageCandidates().slice(-120))
+    }
+    const seenImages = new Set()
+    rows.forEach((row) => {
+      if (!(row instanceof Element) || isOwned(row)) return
+      row.querySelectorAll('img').forEach((image) => {
+        if (!seenImages.has(image) && assetMatchScore(image, asset) >= 4) {
+          seenImages.add(image)
+          count += 1
+        }
+      })
+    })
+    return count
+  }
+
+  function countChatImageMessages() {
+    let count = 0
+    messageRows()
+      .slice(-160)
       .forEach((row) => {
-        row.querySelectorAll('img').forEach((image) => {
-          if (assetMatchScore(image, asset) >= 4) {
-            count += 1
-          }
-        })
+        if (isOwned(row) || isBilibiliChatAdvertisement(row)) return
+        const messageElement = messageElementFromCandidate(row)
+        if (messageElement && messageEmojiImages(row, messageElement).length) {
+          count += 1
+        }
       })
     return count
   }
@@ -3067,10 +3938,68 @@ import { t } from '../core/i18n'
     }
   }
 
+  function hasNewPlatformEmojiEcho(asset, previousCount, previousImageMessageCount) {
+    return (
+      countMatchingPlatformEmojiAssets(asset) > previousCount ||
+      (platformId !== 'bilibili' && countChatImageMessages() > previousImageMessageCount)
+    )
+  }
+
+  async function waitForNewPlatformEmojiEcho(asset, previousCount, timeout) {
+    const deadline = Date.now() + timeout
+    while (Date.now() < deadline) {
+      if (countMatchingPlatformEmojiAssets(asset) > previousCount) return true
+      await new Promise((resolve) => setTimeout(resolve, 60))
+    }
+    return countMatchingPlatformEmojiAssets(asset) > previousCount
+  }
+
+  async function startBilibiliNativeSendObservation() {
+    if (platformId !== 'bilibili') return null
+    const randomBytes = new Uint32Array(4)
+    crypto.getRandomValues(randomBytes)
+    const nonce = `${Date.now().toString(36)}-${Array.from(randomBytes)
+      .map((value) => value.toString(36))
+      .join('-')}`
+    let settled = false
+    let resolveResult
+    const result = new Promise((resolve) => {
+      resolveResult = resolve
+    })
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      resolveResult(value)
+    }
+    const onMessage = (event) => {
+      if (event.source !== window || !isBilibiliNativeSendObservation(event.data, nonce)) return
+      finish(event.data)
+    }
+    const timer = window.setTimeout(() => finish(null), 10_500)
+    window.addEventListener('message', onMessage)
+    try {
+      const installed = await chrome.runtime.sendMessage({
+        nonce,
+        type: BILIBILI_INSTALL_NATIVE_SEND_OBSERVER,
+      })
+      if (!installed?.ok) finish(null)
+    } catch {
+      finish(null)
+    }
+    return {
+      cancel: () => finish(null),
+      read: (timeout = 160) =>
+        Promise.race([result, new Promise((resolve) => setTimeout(() => resolve(null), timeout))]),
+    }
+  }
+
   async function waitForPlatformEmojiResult(
     input,
     asset,
     previousCount,
+    previousImageMessageCount,
     previousInput,
     clickedItem,
     clickedItemWasVisible,
@@ -3079,49 +4008,83 @@ import { t } from '../core/i18n'
     const deadline = Date.now() + timeout
     let dispatchedAt = 0
     while (Date.now() < deadline) {
-      if (countMatchingChatAssets(asset) > previousCount) {
+      if (hasNewPlatformEmojiEcho(asset, previousCount, previousImageMessageCount)) {
+        // Huya and Douyu can render a successfully sent native Emoji through
+        // an unrelated CDN URL with no surviving name/id. A newly appended
+        // image-message row immediately after the native action is therefore
+        // valid secondary confirmation when exact resource matching is lost.
         return 'sent'
       }
       if (richInputFingerprint(input) !== previousInput && !richInputIsEmpty(input)) {
         return 'inserted'
       }
-      if (
-        clickedItemWasVisible &&
-        clickedItem &&
-        (!clickedItem.isConnected || !isVisible(clickedItem))
-      ) {
+      const nativeDirectDispatch =
+        platformId === 'huya' ||
+        ((platformId === 'bilibili' || platformId === 'douyu') &&
+          clickedItem &&
+          (!clickedItem.isConnected || !isVisible(clickedItem)))
+      if (nativeDirectDispatch && clickedItemWasVisible && clickedItem) {
         if (!dispatchedAt) dispatchedAt = Date.now()
-        // Bilibili closes its native Emoji panel before committing a delayed
-        // insert into the editor. Keep observing that native update window.
-        if (platformId !== 'bilibili' || Date.now() - dispatchedAt >= 600) {
+        // Bilibili/Douyu can close the panel after a direct native dispatch,
+        // while Huya may dispatch directly even when its panel stays open.
+        // Keep observing exact echoes/editor changes first, then accept that
+        // intentional native dispatch without producing a false error.
+        const dispatchDelay = platformId === 'huya' ? 900 : 500
+        if (platformId !== 'bilibili' && Date.now() - dispatchedAt >= dispatchDelay) {
           return 'dispatched'
         }
+        // On Bilibili the first room-Emoji interaction can unmount the panel
+        // item immediately. Keep the full confirmation window open before an
+        // independent API fallback; disappearance alone is neither success
+        // nor sufficient proof that it is safe to send the Emoji again.
       }
       await new Promise((resolve) => setTimeout(resolve, 60))
     }
-    return 'none'
+    return dispatchedAt ? 'dispatched' : 'none'
   }
 
-  async function waitForPlatformEmojiSubmission(input, asset, previousCount, timeout) {
+  async function waitForPlatformEmojiSubmission(
+    input,
+    asset,
+    previousCount,
+    previousImageMessageCount,
+    timeout,
+  ) {
     const deadline = Date.now() + timeout
     let activeInput = input
+    let consumedAt = 0
     while (Date.now() < deadline) {
-      if (countMatchingChatAssets(asset) > previousCount) {
-        return { input: activeInput, sent: true }
+      if (countMatchingPlatformEmojiAssets(asset) > previousCount) {
+        return { input: activeInput, sent: true, consumed: true }
+      }
+      if (platformId !== 'bilibili' && countChatImageMessages() > previousImageMessageCount) {
+        return { input: activeInput, sent: true, consumed: true }
       }
       if (!activeInput || !activeInput.isConnected) {
         activeInput = findInput()
       }
       if (activeInput && richInputIsEmpty(activeInput)) {
-        return { input: activeInput, sent: true }
+        if (!consumedAt) consumedAt = Date.now()
+        if (platformId !== 'bilibili' && Date.now() - consumedAt >= 240) {
+          // This function is entered only after a native rich Emoji was
+          // inserted and the plugin invoked the platform's own send control.
+          // Huya/Douyu clearing that non-empty rich editor is authoritative UI
+          // acceptance even when their eventual echo loses every asset key.
+          return { input: activeInput, sent: true, consumed: true, nativeAccepted: true }
+        }
+      } else {
+        consumedAt = 0
       }
       await new Promise((resolve) => setTimeout(resolve, 60))
     }
     return {
       input: activeInput,
       sent:
-        countMatchingChatAssets(asset) > previousCount ||
-        Boolean(activeInput && richInputIsEmpty(activeInput)),
+        countMatchingPlatformEmojiAssets(asset) > previousCount ||
+        (platformId !== 'bilibili' &&
+          (countChatImageMessages() > previousImageMessageCount ||
+            Boolean(activeInput && richInputIsEmpty(activeInput) && consumedAt))),
+      consumed: Boolean(activeInput && richInputIsEmpty(activeInput)),
     }
   }
 
@@ -3143,7 +4106,12 @@ import { t } from '../core/i18n'
     return { button: null, input: activeInput }
   }
 
-  async function submitInsertedPlatformEmoji(input, asset, previousCount) {
+  async function submitInsertedPlatformEmoji(
+    input,
+    asset,
+    previousCount,
+    previousImageMessageCount,
+  ) {
     let activeInput = input
     let sendControl = await waitForPlatformSendButton(
       activeInput,
@@ -3160,17 +4128,35 @@ import { t } from '../core/i18n'
       activeInput,
       asset,
       previousCount,
+      previousImageMessageCount,
       platformId === 'bilibili' ? 1200 : 600,
     )
     if (submission.sent) {
       return submission
     }
 
+    // Never submit the same native Emoji a second time after the editor was
+    // consumed. Successful native acceptance is already returned above; this
+    // branch only prevents a duplicate when a future platform state cannot be
+    // classified confidently.
+    if (submission.consumed) {
+      return submission
+    }
+
     activeInput = submission.input || activeInput
     if (activeInput) {
       pressEnter(activeInput)
-      submission = await waitForPlatformEmojiSubmission(activeInput, asset, previousCount, 700)
+      submission = await waitForPlatformEmojiSubmission(
+        activeInput,
+        asset,
+        previousCount,
+        previousImageMessageCount,
+        700,
+      )
       if (submission.sent) {
+        return submission
+      }
+      if (submission.consumed) {
         return submission
       }
     }
@@ -3180,9 +4166,434 @@ import { t } from '../core/i18n'
     activeInput = sendControl.input || activeInput
     if (sendControl.button) {
       sendControl.button.click()
-      submission = await waitForPlatformEmojiSubmission(activeInput, asset, previousCount, 900)
+      submission = await waitForPlatformEmojiSubmission(
+        activeInput,
+        asset,
+        previousCount,
+        previousImageMessageCount,
+        900,
+      )
     }
     return submission
+  }
+
+  async function repeatBilibiliRecognizedEmojiText(message, payload, debug) {
+    const asset = payload && Array.isArray(payload.assets) ? payload.assets[0] : null
+    if (!asset || !beginProtectedSend(message)) return false
+    const input = findInput()
+    if (!input) {
+      debug.fail('auto-text-editor-missing', { asset: debug.asset(asset) })
+      state.sendProtection.finish(message, false)
+      showToast(t('toastEditorNotFound', platformName), 'error')
+      return false
+    }
+
+    const previousCount = countMatchingPlatformEmojiAssets(asset)
+    setNativeValue(input, message)
+    await new Promise((resolve) => setTimeout(resolve, 80))
+    const feedbackProbe = createPlatformFeedbackProbe(document)
+    let button = findSendButton(input)
+    if (button) button.click()
+    else pressEnter(input)
+
+    let consumed = await waitForInputConsumption(input, message, 420)
+    if (!consumed) {
+      pressEnter(input)
+      consumed = await waitForInputConsumption(input, message, 320)
+    }
+    if (!consumed) {
+      button = findSendButton(input)
+      if (button) {
+        button.click()
+        consumed = await waitForInputConsumption(input, message, 420)
+      }
+    }
+    if (!consumed) {
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled !== 'feedback') {
+        debug.fail('auto-text-not-consumed', { asset: debug.asset(asset), message })
+        showToast(t('toastAutomaticSendFailed'), 'error')
+      }
+      return false
+    }
+
+    const echoed = await waitForNewPlatformEmojiEcho(asset, previousCount, 3_200)
+    const settled = await finishProtectedSend(message, echoed, feedbackProbe)
+    if (settled === 'feedback') {
+      debug.fail('auto-text-platform-feedback', { asset: debug.asset(asset), message })
+      return false
+    }
+    if (!echoed) {
+      debug.fail('auto-text-send-unconfirmed', {
+        asset: debug.asset(asset),
+        matchingAssetCountAfter: countMatchingPlatformEmojiAssets(asset),
+        previousCount,
+      })
+      showToast(t('toastImageUnconfirmed', platformName), 'error')
+      return false
+    }
+    releaseInputFocus(input)
+    showToast(t('toastImageEmojiSent'), 'success')
+    return true
+  }
+
+  async function repeatBilibiliNativeRichPayload(payload) {
+    const debug = createBilibiliEmoticonDebugAttempt(payload)
+    try {
+      return await repeatBilibiliNativeRichPayloadWithDebug(payload, debug)
+    } catch (error) {
+      debug.fail('unexpected-exception', { error })
+      throw error
+    }
+  }
+
+  async function repeatBilibiliNativeRichPayloadWithDebug(payload, debug) {
+    const shouldResolveBilibiliSingleImage = Boolean(bilibiliFavoriteImagePayload(payload))
+    const hasBilibiliEmojiParts = Boolean(
+      platformId === 'bilibili' &&
+      payload &&
+      Array.isArray(payload.parts) &&
+      payload.parts.some((part) => part && part.type === 'emoji' && part.asset),
+    )
+    if (
+      platformId === 'bilibili' &&
+      payload &&
+      Array.isArray(payload.assets) &&
+      payload.assets.length &&
+      (fullscreenActive() || shouldResolveBilibiliSingleImage || hasBilibiliEmojiParts)
+    ) {
+      // Player-rendered image danmaku frequently exposes only its image URL.
+      // Resolve it against Bilibili's own (hidden while fullscreen) Emoji
+      // panel before deciding whether a lossless native-image send is possible.
+      // Mixed text/Emoji content needs the same resolution: rendered Emoji
+      // often carry only an opaque identity hash, and without a display name
+      // the ordered-text path cannot rebuild the full message.
+      await enrichRichPayloadAssetNames(payload, { resolveBilibiliNative: true })
+    }
+    // Side-chat rows carry richer Emoji metadata than the video danmaku row.
+    // Recover missing display names here, once per send, instead of on every
+    // hover (the hover path stays cheap).
+    if (platformId === 'bilibili') {
+      bilibiliCompleteEmojiTokens(payload)
+    }
+    const resolvedBilibiliAutoText =
+      platformId === 'bilibili' ? bilibiliAutoRecognizedEmojiText(payload) : ''
+    if (resolvedBilibiliAutoText) {
+      return repeatBilibiliRecognizedEmojiText(resolvedBilibiliAutoText, payload, debug)
+    }
+    const bilibiliSingleImagePayload = bilibiliFavoriteImagePayload(payload)
+    const bilibiliInlineText = bilibiliSingleImagePayload ? '' : bilibiliInlineEmojiText(payload)
+    if (bilibiliInlineText) {
+      return repeatMessage(bilibiliInlineText)
+    }
+    // Mixed text/Emoji content that failed inline rebuild (e.g. an Emoji
+    // without any nameable token) must still send the full message instead of
+    // falling into the panel path, which inserts only the first asset and
+    // drops the surrounding text. payload.text carries the DOM-ordered
+    // message with any recognizable tokens already in place.
+    if (
+      platformId === 'bilibili' &&
+      !bilibiliSingleImagePayload &&
+      payload &&
+      Array.isArray(payload.parts) &&
+      payload.parts.some((part) => part && part.type === 'text' && String(part.text || '').trim())
+    ) {
+      const fallbackText = String(payload.text || '').trim()
+      if (fallbackText) {
+        return repeatMessage(fallbackText)
+      }
+    }
+    const asset = payload && Array.isArray(payload.assets) ? payload.assets[0] : null
+    const nativeBilibiliAsset = platformId === 'bilibili' && isBilibiliNativePanelAsset(asset)
+    if (bilibiliSingleImagePayload && !nativeBilibiliAsset) {
+      debug.fail('identity-not-unique', {
+        asset: debug.asset(asset),
+        panelOpenedByPlugin: state.emojiPanelOpenedByPlugin,
+      })
+      showToast(t('toastOfficialEmojiNotUnique', bilibiliSingleImagePayload.text), 'error')
+      return false
+    }
+    const protectedMessage = String(payload.text || '')
+    if (!beginProtectedSend(protectedMessage)) {
+      debug.fail('send-protection-blocked', {
+        remainingMs: state.sendProtection.remainingMs(protectedMessage),
+      })
+      return false
+    }
+    const input = nativeBilibiliAsset ? findBilibiliEmojiEditor() || findInput() : findInput()
+    if (!asset) {
+      debug.fail('asset-missing', {
+        nativeBilibiliAsset,
+      })
+      state.sendProtection.finish(protectedMessage, false)
+      showToast(t('toastImageResourceNotFound', platformName), 'error')
+      return false
+    }
+    const sendDirectFallback = async () => {
+      // Resolve this at the moment the fallback runs. The original video/chat
+      // asset commonly has only an image URL; opening Bilibili's native panel
+      // below enriches that same object with room_xxx_xxx afterwards.
+      const directRoomEmoticonIdentity = bilibiliRoomEmoticonIdentity(asset)
+      const directRoomEmoticonToken = normalizedEmojiToken(asset?.token, 'emoji')
+      if (!directRoomEmoticonIdentity && !directRoomEmoticonToken) {
+        return { attempted: false, reason: 'identity-unavailable', success: false }
+      }
+      const feedbackProbe = createPlatformFeedbackProbe(document)
+      const previousDirectCount = countMatchingPlatformEmojiAssets(asset)
+      let result
+      try {
+        result = await chrome.runtime.sendMessage({
+          identity: directRoomEmoticonIdentity || undefined,
+          sourceHints: [asset?.src].filter(Boolean),
+          token: directRoomEmoticonToken || undefined,
+          type: BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE,
+        })
+      } catch (error) {
+        result = {
+          error: 'runtime-unavailable',
+          exception: error instanceof Error ? { message: error.message, name: error.name } : error,
+          ok: false,
+        }
+      }
+      if (result?.ok) {
+        if (result.identity && !directRoomEmoticonIdentity) {
+          asset.keys = Array.from(
+            new Set([
+              `${NATIVE_PANEL_ASSET_KEY_PREFIX}${result.identity}`,
+              ...(Array.isArray(asset.keys) ? asset.keys : []),
+            ]),
+          ).slice(0, 48)
+        }
+        const echoed = await waitForNewPlatformEmojiEcho(asset, previousDirectCount, 3_200)
+        const settled = await finishProtectedSend(protectedMessage, echoed, feedbackProbe)
+        if (settled === 'feedback') {
+          debug.fail('direct-send-success-feedback-rejected', {
+            echoed,
+            identity: result.identity || directRoomEmoticonIdentity,
+            result,
+          })
+          return { attempted: true, success: false }
+        }
+        if (!echoed) {
+          debug.fail('direct-send-unconfirmed', {
+            identity: result.identity || directRoomEmoticonIdentity,
+            matchingAssetCountAfter: countMatchingPlatformEmojiAssets(asset),
+            previousDirectCount,
+            result,
+          })
+          showToast(t('toastImageUnconfirmed', platformName), 'error')
+          return { attempted: true, success: false }
+        }
+        releaseInputFocus(input)
+        showToast(t('toastImageEmojiSent'), 'success')
+        return { attempted: true, success: true }
+      }
+      feedbackProbe.stop()
+      const feedback = classifyPlatformSendFeedback(result?.message)
+      if (feedback) {
+        debug.fail('direct-send-platform-rejected', {
+          feedback,
+          identity: result.identity || directRoomEmoticonIdentity,
+          result,
+        })
+        state.sendProtection.applyPlatformFeedback(feedback, protectedMessage)
+        const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
+        showToast(
+          feedback.cooldownMs > 0
+            ? t('toastPlatformCooldown', [platformName, feedback.message, String(seconds)])
+            : t('toastPlatformRejected', [platformName, feedback.message]),
+          feedback.kind === 'rejected' ? 'error' : 'warning',
+        )
+        updateCooldownUi(protectedMessage)
+        return { attempted: true, success: false }
+      }
+      state.sendProtection.finish(protectedMessage, false)
+      updateCooldownUi(protectedMessage)
+      debug.fail('direct-send-failed', {
+        identity: result.identity || directRoomEmoticonIdentity,
+        result,
+      })
+      showToast(
+        t(
+          result?.error === 'room-mismatch'
+            ? 'toastBilibiliRoomEmojiMismatch'
+            : 'toastBilibiliDirectEmojiFailed',
+        ),
+        'error',
+      )
+      return { attempted: true, success: false }
+    }
+    if (!input) {
+      const direct = await sendDirectFallback()
+      if (direct.attempted) return direct.success
+      debug.fail('editor-and-direct-identity-unavailable', {
+        asset: debug.asset(asset),
+        directReason: direct.reason,
+        nativeBilibiliAsset,
+        panelOpenedByPlugin: state.emojiPanelOpenedByPlugin,
+      })
+      state.sendProtection.finish(protectedMessage, false)
+      showToast(t('toastImageResourceNotFound', platformName), 'error')
+      return false
+    }
+    const item = nativeBilibiliAsset
+      ? await openUniqueBilibiliPlatformEmoji(input, asset)
+      : await openMatchingBilibiliPlatformEmoji(input, asset)
+    if (!item || typeof item.click !== 'function') {
+      const direct = await sendDirectFallback()
+      if (direct.attempted) return direct.success
+      debug.fail('panel-item-not-found', {
+        asset: debug.asset(asset),
+        categoryCandidateCount: platformEmojiCategoryCandidates(fullscreenActive()).length,
+        directReason: direct.reason,
+        emojiItemCandidateCount: platformEmojiItemCandidates(fullscreenActive()).length,
+        fullscreen: fullscreenActive(),
+        nativeBilibiliAsset,
+        panelOpenedByPlugin: state.emojiPanelOpenedByPlugin,
+        toggleCandidateCount: platformEmojiToggleCandidates(input, fullscreenActive()).length,
+      })
+      state.sendProtection.finish(protectedMessage, false)
+      // A bracketed Emoji name is only display text. Programmatically writing
+      // it into Bilibili's editor does not reliably attach the native Emoji
+      // metadata, so never downgrade an image payload to a literal "[name]".
+      showToast(t('toastEmojiPanelNoMatch', platformName), 'error')
+      return false
+    }
+    enrichRichPayloadAsset(payload, 0, item)
+    const previousCount = countMatchingPlatformEmojiAssets(asset)
+    const previousImageMessageCount = countChatImageMessages()
+    const beforeInput = richInputFingerprint(input)
+    const itemWasVisible = isVisible(item)
+    const feedbackProbe = createPlatformFeedbackProbe(document)
+    const nativeSendObserver = await startBilibiliNativeSendObservation()
+    item.click()
+    const resultTimeout = 2400
+    let result = await waitForPlatformEmojiResult(
+      input,
+      asset,
+      previousCount,
+      previousImageMessageCount,
+      beforeInput,
+      item,
+      itemWasVisible,
+      resultTimeout,
+    )
+    if (result === 'dispatched' && (platformId === 'huya' || platformId === 'douyu')) {
+      result = 'sent'
+    }
+    if (result === 'inserted' && richInputFingerprint(input) !== beforeInput) {
+      const submission = await submitInsertedPlatformEmoji(
+        input,
+        asset,
+        previousCount,
+        previousImageMessageCount,
+      )
+      result = submission.sent ? 'sent' : 'none'
+    }
+    const nativeSendResult = nativeSendObserver ? await nativeSendObserver.read() : null
+    if (nativeSendResult?.identity && !bilibiliRoomEmoticonIdentity(asset)) {
+      asset.keys = Array.from(
+        new Set([
+          `${NATIVE_PANEL_ASSET_KEY_PREFIX}${nativeSendResult.identity}`,
+          ...(Array.isArray(asset.keys) ? asset.keys : []),
+        ]),
+      ).slice(0, 48)
+    }
+    const nativeSendRejected = Boolean(
+      nativeSendResult &&
+      ((Number.isFinite(nativeSendResult.code) && nativeSendResult.code !== 0) ||
+        (Number.isFinite(nativeSendResult.httpStatus) && nativeSendResult.httpStatus >= 400)),
+    )
+    if (nativeSendRejected) {
+      nativeSendObserver?.cancel()
+      feedbackProbe.stop()
+      const message = shared.normalizeWhitespace(
+        nativeSendResult.message || `HTTP ${nativeSendResult.httpStatus || nativeSendResult.code}`,
+      )
+      const feedback = classifyPlatformSendFeedback(message)
+      state.sendProtection.finish(protectedMessage, false)
+      if (feedback) state.sendProtection.applyPlatformFeedback(feedback, protectedMessage)
+      updateCooldownUi(protectedMessage)
+      debug.fail('native-send-platform-rejected', {
+        nativeSendResult,
+      })
+      showToast(
+        t('toastPlatformRejected', [platformName, message || String(nativeSendResult.code)]),
+        'error',
+      )
+      return false
+    }
+    if (result !== 'sent') {
+      const settled = await finishProtectedSend(protectedMessage, false, feedbackProbe)
+      if (settled === 'feedback') {
+        debug.fail('panel-send-platform-feedback', {
+          inputChanged: richInputFingerprint(input) !== beforeInput,
+          inputEmpty: richInputIsEmpty(input),
+          itemConnected: item.isConnected,
+          itemWasVisible,
+          result,
+        })
+        return false
+      }
+      if (
+        platformId === 'bilibili' &&
+        hasNewPlatformEmojiEcho(asset, previousCount, previousImageMessageCount)
+      ) {
+        // A cold Bilibili renderer can miss even the primary 2.4 s window.
+        // finishProtectedSend() has just spent the feedback grace period
+        // proving that the platform did not reject the action; accept a late
+        // echo observed during that wait instead of reporting a false failure.
+        state.sendProtection.finish(protectedMessage, true)
+        updateCooldownUi(protectedMessage)
+        releaseInputFocus(input)
+        showToast(t('toastImageEmojiSent'), 'success')
+        return true
+      }
+      if (platformId === 'bilibili') {
+        // A visible native item can close/unmount its panel while Bilibili
+        // silently drops the first programmatic action. This is a real failed
+        // dispatch (no editor mutation, echo or rejection), not a slow echo.
+        // Complete the promised dual path with the exact identity learned
+        // from the native panel instead of reporting an unconfirmed failure.
+        const direct = await sendDirectFallback()
+        if (direct.attempted) {
+          nativeSendObserver?.cancel()
+          return direct.success
+        }
+      }
+      debug.fail('panel-send-unconfirmed', {
+        assetAfterPanelResolution: debug.asset(asset),
+        directReason: bilibiliRoomEmoticonIdentity(asset)
+          ? 'not-attempted'
+          : 'identity-unavailable',
+        inputChanged: richInputFingerprint(input) !== beforeInput,
+        inputEmpty: richInputIsEmpty(input),
+        imageMessageCountAfter: countChatImageMessages(),
+        itemConnected: item.isConnected,
+        itemWasVisible,
+        matchingAssetCountAfter: countMatchingPlatformEmojiAssets(asset),
+        previousCount,
+        previousImageMessageCount,
+        result,
+        resultTimeout,
+        nativeSendResult,
+      })
+      nativeSendObserver?.cancel()
+      showToast(t('toastImageUnconfirmed', platformName), 'error')
+      return false
+    }
+    if ((await finishProtectedSend(protectedMessage, true, feedbackProbe)) !== true) {
+      nativeSendObserver?.cancel()
+      debug.fail('panel-send-success-feedback-rejected', {
+        itemConnected: item.isConnected,
+        result,
+      })
+      return false
+    }
+    nativeSendObserver?.cancel()
+    releaseInputFocus(input)
+    showToast(t('toastImageEmojiSent'), 'success')
+    return true
   }
 
   async function repeatPlatformRichPayload(payload) {
@@ -3190,94 +4601,23 @@ import { t } from '../core/i18n'
     if (unicodeFallback) {
       return repeatMessage(unicodeFallback)
     }
-    const shouldResolveBilibiliSingleImage = Boolean(bilibiliFavoriteImagePayload(payload))
-    if (
-      platformId === 'bilibili' &&
-      payload &&
-      Array.isArray(payload.assets) &&
-      payload.assets.length &&
-      (fullscreenActive() || shouldResolveBilibiliSingleImage)
-    ) {
-      // Player-rendered image danmaku frequently exposes only its image URL.
-      // Resolve it against Bilibili's own (hidden while fullscreen) Emoji
-      // panel before deciding whether a lossless native-image send is possible.
-      await enrichRichPayloadAssetNames(payload, { resolveBilibiliNative: true })
-    }
-    const bilibiliSingleImagePayload = bilibiliFavoriteImagePayload(payload)
-    const bilibiliInlineText = bilibiliSingleImagePayload ? '' : bilibiliInlineEmojiText(payload)
-    if (bilibiliInlineText) {
-      return repeatMessage(bilibiliInlineText)
-    }
-    const asset = payload && Array.isArray(payload.assets) ? payload.assets[0] : null
-    const nativeBilibiliAsset =
-      platformId === 'bilibili' && isBilibiliNativePanelAsset(asset)
-    if (bilibiliSingleImagePayload && !nativeBilibiliAsset) {
-      showToast(
-        t('toastOfficialEmojiNotUnique', bilibiliSingleImagePayload.text),
-        'error',
+    const bilibiliAutoText =
+      platformId === 'bilibili' ? bilibiliAutoRecognizedEmojiText(payload) : ''
+    if (bilibiliAutoText) {
+      return repeatBilibiliRecognizedEmojiText(
+        bilibiliAutoText,
+        payload,
+        createBilibiliEmoticonDebugAttempt(payload),
       )
-      return false
     }
-    const now = Date.now()
-    if (now - state.lastActionAt < 700) {
-      showToast(t('toastActionTooFast'), 'warning')
-      return false
-    }
-    state.lastActionAt = now
-    const input = nativeBilibiliAsset ? findBilibiliEmojiEditor() || findInput() : findInput()
-    if (!asset || !input) {
-      showToast(t('toastImageResourceNotFound', platformName), 'error')
-      return false
-    }
-    const item =
-      nativeBilibiliAsset
-        ? await openUniqueBilibiliPlatformEmoji(input, asset)
-        : await openPlatformEmojiForAsset(input, asset)
-    if (!item || typeof item.click !== 'function') {
-      showToast(t('toastEmojiPanelNoMatch', platformName), 'error')
-      return false
-    }
-    enrichRichPayloadAsset(payload, 0, item)
-    const previousCount = countMatchingChatAssets(asset)
-    const beforeInput = richInputFingerprint(input)
-    const itemWasVisible = isVisible(item)
-    item.click()
-    const resultTimeout = platformId === 'bilibili' ? 2400 : 900
-    let result = await waitForPlatformEmojiResult(
-      input,
-      asset,
-      previousCount,
-      beforeInput,
-      item,
-      itemWasVisible,
-      resultTimeout,
-    )
-    if (result === 'inserted' && richInputFingerprint(input) !== beforeInput) {
-      const submission = await submitInsertedPlatformEmoji(input, asset, previousCount)
-      result = submission.sent ? 'sent' : 'none'
-    }
-    if (result === 'none' && platformId !== 'bilibili') {
-      const button = findSendButton(input)
-      if (button) {
-        button.click()
-        result = await waitForPlatformEmojiResult(
-          input,
-          asset,
-          previousCount,
-          beforeInput,
-          item,
-          itemWasVisible,
-          900,
-        )
-      }
-    }
-    if (result !== 'sent') {
-      showToast(t('toastImageUnconfirmed', platformName), 'error')
-      return false
-    }
-    releaseInputFocus(input)
-    showToast(t('toastImageEmojiSent'), 'success')
-    return true
+    return richMessageSender(payload, {
+      prepareEmojiNames:
+        platformId === 'huya' ? (richPayload) => huyaCompleteEmojiTokens(richPayload) : undefined,
+      reportEmojiNameUnavailable: () =>
+        showToast(t('toastEmojiNameUnavailable', platformName), 'error'),
+      sendBilibiliNative: repeatBilibiliNativeRichPayload,
+      sendText: repeatMessage,
+    })
   }
 
   function bilibiliFavoriteImagePayload(payload) {
@@ -3294,12 +4634,22 @@ import { t } from '../core/i18n'
         if (part.type === 'emoji') return true
         return part.type === 'text' && Boolean(shared.normalizeWhitespace(part.text))
       })
+      const emojiParts = meaningfulParts.filter((part) => part.type === 'emoji')
+      // Some Bilibili renderers keep a hidden accessibility/fallback label
+      // beside the image, producing parts such as image + "[卖萌]". That text
+      // is not mixed danmaku content; it is a duplicate representation of the
+      // same Emoji and must stay on the native-panel image-send path.
+      const nonDuplicateTextParts = meaningfulParts.filter(
+        (part) =>
+          part.type === 'text' &&
+          !isBilibiliEmoticonFallbackLabel(part.text, token),
+      )
       const isSingleEmojiPart =
-        meaningfulParts.length === 1 &&
-        (meaningfulParts[0].type === 'emoji' ||
-          (assets.length === 0 &&
-            meaningfulParts[0].type === 'text' &&
-            shared.normalizeWhitespace(meaningfulParts[0].text) === token))
+        (assets.length === 1 && emojiParts.length === 1 && nonDuplicateTextParts.length === 0) ||
+        (assets.length === 0 &&
+          meaningfulParts.length === 1 &&
+          meaningfulParts[0].type === 'text' &&
+          shared.normalizeWhitespace(meaningfulParts[0].text) === token)
       if (!isSingleEmojiPart) return null
     }
 
@@ -3320,20 +4670,31 @@ import { t } from '../core/i18n'
   function markBilibiliPayloadAsNativePanel(payload, item) {
     enrichRichPayloadAsset(payload, 0, item)
     const asset = payload && Array.isArray(payload.assets) ? payload.assets[0] : null
-    if (!asset || isBilibiliNativePanelAsset(asset)) return
-    const identity = shared
-      .normalizeWhitespace(asset.token || asset.src || 'resolved')
-      .toLowerCase()
-      .slice(0, 180)
-    const marker = `${NATIVE_PANEL_ASSET_KEY_PREFIX}resolved:${identity}`
-    asset.keys = Array.from(new Set([marker, ...(Array.isArray(asset.keys) ? asset.keys : [])])).slice(
-      0,
-      48,
-    )
+    if (!asset) return
+    const itemDescriptor = assetDescriptorFromElement(item)
+    const itemHasNativeIdentity = isBilibiliNativePanelAsset(itemDescriptor)
+    const token = normalizedEmojiToken(itemDescriptor?.token || asset.token, 'emoji')
+    const marker = itemHasNativeIdentity
+      ? ''
+      : token
+        ? // Room/anchor Emoji can expose only a bracketed display name in the
+          // isolated-world DOM. The native Bilibili click still carries its
+          // hidden emoticonOptions/room_xxx_xxx state, so keep this item on the
+          // native panel path instead of submitting the visible name as text.
+          `${NATIVE_PANEL_ASSET_KEY_PREFIX}matched-name:${token.toLowerCase().slice(0, 120)}`
+        : `${NATIVE_PANEL_ASSET_KEY_PREFIX}resolved:${shared
+            .normalizeWhitespace(asset.src || 'resolved')
+            .toLowerCase()
+            .slice(0, 180)}`
+    if (marker) {
+      asset.keys = Array.from(
+        new Set([marker, ...(Array.isArray(asset.keys) ? asset.keys : [])]),
+      ).slice(0, 48)
+    }
     const emojiPart = Array.isArray(payload.parts)
       ? payload.parts.find((part) => part && part.type === 'emoji' && part.asset)
       : null
-    if (emojiPart && emojiPart.asset !== asset) {
+    if (marker && emojiPart && emojiPart.asset !== asset) {
       emojiPart.asset.keys = Array.from(
         new Set([marker, ...(Array.isArray(emojiPart.asset.keys) ? emojiPart.asset.keys : [])]),
       ).slice(0, 48)
@@ -3343,9 +4704,14 @@ import { t } from '../core/i18n'
   async function repeatBilibiliFavoritePayload(payload) {
     const imagePayload = bilibiliFavoriteImagePayload(payload)
     if (!imagePayload) {
-      return payload.assets.length ? repeatPlatformRichPayload(payload) : repeatMessage(payload.text)
+      return payload.assets.length
+        ? repeatPlatformRichPayload(payload)
+        : repeatMessage(payload.text)
     }
     if (imagePayload.assets.some(isBilibiliNativePanelAsset)) {
+      return repeatPlatformRichPayload(imagePayload)
+    }
+    if (bilibiliAutoRecognizedEmojiText(imagePayload)) {
       return repeatPlatformRichPayload(imagePayload)
     }
 
@@ -3356,10 +4722,7 @@ import { t } from '../core/i18n'
     }
     const item = await openUniqueBilibiliPlatformEmoji(input, imagePayload.assets[0])
     if (!item) {
-      showToast(
-        t('toastOfficialEmojiNotFound', imagePayload.text),
-        'error',
-      )
+      showToast(t('toastOfficialEmojiNotFound', imagePayload.text), 'error')
       return false
     }
     markBilibiliPayloadAsNativePanel(imagePayload, item)
@@ -3367,15 +4730,11 @@ import { t } from '../core/i18n'
   }
 
   async function repeatMessage(message) {
-    const now = Date.now()
-    if (now - state.lastActionAt < 700) {
-      showToast(t('toastActionTooFast'), 'warning')
-      return false
-    }
-    state.lastActionAt = now
+    if (!beginProtectedSend(message)) return false
 
     const input = findInput()
     if (!input) {
+      state.sendProtection.finish(message, false)
       showToast(t('toastEditorNotFound', platformName), 'error')
       return false
     }
@@ -3383,6 +4742,7 @@ import { t } from '../core/i18n'
     setNativeValue(input, message)
     await new Promise((resolve) => setTimeout(resolve, 80))
     let button = findSendButton(input)
+    const feedbackProbe = createPlatformFeedbackProbe(document)
 
     if (button) {
       button.click()
@@ -3410,30 +4770,62 @@ import { t } from '../core/i18n'
     }
 
     if (!consumed) {
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled === 'feedback') return false
       showToast(t('toastAutomaticSendFailed'), 'error')
       return false
     }
 
+    if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) return false
     releaseInputFocus(input)
     showToast(t('toastPlusOneSent'), 'success')
     return true
   }
 
-  function onPlusOneClick(event) {
+  async function onPlusOneClick(event) {
     event.preventDefault()
     event.stopPropagation()
     if (!visibleActionsForSurface(state.settings, platformId, state.candidateKind).plusOne) {
       return
     }
+    const candidate = state.candidate
+    ensureSelectedOverlayHydrated()
+    if (candidate !== state.candidate) return
     const message = state.message
     const richPayload = state.richPayload
+    const releaseDouyuHoverAfterAction = platformId === 'douyu' && state.candidateKind === 'overlay'
     diagnostics.record({ type: 'action.plus-one', stage: state.candidateKind || 'unknown' })
-    if (richPayload && richPayload.assets.length) {
-      repeatPlatformRichPayload(richPayload)
-    } else if (message) {
-      repeatMessage(message)
+    if (!message) return
+    state.ui.setSending(true)
+    if (releaseDouyuHoverAfterAction) {
+      // The click completes this hover interaction. Release the joined native
+      // hover body before Douyu's async send/feedback wait, otherwise image
+      // danmaku can remain visibly paused for the entire request or forever.
+      clearSelection()
     }
-    scheduleHide()
+    try {
+      if (richPayload && richPayload.assets.length) {
+        await repeatPlatformRichPayload(richPayload)
+      } else {
+        await repeatMessage(message)
+      }
+    } finally {
+      if (state.ui) state.ui.setSending(false)
+      if (!releaseDouyuHoverAfterAction && state.candidate === candidate) {
+        scheduleHide()
+      }
+    }
+  }
+
+  function pointerCoordinates(event) {
+    const x = Number(event.clientX)
+    const y = Number(event.clientY)
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return null
+    // Synthetic platform/test events often omit coordinates and therefore
+    // report (0, 0). They do not describe a real pointer position and must not
+    // be allowed to invalidate an otherwise valid DOM-targeted interaction.
+    if (!event.isTrusted && x === 0 && y === 0) return null
+    return { x, y }
   }
 
   function onPointerOver(event) {
@@ -3441,31 +4833,45 @@ import { t } from '../core/i18n'
       return
     }
 
+    const pointer = pointerCoordinates(event)
+    if (
+      pointer &&
+      state.candidateKind === 'overlay' &&
+      state.candidate &&
+      !pointInsideOverlayViewport(state.candidate, pointer.x, pointer.y)
+    ) {
+      clearSelection()
+    }
+
     const path = event.composedPath ? event.composedPath() : [event.target]
     if (isOwned(event.target)) {
       return
     }
 
-    if (isInsideFrozenHoverZone(event.clientX, event.clientY)) {
+    if (pointer && isInsideFrozenHoverZone(pointer.x, pointer.y)) {
       cancelHide()
       return
     }
 
     const found = findCandidate(path)
     if (found && found.element !== state.candidate) {
-      selectCandidate(found.element, found.kind)
+      if (selectCandidate(found.element, found.kind, false, pointer, event.target)) {
+        douyuNativeHover?.remember(event.target)
+      }
+    } else if (found && found.element === state.candidate) {
+      douyuNativeHover?.remember(event.target)
+      if (platformId === 'douyu' && state.candidate instanceof HTMLElement) {
+        douyuOverlayMotion?.hold(state.candidate)
+      }
     } else if (!found && platformId === 'bilibili') {
-      if (
-        pathTouchesBilibiliChatActions(path) ||
-        pathTouchesBilibiliChatAdvertisement(path)
-      ) {
+      if (pathTouchesBilibiliChatActions(path) || pathTouchesBilibiliChatAdvertisement(path)) {
         if (state.candidate) clearSelection()
         return
       }
-      const elements = document.elementsFromPoint(event.clientX, event.clientY)
+      const elements = pointer ? document.elementsFromPoint(pointer.x, pointer.y) : []
       const pointFound = findCandidate(elements)
       if (pointFound && pointFound.element !== state.candidate) {
-        selectCandidate(pointFound.element, pointFound.kind)
+        selectCandidate(pointFound.element, pointFound.kind, false, pointer)
       }
     }
   }
@@ -3528,13 +4934,34 @@ import { t } from '../core/i18n'
       return
     }
 
+    const pointer = pointerCoordinates(event)
+    if (
+      pointer &&
+      state.candidateKind === 'overlay' &&
+      state.candidate &&
+      !pointInsideOverlayViewport(state.candidate, pointer.x, pointer.y)
+    ) {
+      clearSelection()
+      return
+    }
+
+    douyuNativeHover?.remember(event.target)
+    if (
+      platformId === 'douyu' &&
+      state.candidateKind === 'overlay' &&
+      state.candidate instanceof HTMLElement
+    ) {
+      douyuOverlayMotion?.hold(state.candidate)
+    }
     if (isOwned(event.target)) {
       cancelHide()
       return
     }
 
-    state.pointerX = event.clientX
-    state.pointerY = event.clientY
+    if (pointer) {
+      state.pointerX = pointer.x
+      state.pointerY = pointer.y
+    }
 
     if (state.candidateKind === 'overlay' && state.frozenClone && state.frozenClone.isConnected) {
       const insideHoverZone = isInsideFrozenHoverZone(state.pointerX, state.pointerY)
@@ -3564,7 +4991,16 @@ import { t } from '../core/i18n'
       if (candidate) {
         cancelHide()
         if (candidate !== state.candidate) {
-          selectCandidate(candidate, 'overlay')
+          selectCandidate(
+            candidate,
+            'overlay',
+            false,
+            {
+              x: state.pointerX,
+              y: state.pointerY,
+            },
+            event.target,
+          )
         }
       } else if (state.candidateKind === 'overlay') {
         scheduleHide()
@@ -3573,23 +5009,98 @@ import { t } from '../core/i18n'
   }
 
   function onPointerOut(event) {
+    if (douyuNativeHover?.isReleasing) {
+      return
+    }
     if (!state.candidate) {
       return
     }
 
     const next = event.relatedTarget
-    if (next && (state.candidate.contains(next) || isOwned(next))) {
+    if (next && isInsideSelectedHoverBody(next)) {
+      if (
+        platformId === 'douyu' &&
+        state.candidateKind === 'overlay' &&
+        (event.target === state.candidate || state.candidate.contains(event.target))
+      ) {
+        douyuNativeHover?.hold(event.target)
+        douyuOverlayMotion?.hold(state.candidate)
+        // The danmaku, transparent gap bridge and portal toolbar form one
+        // logical hover body. Do not let Douyu resume its native animation at
+        // either internal boundary.
+        event.stopImmediatePropagation()
+        cancelHide()
+      }
       return
     }
 
-    if (isInsideFrozenHoverZone(event.clientX, event.clientY)) {
+    const pointer = pointerCoordinates(event)
+    const path = event.composedPath ? event.composedPath() : [event.target]
+    const leavesDouyuCandidate =
+      platformId === 'douyu' && state.candidateKind === 'overlay' && path.includes(state.candidate)
+    if (
+      pointer &&
+      state.candidateKind === 'overlay' &&
+      state.candidate &&
+      !pointInsideOverlayViewport(state.candidate, pointer.x, pointer.y)
+    ) {
+      if (leavesDouyuCandidate) douyuNativeHover?.nativeExitWillProceed()
+      clearSelection()
+      return
+    }
+
+    if (pointer && isInsideFrozenHoverZone(pointer.x, pointer.y)) {
+      if (leavesDouyuCandidate) {
+        // A platform decoration can briefly win hit-testing in the visual gap
+        // even though the pointer is still inside our combined hover zone.
+        // Keep that transient leave from resuming Douyu before the bridge or
+        // joined toolbar receives the next entry.
+        douyuNativeHover?.hold(event.target)
+        douyuOverlayMotion?.hold(state.candidate)
+        event.stopImmediatePropagation()
+      }
       cancelHide()
       return
     }
 
-    const path = event.composedPath ? event.composedPath() : [event.target]
     if (path.includes(state.candidate)) {
+      douyuNativeHover?.nativeExitWillProceed()
       scheduleHide()
+    }
+  }
+
+  function onMouseOut(event) {
+    if (douyuNativeHover?.isReleasing) {
+      return
+    }
+    if (
+      platformId !== 'douyu' ||
+      state.candidateKind !== 'overlay' ||
+      !(state.candidate instanceof HTMLElement)
+    ) {
+      douyuNativeHover?.remember(event.target)
+      return
+    }
+
+    const next = event.relatedTarget
+    if (
+      isInsideSelectedHoverBody(next) &&
+      (event.target === state.candidate || state.candidate.contains(event.target))
+    ) {
+      douyuNativeHover?.hold(event.target)
+      douyuOverlayMotion?.hold(state.candidate)
+      event.stopImmediatePropagation()
+      cancelHide()
+    } else if (event.composedPath().includes(state.candidate)) {
+      const pointer = pointerCoordinates(event)
+      if (pointer && isInsideFrozenHoverZone(pointer.x, pointer.y)) {
+        douyuNativeHover?.hold(event.target)
+        douyuOverlayMotion?.hold(state.candidate)
+        event.stopImmediatePropagation()
+        cancelHide()
+      } else {
+        douyuNativeHover?.nativeExitWillProceed()
+      }
     }
   }
 
@@ -3608,22 +5119,38 @@ import { t } from '../core/i18n'
     if (pathTouchesBilibiliChatActions(path)) {
       return
     }
+    const pointer = pointerCoordinates(event)
     let found = findCandidate(path)
-    if (!found) {
-      const overlay = findOverlayAtPoint(event.clientX, event.clientY)
+    if (!found && pointer) {
+      const overlay = findOverlayAtPoint(pointer.x, pointer.y)
       found = overlay ? { element: overlay, kind: 'overlay' } : null
     }
-    if (!found || !selectCandidate(found.element, found.kind, true)) {
+    if (!found || !selectCandidate(found.element, found.kind, true, pointer, event.target)) {
       return
     }
+    douyuNativeHover?.remember(event.target)
 
     event.preventDefault()
     event.stopPropagation()
-    repeatMessage(state.message)
+    const candidate = state.candidate
+    ensureSelectedOverlayHydrated()
+    if (candidate !== state.candidate) return
+    if (state.richPayload && state.richPayload.assets.length) {
+      repeatPlatformRichPayload(state.richPayload)
+    } else {
+      repeatMessage(state.message)
+    }
     scheduleHide()
   }
 
   function onViewportChange() {
+    if (state.candidateKind === 'overlay' && state.candidate) {
+      state.overlayViewport = overlayViewportRect(state.candidate)
+      if (!pointInsideRect(state.overlayViewport, state.pointerX, state.pointerY)) {
+        clearSelection()
+        return
+      }
+    }
     requestAnimationFrame(updateButtonPosition)
   }
 
@@ -3644,9 +5171,11 @@ import { t } from '../core/i18n'
     if (state.hideTimer) clearTimeout(state.hideTimer)
     if (state.senderScanTimer) clearTimeout(state.senderScanTimer)
     if (state.pointerFrame) cancelAnimationFrame(state.pointerFrame)
+    if (state.cooldownTimer) clearInterval(state.cooldownTimer)
     state.hideTimer = 0
     state.senderScanTimer = 0
     state.pointerFrame = 0
+    state.cooldownTimer = 0
     state.senderObserver?.disconnect()
     state.senderObserver = null
     state.senderCorrelation.clear()
@@ -3654,6 +5183,7 @@ import { t } from '../core/i18n'
     state.rootsCachedAt = 0
     state.bilibiliOverlayCandidates = []
     state.bilibiliOverlayCandidatesCachedAt = 0
+    state.overlayViewport = null
     state.douyuNativeCapsuleVisibility.showAll()
     state.douyuNativeCapsuleMutationRoots.clear()
     platformAdapter.cleanup()
@@ -3674,6 +5204,7 @@ import { t } from '../core/i18n'
     document.removeEventListener('pointerover', onPointerOver, true)
     document.removeEventListener('pointermove', onPointerMove, true)
     document.removeEventListener('pointerout', onPointerOut, true)
+    document.removeEventListener('mouseout', onMouseOut, true)
     document.removeEventListener('click', onAltClick, true)
     document.removeEventListener('pointerdown', restoreBilibiliQuickBars, true)
     document.removeEventListener('keydown', restoreBilibiliQuickBars, true)
@@ -3689,8 +5220,17 @@ import { t } from '../core/i18n'
 
   function onFullscreenChange() {
     restoreBilibiliQuickBars(null)
+    // Huya can replace the player/danmaku subtree while entering fullscreen.
+    // Drop all DOM-root caches before resolving the new fullscreen host so a
+    // freshly mounted barrage layer is discoverable immediately.
+    if (platformId === 'huya' || platformId === 'douyu') {
+      clearSelection()
+      state.roots = [document]
+      state.rootsCachedAt = 0
+      state.overlayViewport = null
+    }
     ensurePortal()
-    requestAnimationFrame(updateButtonPosition)
+    onViewportChange()
   }
 
   function syncDouyuNativeCapsuleRootAttribute() {
@@ -3831,6 +5371,7 @@ import { t } from '../core/i18n'
   document.addEventListener('pointerover', onPointerOver, true)
   document.addEventListener('pointermove', onPointerMove, true)
   document.addEventListener('pointerout', onPointerOut, true)
+  document.addEventListener('mouseout', onMouseOut, true)
   document.addEventListener('click', onAltClick, true)
   document.addEventListener('pointerdown', restoreBilibiliQuickBars, true)
   document.addEventListener('keydown', restoreBilibiliQuickBars, true)

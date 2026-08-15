@@ -6,7 +6,7 @@ import { createDiagnosticsCollector } from '../diagnostics'
 describe('DiagnosticsSnapshotV1', () => {
   beforeEach(() => {
     vi.stubGlobal('chrome', {
-      runtime: { getManifest: () => ({ version: '2.2.0' }) },
+      runtime: { getManifest: () => ({ version: '2.3.0' }) },
     })
     vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 Chrome/150.0.0.0' })
   })
@@ -37,7 +37,7 @@ describe('DiagnosticsSnapshotV1', () => {
     }
     expect(JSON.parse(serialized)).toMatchObject({
       browser: 'Chrome 150.0.0.0',
-      extensionVersion: '2.2.0',
+      extensionVersion: '2.3.0',
       platform: 'bilibili',
       schemaVersion: 1,
     })

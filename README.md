@@ -4,12 +4,12 @@
   <img src="public/assets/danmaku-echo-icon.png" width="180" alt="Danmaku Echo icon">
 </p>
 
-> 为虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播提供弹幕 `+1`、回复与本地收藏。
-> Danmaku echoing, replies, and local favorites for Huya, Bilibili, Douyin, and Douyu Live.
+> 为虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播提供弹幕 `+1`、回复、复制与本地收藏。
+> Danmaku echoing, replies, copying, and local favorites for Huya, Bilibili, Douyin, and Douyu Live.
 
 [中文](#中文) · [English](#english) · [隐私权政策](PRIVACY.md)
 
-![Version](https://img.shields.io/badge/version-2.2.0-orange)
+![Version](https://img.shields.io/badge/version-2.3.0-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
@@ -26,22 +26,22 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 | --- | --- | --- | --- |
 | 虎牙直播 | ✅ | ✅ | ✅ |
 | 哔哩哔哩直播 | ✅ | ✅ | ✅ |
-| 抖音直播 | ✅ | ✅（Canvas） | ✅ |
+| 抖音直播 | ✅ | ✅（DOM 接管） | ✅ |
 | 斗鱼直播 | ✅ | ✅ | ✅ |
 
 ### 弹幕收藏
 
 收藏只保存在 `chrome.storage.local`，不会上传或跨设备同步；相同内容在全局只保留一份，但会记录它来自哪些平台和直播间。打开收藏时默认聚焦本房内容；“其他直播间”和“全部”先显示直播间列表，点击任意直播间后进入独立的弹幕选择页，再发送或加入当前房间。
 
-所有可识别弹幕都可以收藏，包括普通文字、Unicode Emoji、平台图片表情以及文字与表情混排。富弹幕会同时保存显示文字、内容顺序和平台资源识别信息；同样显示为“图片表情”的不同资源不会被错误合并，旧版纯文字收藏会自动兼容。发送富弹幕时仍使用当前平台的官方输入框与表情面板，能否发送取决于当前平台和账号是否仍可使用对应资源。
+所有可识别弹幕都可以收藏，包括普通文字、Unicode Emoji、平台图片表情以及文字与表情混排。富弹幕会同时保存显示文字、内容顺序和平台资源识别信息；同样显示为“图片表情”的不同资源不会被错误合并，旧版纯文字收藏会自动兼容。发送富弹幕时优先使用当前平台的官方输入框与表情面板，能否发送取决于当前平台和账号是否仍可使用对应资源；B 站房间图片表情在面板无法唯一定位时，会校验资源所属真实房间并通过当前 B 站页面的官方弹幕接口后备发送。
 
-在直播间短按 `Alt + Q` 会打开固定收藏面板，可搜索、按发送次数或收藏时间排序，并使用数字键 `1–9` 发送当前页弹幕；长按 `Alt + Q` 会在鼠标位置打开圆形轮盘，本房常用收藏以无前置图标的圆形选项显示，可直接指向并松开发送，“其他收藏”和“更多”会进入对应列表。原生全屏时界面会挂载到 `document.fullscreenElement` 内，因此全屏状态也可操作。
+在直播间短按 `Alt + Q` 会打开固定收藏面板，可置顶收藏、添加可搜索标签，并按发送次数、收藏时间或“轮盘顺序”排列。选择“轮盘顺序”后，可拖动左侧手柄或使用上下按钮持久调整本房顺序；长按 `Alt + Q` 打开的快捷轮盘会读取这一顺序并展示前 6 条弹幕。数字键 `1–9` 可发送当前页弹幕；轮盘可直接指向并松开发送，“其他收藏”和“更多”会进入对应列表。原生全屏时界面会挂载到 `document.fullscreenElement` 内，因此全屏状态也可操作。
 
 ### 抖音 DOM 接管说明
 
 此版本为抖音视频弹幕启用独立的安全 DOM 接管。扩展旁路读取官方 Worker 已解码的 `addBarrage` 数据，保留原消息投递和原生 Worker，然后按同一弹道模型渲染可交互的真实 DOM 弹幕；不拦截 WebSocket、不解析私有协议，也不复制 Canvas 像素。
 
-每条 DOM 弹幕拥有独立状态。鼠标进入时只冻结当前条目的可视位置；`+1` 发送成功或鼠标移出后，会从悬停位置按原速度继续移动，不再快速追赶后台轨迹，因此不会产生弹射感。`+1` 按钮固定预留在弹幕文字后方，悬停不会拉伸弹幕，也不会把操作误绑定到相邻条目。
+每条 DOM 弹幕拥有独立状态。鼠标进入时只冻结当前条目的可视位置；`+1` 发送成功或鼠标移出后，会从悬停位置按原速度继续移动，不再快速追赶后台轨迹，因此不会产生弹射感。操作胶囊不会覆盖弹幕正文：弹幕尚未完全进入画面或右侧空间不足时显示在左侧，只有完整进入且空间充足后才显示在右侧。
 
 抖音主站会从普通页面通过 SPA 无刷新进入直播间，因此扩展在 `www.douyin.com/*` 仅常驻一个轻量 URL 启动器；路由进入 `/follow/live/*` 时才补注入页面钩子、设置通道和样式。直接打开 `live.douyin.com/*` 仍从 `document_start` 启动。若钩子较晚才认领到现有 Canvas，则会等待官方 `clear` 后的新弹幕或安全过期窗口，避免隐藏尚未同步的原生内容。
 
@@ -52,11 +52,16 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 - 鼠标悬停弹幕时显示 `+1` 按钮，点击后自动发送相同内容。
 - 点击“回复”会自动填入 `@发送者 `，聚焦官方输入框并等待用户继续输入，不会自动发送。
 - 点击“收藏”会把文字、Unicode Emoji、平台图片表情和混排内容完整保存到浏览器本地，不会把图片表情降级成替代文字。
-- 收藏跨直播间可用且本房优先；短按 `Alt + Q` 打开列表，长按呼出鼠标轮盘，全屏模式同样可用。
+- 可在设置中独立显示或隐藏 `+1`、回复、收藏和复制；复制默认关闭，其余三项默认开启，并始终至少保留一个胶囊操作。
+- `+1` 发送具有冷却、重复点击和并发保护；平台返回发言频率、重复发送、禁言等限制时，会优先显示对应官方反馈，而不是统一提示“发送失败”。
+- B 站房间图片表情优先点击官方表情面板；若面板无法唯一定位且弹幕带有可信的 `room_<房间>_<资源>` 标识，则在确认资源所属房间与当前直播间一致后使用直发后备路径。
+- 收藏跨直播间可用且本房优先；收藏页支持拖拽设置持久化的“轮盘顺序”，快捷轮盘取本房该顺序的前 6 条，短按 `Alt + Q` 打开列表、长按呼出轮盘，全屏模式同样可用。
 - 回复会按显示模式选择输入面：普通模式写入侧边聊天框，全屏模式优先写入播放器快捷回复栏。
-- 虎牙、哔哩哔哩与斗鱼的视频弹幕悬停后暂停，移出操作缓冲区后从原位置继续移动。
+- 四个平台的弹幕正文、间隔和操作胶囊组成连续悬停区域；鼠标穿过两者之间的空隙不会让弹幕短暂恢复移动。
+- 虎牙、哔哩哔哩与斗鱼的视频弹幕悬停后暂停，完全移出连续操作区域后从原位置继续移动。
 - 斗鱼播放器自带的 `+1`、回复与收藏胶囊默认关闭，可在“原生胶囊”设置页中恢复显示。
-- 抖音视频弹幕由安全 DOM 层连续渲染，单条悬停暂停、从原位原速续行，且 `+1` 始终位于并绑定当前条目后方。
+- 抖音视频弹幕由安全 DOM 层连续渲染，单条悬停暂停并从原位原速续行；胶囊根据弹幕进入状态和可用空间显示在左侧或右侧。
+- 四个平台的视频弹幕胶囊使用一致的按钮和分隔线宽度，并在弹幕尚未完全进入或右侧空间不足时切换到左侧，避免遮挡正文。
 - 避免相邻或重叠的后续弹幕抢占当前选择。
 - 过滤清晰度、设置菜单等播放器控件，只识别真实弹幕。
 - 支持文字、Emoji 和最长 1000 个 Unicode 字符的弹幕识别；实际发送长度仍受平台规则限制。
@@ -95,14 +100,16 @@ npm run build
 1. 登录受支持平台并进入直播间。
 2. 将鼠标移到右侧聊天消息或视频画面弹幕上。
 3. 点击出现的 `+1` 按钮。
-4. 扩展会写入官方输入框并触发官方发送流程。
+4. 扩展会写入官方输入框并触发官方发送流程。B 站房间图片表情仅在官方面板定位失败且唯一资源标识与当前真实房间一致时使用接口后备发送。
 
 如需回复，点击同一操作条中的“回复”；扩展会填入 `@发送者 ` 并把光标放到官方输入框末尾，后续内容与发送动作由用户完成。
 普通模式使用侧边聊天框；进入全屏后使用播放器内可见的快捷回复栏。
 
-如需收藏，点击操作条中的“收藏”。短按 `Alt + Q` 打开本房收藏列表；“其他直播间”和“全部”会先显示直播间名称，点击任意直播间后进入它的弹幕选择页。列表支持搜索、发送次数/时间正序/时间倒序排序、数字键 `1–9` 快速发送、加入本房和删除。长按 `Alt + Q` 约 0.18 秒会在鼠标位置打开圆形轮盘，移动指针选择后松开即可发送，移回中心或按 `Esc` 取消。
+如需收藏，点击操作条中的“收藏”。短按 `Alt + Q` 打开本房收藏列表；“其他直播间”和“全部”会先显示直播间名称，点击任意直播间后进入它的弹幕选择页。列表支持搜索正文和标签、按发送次数/时间正序/时间倒序/轮盘顺序排序、置顶、编辑标签、数字键 `1–9` 快速发送、加入本房和删除。选择“轮盘顺序”后，可拖动左侧手柄重排，也可使用上移/下移按钮；新顺序会自动保存，并决定快捷轮盘展示的前 6 条。长按 `Alt + Q` 约 0.18 秒会在鼠标位置打开圆形轮盘，移动指针选择后松开即可发送，移回中心或按 `Esc` 取消。
 
-四个平台的侧边聊天栏弹幕胶囊默认关闭，可在“聊天栏胶囊”设置页中分别启用。胶囊包含 `+1`、回复和收藏三个按钮；该设置只影响侧边聊天消息，视频画面弹幕仍由全局功能开关控制。
+四个平台的侧边聊天栏弹幕胶囊默认关闭，可在“聊天栏胶囊”设置页中分别启用。胶囊可包含 `+1`、回复、收藏和复制；四项可在设置中独立开关，复制默认关闭，且最少保留一项。该设置只影响侧边聊天消息，视频画面弹幕仍由全局功能开关控制。
+
+视频弹幕胶囊会自动选择左右位置：弹幕尚未完全进入直播画面，或右侧放不下完整胶囊时，胶囊显示在弹幕左侧；只有弹幕完整进入且右侧空间充足时才显示在右侧。弹幕、两者之间的透明间隔和胶囊属于同一个连续悬停区域，移动鼠标操作按钮时不会发生短暂续行或位置跳动。
 
 斗鱼播放器原生的 `+1`、回复和收藏胶囊也默认关闭，并有独立开关；开启后可能与扩展提供的视频弹幕快捷操作同时显示。
 
@@ -169,10 +176,10 @@ tests/                     清单校验、单元测试和浏览器测试夹具
 ### 隐私与权限
 
 - 申请 `storage` 权限保存扩展设置及本地弹幕收藏；设置使用 `chrome.storage.sync`，收藏使用 `chrome.storage.local` 且不会上传。
-- 申请 `scripting` 权限仅用于抖音首次进房和 SPA 进房时补注入直播运行时。
-- 抖音主机权限覆盖 `live.douyin.com/*` 与 `www.douyin.com/*`；普通抖音页面只运行不读取页面内容的轻量 URL 启动器，完整功能仅在直播路由启用，不覆盖其他网站。
+- 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时，也用于在用户主动发送 B 站房间图片表情且官方面板定位失败时，在当前 B 站标签页中执行一次性后备发送函数。
+- B 站主机权限仅覆盖 `live.bilibili.com/*`，用于既有弹幕识别以及官方面板定位失败后的房间图片表情一次性后备发送；抖音主机权限覆盖 `live.douyin.com/*` 与 `www.douyin.com/*`，普通抖音页面只运行不读取页面内容的轻量 URL 启动器。
 - 完整功能脚本仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面启用。
-- 不读取 Cookie、密码或登录令牌，不调用私有直播接口。
+- 不读取密码，也不存储或传出 Cookie/登录令牌。B 站房间图片表情后备发送只在当前页面内临时读取 CSRF Cookie，并调用与官方网页相同的直播弹幕接口；其他发送仍走平台官方编辑器。
 - 不收集、上传或出售用户数据。
 
 ### 兼容性说明
@@ -209,22 +216,22 @@ Danmaku Echo is a Manifest V3 browser extension for Chrome and Edge. It adds a `
 | --- | --- | --- | --- |
 | Huya Live | ✅ | ✅ | ✅ |
 | Bilibili Live | ✅ | ✅ | ✅ |
-| Douyin Live | ✅ | ✅ (Canvas) | ✅ |
+| Douyin Live | ✅ | ✅ (DOM takeover) | ✅ |
 | Douyu Live | ✅ | ✅ | ✅ |
 
-### v2.1 release notes
+### Favorites and quick actions
 
-This release adds the first version of danmaku favorites. Favorites stay in `chrome.storage.local`; they are neither uploaded nor synchronized between devices. Equal normalized text is stored once globally while retaining its platform and room origins. The launcher focuses the current room by default; **Other rooms** and **All** first show a room list, then open a separate message picker after a room is selected.
+Favorites stay in `chrome.storage.local`; they are neither uploaded nor synchronized between devices. Equal normalized text is stored once globally while retaining its platform and room origins. Favorites can be pinned per room, labeled with searchable tags, and arranged in a persistent **Wheel order**. Import and export validate incoming data and retain a redundant local recovery copy. The launcher focuses the current room by default; **Other rooms** and **All** first show a room list, then open a separate message picker after a room is selected.
 
 All recognizable messages can be favorited, including plain text, Unicode emoji, platform image emotes, and mixed text/emote content. Rich favorites preserve their display text, content order, and platform resource identity while remaining compatible with legacy plain-text data.
 
-Short-press `Alt + Q` in a live room to open the fixed panel, where search, send-count/collection-time sorting, number keys `1–9` for the current message page, add-to-room, and delete are available. Hold `Alt + Q` to open a cursor-centered radial menu with circular, icon-free choices: current-room favorites send directly on release, while **Other favorites** and **More** open the corresponding room list. In native fullscreen the launcher mounts inside `document.fullscreenElement`.
+Short-press `Alt + Q` in a live room to open the fixed panel, where search, send-count/collection-time/**Wheel order** sorting, number keys `1–9` for the current message page, add-to-room, and delete are available. In **Wheel order**, drag the handle or use the move buttons to persistently reorder favorites. Hold `Alt + Q` to open a cursor-centered radial menu containing the first six current-room favorites in that order; releasing sends the selected favorite, while **Other favorites** and **More** open the corresponding room list. In native fullscreen the launcher mounts inside `document.fullscreenElement`.
 
 ### Douyin DOM takeover
 
 This release introduces a dedicated safe DOM takeover for Douyin's on-video danmaku. The extension observes already-decoded `addBarrage` instructions sent to the official Worker, preserves their original delivery and the native Worker, and renders interactive DOM danmaku from the same lane model. It does not intercept WebSockets, decode private protocols, or copy Canvas pixels.
 
-Every DOM barrage has independent interaction state. Hover freezes only that node's visible position. After a successful `+1` or pointer leave, it resumes from the held position at its original speed instead of rapidly catching up to the background trajectory, eliminating the slingshot effect. The fixed `+1` area now sits after the message text without stretching the barrage or rebinding to a neighbor.
+Every DOM barrage has independent interaction state. Hover freezes only that node's visible position. After a successful `+1` or pointer leave, it resumes from the held position at its original speed instead of rapidly catching up to the background trajectory, eliminating the slingshot effect. The action capsule never covers the message: it stays on the left while the barrage is entering or lacks right-side space, and moves to the right only after the message is fully visible and the complete capsule fits.
 
 Douyin can enter a live room from an ordinary page through SPA navigation, so only a lightweight URL bootstrap stays on `www.douyin.com/*`; it injects the page hook, settings channel, and styles when the route enters `/follow/live/*`. Direct `live.douyin.com/*` loads still start at `document_start`. If a late hook recovers an existing Canvas, takeover waits for an official `clear` plus new barrages or a safe expiry window so unsynchronized native content is never hidden.
 
@@ -235,11 +242,14 @@ The native Canvas is hidden with `visibility: hidden` only after the first DOM n
 - Shows a `+1` action when a danmaku is hovered and sends the same content automatically.
 - The Reply action inserts `@sender `, focuses the official editor, and waits for user input without sending automatically.
 - The Favorite action stores plain text, Unicode emoji, platform image emotes, and mixed content locally.
-- Favorites work across rooms with current-room priority; short-press `Alt + Q` for the panel or hold it for the radial menu, including in fullscreen.
+- +1 sending includes cooldown, repeated-click, and concurrent-send protection. Official rate-limit, duplicate-message, moderation, and similar platform feedback is surfaced instead of being collapsed into a generic failure.
+- Favorites work across rooms with current-room priority; the panel provides a persistent draggable **Wheel order**, and the radial menu uses its first six current-room entries. Short-press `Alt + Q` for the panel or hold it for the radial menu, including in fullscreen.
 - Reply targets the side-chat editor in normal mode and the visible in-player quick editor in fullscreen mode.
-- Pauses Huya, Bilibili, and Douyu on-video danmaku on hover, then resumes it from the held position after the pointer leaves.
+- Treats the barrage, the visual gap, and its capsule as one continuous hover target on all four platforms, so crossing the gap never briefly resumes movement.
+- Pauses Huya, Bilibili, and Douyu on-video danmaku on hover, then resumes it from the held position only after the pointer leaves the complete interaction region.
 - Keeps Douyu's native **+1**, **Reply**, and **Favorite** capsule off by default, with an independent switch under the Native capsule settings page.
-- Continuously renders Douyin danmaku in a safe DOM layer with per-item hover pause, same-speed resume from the held position, and a correctly bound trailing `+1` action.
+- Continuously renders Douyin danmaku in a safe DOM layer with per-item hover pause, same-speed resume from the held position, and a correctly bound left-or-right action capsule.
+- Uses equal action and divider widths on every platform and moves the capsule to the left while a barrage is entering or cannot fit the complete capsule on its right, preventing message overlap.
 - Keeps adjacent or overlapping danmaku from stealing the current selection.
 - Rejects player controls such as quality and settings menus.
 - Recognizes text, emoji, and messages up to 1,000 Unicode characters; the platform's own sending limit still applies.
@@ -282,9 +292,11 @@ npm run build
 
 Use the toolbar popup to enable or disable the extension, toggle individual platforms, and control the `Alt + click` fallback.
 
-Click **Favorite** in a danmaku action bar to store it. Short-press `Alt + Q` for the current-room list; search, number-key sending, other-room browsing, add-to-room, and deletion are available there. Hold `Alt + Q` for about 0.18 seconds to open the cursor-centered radial menu, point to an item, and release to send; move back to the center or press `Esc` to cancel.
+Click **Favorite** in a danmaku action bar to store it. Short-press `Alt + Q` for the current-room list; search, number-key sending, other-room browsing, add-to-room, deletion, and **Wheel order** editing are available there. Select **Wheel order**, then drag a handle or use the move buttons to persist the order; the radial menu displays its first six current-room entries. Hold `Alt + Q` for about 0.18 seconds to open the cursor-centered radial menu, point to an item, and release to send; move back to the center or press `Esc` to cancel.
 
-The side-chat action capsule is disabled by default on all four platforms. Enable each platform independently under **Settings → Chat capsule**. The capsule contains **+1**, **Reply**, and **Favorite**; these switches affect side-chat messages only, while on-video danmaku continues to follow the global action settings.
+The side-chat action capsule is disabled by default on all four platforms. Enable each platform independently under **Settings → Chat capsule**. The capsule can contain **+1**, **Reply**, **Favorite**, and **Copy**; each action is independently configurable, Copy defaults off, and at least one action remains enabled. These switches affect side-chat messages only, while on-video danmaku continues to follow the global action settings.
+
+On-video capsules choose their side automatically. A capsule stays to the left while its barrage is still entering the player or when the full capsule cannot fit on the right; it moves right only after the barrage is fully visible and enough space is available. The barrage, gap, and capsule form one continuous hover region, preventing momentary resume or position jumps while moving to an action button.
 
 For Douyin diagnostics, press `Ctrl + Alt + D` in a live room. Startup, Canvas instances, DOM-takeover state, active-node counts, fallback reasons, and recent events are written to DevTools with the `[Danmaku Echo]` prefix.
 
@@ -348,7 +360,7 @@ tests/                     Manifest checks, unit tests, and browser fixtures
 
 - Requests `storage` for synchronized settings and local favorites. Favorites use `chrome.storage.local` and are never uploaded.
 - Requests `scripting` only to recover the Douyin live runtime on direct and SPA room entry.
-- Its Douyin host permission covers `live.douyin.com/*` and `www.douyin.com/*`. Ordinary Douyin pages run only a lightweight URL bootstrap that does not read page content; the complete runtime activates only on live routes and never on unrelated sites.
+- Bilibili host access is limited to `live.bilibili.com/*` for existing danmaku recognition and the one-shot room-image fallback after a failed panel lookup. Douyin host access covers `live.douyin.com/*` and `www.douyin.com/*`; ordinary Douyin pages run only a lightweight URL bootstrap.
 - Activates complete feature scripts only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages.
 - Does not read cookies, passwords, or login tokens and does not call private live APIs.
 - Does not collect, upload, or sell user data.

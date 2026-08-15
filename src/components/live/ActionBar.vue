@@ -26,13 +26,13 @@
         :data-bcp-one-owned="variant === 'common' ? 'true' : undefined"
         :data-bcp-douyin-owned="variant === 'douyin' ? 'true' : undefined"
         :hidden="!visible"
-        :disabled="action.key === 'plusOne' && sending"
+        :disabled="action.key === 'plusOne' && (sending || cooldownSeconds > 0)"
         :title="actionTitle(action.key, action.label)"
         :aria-label="actionTitle(action.key, action.label)"
         @click="activate(action.key, $event)"
         @pointerenter="action.key === 'plusOne' && emit('pointerenter')"
       >
-        {{ action.key === "plusOne" && sending ? "…" : action.label }}
+        {{ actionLabel(action.key, action.label) }}
       </button>
     </template>
   </div>
@@ -47,6 +47,7 @@ type ActionKey = keyof ActionSettings;
 
 const props = withDefaults(defineProps<{
   actions: ActionSettings;
+  cooldownSeconds?: number;
   message?: string;
   sender?: string;
   sending?: boolean;
@@ -54,11 +55,13 @@ const props = withDefaults(defineProps<{
   visible: boolean;
 }>(), {
   message: "",
+  cooldownSeconds: 0,
   sender: "",
   sending: false
 });
 
 const emit = defineEmits<{
+  copy: [event: MouseEvent];
   favorite: [event: MouseEvent];
   placeholder: [event: MouseEvent, action: "reply"];
   plusOne: [event: MouseEvent];
@@ -82,7 +85,8 @@ const classes = computed(() => props.variant === "common" ? {
 const visibleActions = computed(() => [
   { key: "plusOne" as const, label: t("actionPlusOne"), dataAction: "plus-one" },
   { key: "reply" as const, label: t("actionReply"), dataAction: "reply" },
-  { key: "favorite" as const, label: t("actionFavorite"), dataAction: "favorite" }
+  { key: "favorite" as const, label: t("actionFavorite"), dataAction: "favorite" },
+  { key: "copy" as const, label: t("actionCopy"), dataAction: "copy" }
 ].filter((action) => props.actions[action.key]));
 
 function activate(action: ActionKey, event: MouseEvent): void {
@@ -90,6 +94,8 @@ function activate(action: ActionKey, event: MouseEvent): void {
     emit("plusOne", event);
   } else if (action === "favorite") {
     emit("favorite", event);
+  } else if (action === "copy") {
+    emit("copy", event);
   } else {
     emit("placeholder", event, "reply");
   }
@@ -97,6 +103,7 @@ function activate(action: ActionKey, event: MouseEvent): void {
 
 function actionTitle(action: ActionKey, label: string): string {
   if (action === "plusOne") {
+    if (props.cooldownSeconds > 0) return t("actionCooldownTitle", String(props.cooldownSeconds));
     return t("actionRepeatTitle", props.message);
   }
   if (action === "reply") {
@@ -104,7 +111,14 @@ function actionTitle(action: ActionKey, label: string): string {
       ? t("actionReplyUserTitle", props.sender)
       : t("actionReplyMessageTitle", props.message);
   }
+  if (action === "copy") return t("actionCopyTitle", props.message);
   return label;
+}
+
+function actionLabel(action: ActionKey, label: string): string {
+  if (action !== "plusOne") return label;
+  if (props.sending) return "…";
+  return props.cooldownSeconds > 0 ? `${props.cooldownSeconds}s` : label;
 }
 
 </script>

@@ -181,6 +181,53 @@ test("shows platform image names from tokens and metadata instead of generic lab
   assert.equal(saved.item.normalizedText.includes("害羞"), true);
 });
 
+test("prefers a Bilibili room Emoji name over a neighboring badge description", () => {
+  assert.equal(favorites.favoriteAssetDisplayName({
+    keys: [
+      "native-panel:room_5236391_63398",
+      "name:这是 ta 的荣耀等级勋章 (●'◡'●)ノ♥",
+      "name:发财了",
+      "file:393a700286ed5c33ede3901e69b7824462ebe363.png"
+    ],
+    src: "https://i0.hdslb.com/bfs/live/393a700286ed5c33ede3901e69b7824462ebe363.png",
+    token: "[这是 TA 的荣耀等级勋章 (●'◡'●)ノ♥]"
+  }), "[发财了]");
+});
+
+test("re-favoriting repairs a Bilibili room Emoji previously saved as a badge image", async () => {
+  const repository = favorites.createFavoritesRepository(memoryStorage());
+  await repository.load();
+  const identity = "native-panel:room_5236391_63397";
+  const wrongAsset = {
+    keys: [identity, "file:5d5e873b7b0d1894c56c4843bfba4617ff22e490.webp"],
+    src: "https://i1.hdslb.com/bfs/live/5d5e873b7b0d1894c56c4843bfba4617ff22e490.webp",
+    token: "[这是 TA 的荣耀等级勋章 (●'◡'●)ノ♥]"
+  };
+  const correctAsset = {
+    keys: [identity, "file:c563e55ab43e890d310651132a0ed549d9ddc6b1.png"],
+    src: "https://i0.hdslb.com/bfs/live/c563e55ab43e890d310651132a0ed549d9ddc6b1.png",
+    token: "[生无可恋]"
+  };
+
+  await repository.favorite("这是 TA 的荣耀等级勋章 (●'◡'●)ノ♥", roomA, {
+    assets: [wrongAsset],
+    parts: [{ type: "emoji", asset: wrongAsset }],
+    plainText: "",
+    text: "这是 TA 的荣耀等级勋章 (●'◡'●)ノ♥"
+  });
+  const repaired = await repository.favorite("[生无可恋]", roomA, {
+    assets: [correctAsset],
+    parts: [{ type: "emoji", asset: correctAsset }],
+    plainText: "",
+    text: "[生无可恋]"
+  });
+
+  assert.equal(repaired.added, false);
+  assert.equal(repository.database.items.length, 1);
+  assert.equal(repaired.item.text, "[生无可恋]");
+  assert.equal(repaired.item.payload.assets[0].keys.includes(identity), true);
+});
+
 test("distinguishes rich favorites with the same display text by resource identity", async () => {
   const repository = favorites.createFavoritesRepository(memoryStorage());
   await repository.load();
@@ -299,6 +346,36 @@ test("re-favoriting an opaque legacy image upgrades its name without creating a 
   assert.equal(repository.database.items[0].payload.assets[0].token, "[哇]");
 });
 
+test("re-favoriting a Douyu pinyin image upgrades it to the official rel name", async () => {
+  const repository = favorites.createFavoritesRepository(memoryStorage());
+  await repository.load();
+  const resource = {
+    keys: ["file:gougutou_0fd69bd.png", "slug:gougutou"],
+    src: "https://shark2.douyucdn.cn/assets/images/gougutou_0fd69bd.png/fmtpng"
+  };
+  await repository.favorite("[gougutou]", roomA, {
+    text: "[gougutou]",
+    plainText: "",
+    assets: [{ ...resource, token: "[gougutou]" }],
+    parts: [{ type: "emoji", asset: { ...resource, token: "[gougutou]" } }]
+  });
+
+  const upgraded = await repository.favorite("[狗骨头]", roomA, {
+    text: "[狗骨头]",
+    plainText: "",
+    assets: [{ ...resource, keys: [...resource.keys, "name:狗骨头"], token: "[狗骨头]" }],
+    parts: [{
+      type: "emoji",
+      asset: { ...resource, keys: [...resource.keys, "name:狗骨头"], token: "[狗骨头]" }
+    }]
+  });
+
+  assert.equal(upgraded.added, false);
+  assert.equal(repository.database.items.length, 1);
+  assert.equal(repository.database.items[0].text, "[狗骨头]");
+  assert.equal(repository.database.items[0].payload.assets[0].token, "[狗骨头]");
+});
+
 test("sorts favorites by send count by default while preserving room filters", async () => {
   const repository = favorites.createFavoritesRepository(memoryStorage());
   await repository.load();
@@ -351,6 +428,109 @@ test("supports ascending and descending collection-time sorting", async () => {
     ), (item) => item.text),
     ["较早收藏", "较晚收藏"]
   );
+});
+
+test("pins favorites per room ahead of every selected sort", async () => {
+  const repository = favorites.createFavoritesRepository(memoryStorage());
+  await repository.load();
+  const first = await repository.favorite("普通收藏", roomA);
+  const pinned = await repository.favorite("需要置顶", roomA);
+  await repository.recordSent(first.item.id, roomA);
+  await repository.setPinned(pinned.item.id, roomA.roomKey, true);
+
+  for (const sort of ["send-count", "time-asc", "time-desc", "custom"]) {
+    const ranked = favorites.rankedFavorites(
+      repository.database.items, roomA, "current", "", sort
+    );
+    assert.equal(ranked[0].id, pinned.item.id);
+    assert.equal(ranked[0].pinned, true);
+  }
+  assert.equal(repository.database.items.find((item) => item.id === first.item.id)
+    .roomStats[roomA.roomKey].pinned, false);
+});
+
+test("stores normalized tags and finds favorites by tag", async () => {
+  const repository = favorites.createFavoritesRepository(memoryStorage());
+  await repository.load();
+  const saved = await repository.favorite("今晚加油", roomA);
+  await repository.setTags(saved.item.id, ["  高能  ", "高能", "主播", "x".repeat(40)]);
+
+  const item = repository.database.items[0];
+  assert.deepEqual(Array.from(item.tags), ["高能", "主播", "x".repeat(20)]);
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      repository.database.items, roomA, "current", "主播"
+    ), (entry) => entry.id),
+    [saved.item.id]
+  );
+});
+
+test("supports persistent custom ordering inside each room", async () => {
+  const storage = memoryStorage();
+  const repository = favorites.createFavoritesRepository(storage);
+  await repository.load();
+  const first = await repository.favorite("第一条", roomA);
+  const second = await repository.favorite("第二条", roomA);
+  const third = await repository.favorite("第三条", roomA);
+  await repository.favorite("第四条", roomA);
+
+  await repository.move(second.item.id, roomA.roomKey, "up");
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      repository.database.items, roomA, "current", "", "custom"
+    ), (item) => item.text),
+    ["第二条", "第一条", "第三条", "第四条"]
+  );
+
+  await repository.move(second.item.id, roomA.roomKey, "down");
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      repository.database.items, roomA, "current", "", "custom"
+    ), (item) => item.text),
+    ["第一条", "第二条", "第三条", "第四条"]
+  );
+
+  await repository.reorder(first.item.id, third.item.id, roomA.roomKey, "after");
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      repository.database.items, roomA, "current", "", "custom"
+    ), (item) => item.text),
+    ["第二条", "第三条", "第一条", "第四条"]
+  );
+
+  const reloaded = favorites.createFavoritesRepository(storage);
+  await reloaded.load();
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      reloaded.database.items, roomA, "current", "", "custom"
+    ), (item) => item.text),
+    ["第二条", "第三条", "第一条", "第四条"]
+  );
+});
+
+test("loads old schema-v2 favorites with default tags and deterministic custom order", async () => {
+  const repository = favorites.createFavoritesRepository(memoryStorage());
+  await repository.load();
+  await repository.favorite("旧收藏一", roomA);
+  await repository.favorite("旧收藏二", roomA);
+  const stored = repository.database;
+  stored.items.forEach((item) => {
+    delete item.tags;
+    delete item.roomStats[roomA.roomKey].customOrder;
+  });
+  const reloaded = favorites.createFavoritesRepository(memoryStorage({
+    danmakuEchoFavoritesV1: stored
+  }));
+  await reloaded.load();
+
+  assert.deepEqual(Array.from(reloaded.database.items, (item) => Array.from(item.tags)), [[], []]);
+  assert.deepEqual(
+    Array.from(favorites.rankedFavorites(
+      reloaded.database.items, roomA, "current", "", "custom"
+    ), (item) => item.customOrder),
+    [1, 2]
+  );
+  assert.equal(reloaded.database.schemaVersion, 2);
 });
 
 test("groups other and all favorites by room before exposing messages", async () => {
@@ -512,6 +692,38 @@ test("keeps only the themed outer ring on the favorites radial menu", () => {
   assert.doesNotMatch(styles, /\.bcp-favorites-radial-item\.is-selected\s*\{[\s\S]*?border-color:/);
 });
 
+test("renders a theme-colored radial bot that follows the pointer direction", () => {
+  const component = readFileSync(
+    resolve(root, "src", "features", "favorites", "FavoritesLauncher.vue"),
+    "utf8"
+  );
+  const launcher = readFileSync(
+    resolve(root, "src", "features", "favorites", "launcher.ts"),
+    "utf8"
+  );
+  const styles = readFileSync(
+    resolve(root, "src", "assets", "styles", "favorites.scss"),
+    "utf8"
+  );
+
+  assert.match(component, /class="bcp-favorites-radial-bot-eyes"/);
+  assert.match(component, /class="bcp-favorites-radial-bot-expression"/);
+  assert.match(component, /selectedOption \? `is-\$\{selectedOption\.kind\}` : 'is-idle'/);
+  assert.match(component, /--bcp-favorites-gaze-angle/);
+  assert.doesNotMatch(component, /class="bcp-favorites-radial-copy"/);
+  assert.match(launcher, /function updateRadialGaze\(deltaX: number, deltaY: number\)/);
+  assert.match(launcher, /state\.radialGazeAngle = angle/);
+  assert.match(styles, /\.bcp-favorites-radial-center\s*\{[\s\S]*?var\(--bcp-favorite-accent-end\)/);
+  assert.match(styles, /\.bcp-favorites-radial-bot-eyes\s*\{[\s\S]*?rotate\(var\(--bcp-favorites-gaze-angle\)\)/);
+  assert.match(styles, /@keyframes bcp-favorites-bot-blink/);
+  assert.match(styles, /@keyframes bcp-favorites-bot-react/);
+  assert.match(styles, /\.bcp-favorites-radial-center\.is-favorite/);
+  assert.match(styles, /\.bcp-favorites-radial-center\.is-more/);
+  assert.match(styles, /\.bcp-favorites-radial-center\.is-other/);
+  assert.doesNotMatch(styles, /\.bcp-favorites-radial-copy/);
+  assert.match(styles, /prefers-reduced-motion:[\s\S]*?\.bcp-favorites-radial-bot-eyes/);
+});
+
 test("uses a compact text-only send button in favorite rows", () => {
   const row = readFileSync(
     resolve(root, "src", "features", "favorites", "FavoriteItemRow.vue"),
@@ -526,6 +738,26 @@ test("uses a compact text-only send button in favorite rows", () => {
   assert.match(row, /t\(["']favoritesSend["']\)/);
   assert.doesNotMatch(row, /telegram/);
   assert.match(styles, /\.bcp-favorites-send\s*\{[\s\S]*?border-radius:\s*14px/);
+});
+
+test("offers drag reordering with a keyboard-accessible fallback", () => {
+  const component = readFileSync(
+    resolve(root, "src", "features", "favorites", "FavoritesLauncher.vue"),
+    "utf8"
+  );
+  const row = readFileSync(
+    resolve(root, "src", "features", "favorites", "FavoriteItemRow.vue"),
+    "utf8"
+  );
+
+  assert.match(component, /emit\("reorder", source\.id, target\.id, placement\)/);
+  assert.match(row, /class="bcp-favorites-drag-handle"/);
+  assert.match(row, /src="\.\.\/\.\.\/\.\.\/public\/assets\/icons\/drag\.svg"/);
+  assert.match(row, /draggable="true"/);
+  assert.match(row, /@dragstart\.stop=/);
+  assert.match(row, /favoritesDragHint/);
+  assert.match(row, /favoritesMoveUpAria/);
+  assert.match(row, /favoritesMoveDownAria/);
 });
 
 test("routes long-lived capsule writes through the wakeable background service", () => {
@@ -550,8 +782,14 @@ test("routes long-lived capsule writes through the wakeable background service",
   assert.match(worker, /favoritesRepository\.addToRoom/);
   assert.match(worker, /favoritesRepository\.recordSent/);
   assert.match(worker, /favoritesRepository\.remove/);
+  assert.match(worker, /favoritesRepository\.reorder/);
   assert.match(launcher, /operation: "add-to-room"/);
   assert.match(launcher, /operation: "record-sent"/);
   assert.match(launcher, /operation: "remove"/);
+  assert.match(launcher, /operation: "reorder"/);
+  assert.match(
+    launcher,
+    /rankedFavorites\([\s\S]*?"current"[\s\S]*?"custom"[\s\S]*?\)\.slice\(0, 6\)/
+  );
   assert.doesNotMatch(launcher, /await repository\.recordSent/);
 });

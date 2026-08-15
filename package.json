@@ -1,9 +1,9 @@
 {
   "name": "danmaku-echo",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "private": true,
   "type": "module",
-  "description": "Danmaku echoing, replies, and local favorites for Huya, Bilibili, Douyin, and Douyu Live",
+  "description": "Danmaku echoing, replies, copying, and local favorites for Huya, Bilibili, Douyin, and Douyu Live",
   "license": "GPL-3.0-or-later",
   "keywords": [
     "danmaku",

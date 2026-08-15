@@ -38,6 +38,9 @@ export interface FavoritesLauncherState {
   mode: "closed" | "panel" | "radial";
   otherCount: number;
   radialOptions: RadialOption[];
+  radialGazeAngle: number;
+  radialGazeX: number;
+  radialGazeY: number;
   room: RoomContext;
   search: string;
   selectedRadialKey: string;
@@ -67,7 +70,7 @@ type FavoritesRuntimeScope = typeof globalThis & {
 const HOLD_DELAY = 180;
 const RADIAL_CANCEL_RADIUS = 42;
 const RADIAL_MAX_RADIUS = 230;
-const FAVORITES_UI_VERSION = 2;
+const FAVORITES_UI_VERSION = 3;
 const OWNER_SELECTOR = "[data-bcp-favorites-runtime-owner='true']";
 const STALE_PORTAL_SELECTOR = ".bcp-favorites-host, .bcp-favorites-portal";
 const OPEN_REQUEST_EVENT = "danmaku-echo:favorites-open";
@@ -237,6 +240,9 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     mode: "closed",
     otherCount: 0,
     radialOptions: [],
+    radialGazeAngle: -45,
+    radialGazeX: 5.5,
+    radialGazeY: -5.5,
     room: initialRoom,
     search: "",
     selectedRadialKey: "",
@@ -269,7 +275,11 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     onBackToRooms: () => backToRooms(),
     onChangeView: (view: FavoriteView) => changeView(view),
     onClose: close,
+    onMove: (id: string, direction: "down" | "up") => void move(id, direction),
+    onPin: (id: string, pinned: boolean) => void setPinned(id, pinned),
     onRemove: (id: string) => void remove(id),
+    onReorder: (id: string, targetId: string, placement: "after" | "before") =>
+      void reorder(id, targetId, placement),
     onSearch: (value: string) => {
       state.search = value;
       refresh();
@@ -277,6 +287,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     onSend: (id: string) => void sendById(id),
     onSelectRoom: (roomKey: string) => selectRoom(roomKey),
     onSort: (sort: FavoriteSort) => changeSort(sort),
+    onTags: (id: string, tags: string[]) => void setTags(id, tags),
   });
   app.mount(mountPoint);
 
@@ -352,7 +363,13 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   function radialOptions(): RadialOption[] {
-    const current = rankedFavorites(repository.database.items, room(), "current").slice(0, 6);
+    const current = rankedFavorites(
+      repository.database.items,
+      room(),
+      "current",
+      "",
+      "custom"
+    ).slice(0, 6);
     const raw: Array<Omit<RadialOption, "angle">> = current.map((item) => ({
       detail: item.text,
       favoriteId: item.id,
@@ -402,14 +419,31 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     state.centerY = Math.max(verticalInset, Math.min(pointerY, innerHeight - verticalInset));
     state.radialOptions = radialOptions();
     state.selectedRadialKey = "";
+    state.radialGazeAngle = -45;
+    state.radialGazeX = 5.5;
+    state.radialGazeY = -5.5;
     state.mode = "radial";
+    updateRadialGaze(pointerX - state.centerX, pointerY - state.centerY);
+  }
+
+  function updateRadialGaze(deltaX: number, deltaY: number): number {
+    const distance = Math.hypot(deltaX, deltaY);
+    if (distance < 1) {
+      return distance;
+    }
+    const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
+    const gazeDistance = Math.min(10, distance * 0.16);
+    state.radialGazeAngle = angle;
+    state.radialGazeX = Math.cos(angle * Math.PI / 180) * gazeDistance;
+    state.radialGazeY = Math.sin(angle * Math.PI / 180) * gazeDistance;
+    return distance;
   }
 
   function updateRadialSelection(x: number, y: number): void {
     if (state.mode !== "radial") return;
     const deltaX = x - state.centerX;
     const deltaY = y - state.centerY;
-    const distance = Math.hypot(deltaX, deltaY);
+    const distance = updateRadialGaze(deltaX, deltaY);
     if (distance < RADIAL_CANCEL_RADIUS || distance > RADIAL_MAX_RADIUS) {
       state.selectedRadialKey = "";
       return;
@@ -456,6 +490,70 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     }
   }
 
+  function activeRoomKey(): string {
+    return state.view === "current"
+      ? state.room.roomKey
+      : state.selectedRoomKey || state.room.roomKey;
+  }
+
+  async function setPinned(id: string, pinned: boolean): Promise<void> {
+    try {
+      await mutateFavoriteInBackground({
+        id,
+        operation: "set-pinned",
+        pinned,
+        room: room(),
+        targetRoomKey: activeRoomKey()
+      });
+      options.showToast(t(pinned ? "favoritesPinned" : "favoritesUnpinned"), "success");
+    } catch (error) {
+      options.showToast(favoriteErrorMessage(error), "error");
+    }
+  }
+
+  async function setTags(id: string, tags: string[]): Promise<void> {
+    try {
+      await mutateFavoriteInBackground({ id, operation: "set-tags", room: room(), tags });
+      options.showToast(t("favoritesTagsSaved"), "success");
+    } catch (error) {
+      options.showToast(favoriteErrorMessage(error), "error");
+    }
+  }
+
+  async function move(id: string, direction: "down" | "up"): Promise<void> {
+    try {
+      await mutateFavoriteInBackground({
+        direction,
+        id,
+        operation: "move",
+        room: room(),
+        targetRoomKey: activeRoomKey()
+      });
+    } catch (error) {
+      options.showToast(favoriteErrorMessage(error), "error");
+    }
+  }
+
+  async function reorder(
+    id: string,
+    targetId: string,
+    placement: "after" | "before"
+  ): Promise<void> {
+    try {
+      await mutateFavoriteInBackground({
+        id,
+        operation: "reorder",
+        placement,
+        room: room(),
+        targetId,
+        targetRoomKey: activeRoomKey()
+      });
+      options.showToast(t("favoritesOrderSaved"), "success");
+    } catch (error) {
+      options.showToast(favoriteErrorMessage(error), "error");
+    }
+  }
+
   function changeView(view: FavoriteView): void {
     state.view = view;
     state.selectedRoomKey = "";
@@ -484,7 +582,8 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     if (!group) return [];
     const query = state.search.replace(/\s+/g, " ").trim().toLowerCase();
     if (!query || group.roomName.toLowerCase().includes(query)) return group.items;
-    return group.items.filter((item) => item.normalizedText.includes(query));
+    return group.items.filter((item) => item.normalizedText.includes(query)
+      || item.tags.some((tag) => tag.toLowerCase().includes(query)));
   }
 
   function onPointerMove(event: PointerEvent): void {

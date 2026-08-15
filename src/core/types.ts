@@ -32,6 +32,7 @@ export interface NativeDanmakuCapsuleSettings {
 }
 
 export interface ActionSettings {
+  copy: boolean
   favorite: boolean
   plusOne: boolean
   reply: boolean

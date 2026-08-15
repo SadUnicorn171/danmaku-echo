@@ -122,6 +122,7 @@
             @change="emit('sort', ($event.target as HTMLSelectElement).value as FavoriteSort)"
           >
             <option value="send-count">{{ t("favoritesSortSendCount") }}</option>
+            <option value="custom">{{ t("favoritesSortCustom") }}</option>
             <option value="time-desc">{{ t("favoritesSortTimeDesc") }}</option>
             <option value="time-asc">{{ t("favoritesSortTimeAsc") }}</option>
           </select>
@@ -151,16 +152,31 @@
         </button>
       </div>
 
-      <ol v-else-if="state.view === 'current'" class="bcp-favorites-list" role="tabpanel">
+      <ol
+        v-else-if="state.view === 'current'"
+        class="bcp-favorites-list"
+        role="tabpanel"
+        :aria-label="state.sort === 'custom' ? t('favoritesFixedOrderAria') : undefined"
+      >
         <FavoriteItemRow
           v-for="(item, index) in state.items"
           :key="item.id"
           :item="item"
           :pending-remove-id="pendingRemoveId"
           :shortcut-index="index"
+          :custom-sorting="state.sort === 'custom'"
+          :dragging="draggingId === item.id"
+          :drop-position="dropTargetId === item.id ? dropPosition : ''"
           @add-to-room="emit('addToRoom', $event)"
+          @drag-end="finishDrag"
+          @drag-over="previewDrag"
+          @drag-start="startDrag"
+          @drop="dropFavorite"
+          @move="(id, direction) => emit('move', id, direction)"
+          @pin="(id, pinned) => emit('pin', id, pinned)"
           @request-remove="confirmRemove"
           @send="emit('send', $event)"
+          @tags="(id, tags) => emit('tags', id, tags)"
         />
       </ol>
 
@@ -190,16 +206,31 @@
         </li>
       </ul>
 
-      <ol v-else class="bcp-favorites-list bcp-favorites-room-items" role="tabpanel">
+      <ol
+        v-else
+        class="bcp-favorites-list bcp-favorites-room-items"
+        role="tabpanel"
+        :aria-label="state.sort === 'custom' ? t('favoritesFixedOrderAria') : undefined"
+      >
         <FavoriteItemRow
           v-for="(item, index) in selectedItems"
           :key="`${selectedRoom.roomKey}:${item.id}`"
           :item="item"
           :pending-remove-id="pendingRemoveId"
           :shortcut-index="index"
+          :custom-sorting="state.sort === 'custom'"
+          :dragging="draggingId === item.id"
+          :drop-position="dropTargetId === item.id ? dropPosition : ''"
           @add-to-room="emit('addToRoom', $event)"
+          @drag-end="finishDrag"
+          @drag-over="previewDrag"
+          @drag-start="startDrag"
+          @drop="dropFavorite"
+          @move="(id, direction) => emit('move', id, direction)"
+          @pin="(id, pinned) => emit('pin', id, pinned)"
           @request-remove="confirmRemove"
           @send="emit('send', $event)"
+          @tags="(id, tags) => emit('tags', id, tags)"
         />
       </ol>
 
@@ -236,10 +267,25 @@
       <div class="bcp-favorites-radial-hint" aria-hidden="true">
         {{ t("favoritesWheelHint") }}
       </div>
-      <div :class="['bcp-favorites-radial-center', { 'has-selection': selectedOption }]">
-        <span v-if="!selectedOption" class="bcp-favorites-radial-monogram" aria-hidden="true">+1</span>
-        <strong>{{ selectedOption?.label || t('favoritesWheel') }}</strong>
-        <span>{{ selectedOption ? selectionHint : t('favoritesWheelMove') }}</span>
+      <div
+        :class="[
+          'bcp-favorites-radial-center',
+          { 'has-selection': selectedOption },
+          selectedOption ? `is-${selectedOption.kind}` : 'is-idle'
+        ]"
+        :style="radialBotStyle"
+      >
+        <span class="bcp-favorites-radial-bot" aria-hidden="true">
+          <span class="bcp-favorites-radial-bot-eyes">
+            <span
+              :key="selectedOption?.key || 'idle'"
+              class="bcp-favorites-radial-bot-expression"
+            >
+              <span class="bcp-favorites-radial-bot-eye" />
+              <span class="bcp-favorites-radial-bot-eye" />
+            </span>
+          </span>
+        </span>
       </div>
       <button
         v-for="option in state.radialOptions"
@@ -262,10 +308,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, ref, watch, type CSSProperties } from "vue";
 import FavoriteItemRow from "./FavoriteItemRow.vue";
 import type { PlatformId } from "../../core/types";
-import type { FavoriteSort, FavoriteView } from "./types";
+import type { FavoriteDisplayItem, FavoriteSort, FavoriteView } from "./types";
 import type { FavoritesLauncherState } from "./launcher";
 import { t } from "../../core/i18n";
 
@@ -274,17 +320,24 @@ const emit = defineEmits<{
   addToRoom: [id: string];
   changeView: [view: FavoriteView];
   close: [];
+  move: [id: string, direction: "down" | "up"];
+  pin: [id: string, pinned: boolean];
   remove: [id: string];
+  reorder: [id: string, targetId: string, placement: "after" | "before"];
   search: [value: string];
   send: [id: string];
   selectRoom: [roomKey: string];
   sort: [sort: FavoriteSort];
+  tags: [id: string, tags: string[]];
   backToRooms: [];
 }>();
 
 const panelRef = ref<HTMLElement | null>(null);
 const searchRef = ref<HTMLInputElement | null>(null);
 const pendingRemoveId = ref("");
+const draggingId = ref("");
+const dropTargetId = ref("");
+const dropPosition = ref<"" | "after" | "before">("");
 const tabs: Array<{ key: FavoriteView; label: string }> = [
   { key: "current", label: t("favoritesCurrent") },
   { key: "other", label: t("favoritesOtherRooms") },
@@ -298,7 +351,8 @@ const normalizedSearch = computed(() => props.state.search.replace(/\s+/g, " ").
 const visibleGroups = computed(() => {
   if (!normalizedSearch.value) return props.state.groups;
   return props.state.groups.filter((group) => group.roomName.toLowerCase().includes(normalizedSearch.value)
-    || group.items.some((item) => item.normalizedText.includes(normalizedSearch.value)));
+    || group.items.some((item) => item.normalizedText.includes(normalizedSearch.value)
+      || item.tags.some((tag) => tag.toLowerCase().includes(normalizedSearch.value))));
 });
 const selectedItems = computed(() => {
   const group = selectedRoom.value;
@@ -306,13 +360,19 @@ const selectedItems = computed(() => {
   if (!normalizedSearch.value || group.roomName.toLowerCase().includes(normalizedSearch.value)) {
     return group.items;
   }
-  return group.items.filter((item) => item.normalizedText.includes(normalizedSearch.value));
+  return group.items.filter((item) => item.normalizedText.includes(normalizedSearch.value)
+    || item.tags.some((tag) => tag.toLowerCase().includes(normalizedSearch.value)));
 });
+const sortableItems = computed(() => props.state.view === "current"
+  ? props.state.items
+  : selectedItems.value);
 const selectedOption = computed(() => props.state.radialOptions
   .find((option) => option.key === props.state.selectedRadialKey));
-const selectionHint = computed(() => selectedOption.value?.kind === "favorite"
-  ? t("favoritesReleaseToSend")
-  : t("favoritesReleaseToOpen"));
+const radialBotStyle = computed<CSSProperties>(() => ({
+  "--bcp-favorites-gaze-angle": `${props.state.radialGazeAngle - 90}deg`,
+  "--bcp-favorites-gaze-x": `${props.state.radialGazeX}px`,
+  "--bcp-favorites-gaze-y": `${props.state.radialGazeY}px`
+}));
 const hasResults = computed(() => props.state.view === "current"
   ? Boolean(props.state.items.length)
   : selectedRoom.value
@@ -390,9 +450,66 @@ function focusSearch(): void {
   searchRef.value?.focus({ preventScroll: true });
 }
 
+function finishDrag(): void {
+  draggingId.value = "";
+  dropTargetId.value = "";
+  dropPosition.value = "";
+}
+
+function sortableItem(id: string): FavoriteDisplayItem | undefined {
+  return sortableItems.value.find((item) => item.id === id);
+}
+
+function dragPlacement(event: DragEvent): "after" | "before" | "" {
+  const element = event.currentTarget;
+  if (!(element instanceof HTMLElement)) return "";
+  const bounds = element.getBoundingClientRect();
+  return event.clientY < bounds.top + bounds.height / 2 ? "before" : "after";
+}
+
+function startDrag(id: string, event: DragEvent): void {
+  if (props.state.sort !== "custom" || !event.dataTransfer) return;
+  draggingId.value = id;
+  event.dataTransfer.effectAllowed = "move";
+  event.dataTransfer.setData("text/plain", id);
+}
+
+function previewDrag(targetId: string, event: DragEvent): void {
+  const sourceId = draggingId.value || event.dataTransfer?.getData("text/plain") || "";
+  const source = sortableItem(sourceId);
+  const target = sortableItem(targetId);
+  if (!source || !target || source.id === target.id || source.pinned !== target.pinned) {
+    dropTargetId.value = "";
+    dropPosition.value = "";
+    return;
+  }
+  const placement = dragPlacement(event);
+  if (!placement) return;
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+  if (dropTargetId.value === targetId && dropPosition.value === placement) return;
+  dropTargetId.value = targetId;
+  dropPosition.value = placement;
+}
+
+function dropFavorite(targetId: string, event: DragEvent): void {
+  const sourceId = draggingId.value || event.dataTransfer?.getData("text/plain") || "";
+  const source = sortableItem(sourceId);
+  const target = sortableItem(targetId);
+  const placement = dropTargetId.value === targetId
+    ? dropPosition.value
+    : dragPlacement(event);
+  if (source && target && source.id !== target.id && source.pinned === target.pinned && placement) {
+    event.preventDefault();
+    emit("reorder", source.id, target.id, placement);
+  }
+  finishDrag();
+}
+
 watch(() => [props.state.mode, props.state.view, props.state.search,
   props.state.sort, props.state.selectedRoomKey], () => {
   pendingRemoveId.value = "";
+  finishDrag();
 });
 
 watch(() => props.state.mode, async (mode) => {

@@ -46,6 +46,47 @@ test("matches transformed signed Emoji URLs through stable path fragments", () =
   assert.equal(second.includes("fragment:resource_9876543210"), true);
 });
 
+test("matches Douyu picker and rendered Emoji URLs through the embedded content digest", () => {
+  const digest = "9c048b28f4ce42d7a0cf2f7b9b9084cb";
+  const picker = richData.normalizedAssetKeys(
+    `https://sta-op.douyucdn.cn/dygev/2024/07/01/${digest}.png`,
+    "https://www.douyu.com/1667826"
+  );
+  const rendered = richData.normalizedAssetKeys(
+    `https://shark2.douyucdn.cn/render/${digest}_48x48.webp?x-oss-process=image%2Fresize%2Cw_48`,
+    "https://www.douyu.com/1667826"
+  );
+
+  assert.equal(picker.includes(`digest:${digest}`), true);
+  assert.equal(rendered.includes(`digest:${digest}`), true);
+});
+
+test("extracts a Douyu content digest from a nested encoded resource URL", () => {
+  const digest = "43fc7e023ad9ca645da729c02877812b";
+  const keys = richData.normalizedAssetKeys(
+    `https://img.example.test/proxy?source=${encodeURIComponent(
+      `https://sta-op.douyucdn.cn/dygev/2024/03/29/${digest}.png`
+    )}`,
+    "https://www.douyu.com/1667826"
+  );
+
+  assert.equal(keys.includes(`digest:${digest}`), true);
+});
+
+test("matches Douyu built-in Emoji across format and bundle-hash changes", () => {
+  const picker = richData.normalizedAssetKeys(
+    "https://shark2.douyucdn.cn/front-publish/live-next-player-aside-master/assets/images/jiuzhe_ca93c68.png",
+    "https://www.douyu.com/1667826"
+  );
+  const rendered = richData.normalizedAssetKeys(
+    "https://shark2.douyucdn.cn/render/emotion/jiuzhe_8b7a992.webp",
+    "https://www.douyu.com/1667826"
+  );
+
+  assert.equal(picker.includes("slug:jiuzhe"), true);
+  assert.equal(rendered.includes("slug:jiuzhe"), true);
+});
+
 test("adds renderer IDs and names to serialized Emoji descriptors", () => {
   const assets = richData.serializedEmojiAssets([{
     type: "image",

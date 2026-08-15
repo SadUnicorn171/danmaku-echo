@@ -33,6 +33,17 @@
   display: none !important;
 }
 
+.bcp-one-hover-bridge {
+  all: initial;
+  background: transparent !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: auto !important;
+  z-index: 2147483646 !important;
+}
+
 .bcp-one-action {
   all: initial;
   align-items: center;
@@ -98,6 +109,24 @@
   outline-offset: 2px !important;
 }
 
+/* Edge-clipped and fully visible danmaku use mutually exclusive frames:
+   normal clones keep the outside outline, while clipped clones replace it
+   with one inside frame that cannot leak into the side column. */
+.bcp-one-frozen.bcp-one-target[data-bcp-one-edge-clipped='true'] {
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--bcp-selection, #fd8101) 55%, transparent) !important;
+  outline: none !important;
+  outline-offset: 0 !important;
+}
+
+/* Bilibili renders moving danmaku with a CSS `roll` animation that is not
+   always included in getAnimations(). Pause the renderer-owned timeline by
+   marker so the hidden original cannot move behind its fixed hover snapshot. */
+[data-bcp-bilibili-motion-paused='true'],
+[data-bcp-bilibili-motion-paused='true'] * {
+  animation-play-state: paused !important;
+}
+
 [data-bcp-douyu-own-chat-content='true'],
 [data-bcp-douyu-own-overlay='true'] [class*='text-'] {
   border-radius: 4px !important;
@@ -106,9 +135,7 @@
   outline-offset: 4px !important;
 }
 
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='interactive-element-'],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='reply-button-'],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='action-button-'],
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-'],
 html[data-bcp-douyu-native-capsule-hidden='true']
   :is(div, span):not([class*='danmuItem-']):has(> [class*='interactive-element-']):has(
     > [class*='reply-button-']
@@ -121,17 +148,44 @@ html[data-bcp-douyu-native-capsule-hidden='true']
   :is(div, span):not([class*='danmuItem-']):has(> [class*='reply-button-']):has(
     > [class*='action-button-']
   ),
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='plus-one' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='plusOne' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='reply' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='collect' i],
-html[data-bcp-douyu-native-capsule-hidden='true'] [class*='danmuItem-'] [data-action='favorite' i],
-html[data-bcp-douyu-native-capsule-hidden='true']
-  [class*='danmuItem-']
-  :is(div, span):has(> [class*='reply-button-']):has(> [class*='action-button-']),
 html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-hidden='true'] {
   display: none !important;
   pointer-events: none !important;
+}
+
+/* Keep Douyu's internal tail slot in layout. Its width participates in the
+   native CSS transition calculation; collapsing it causes a visible jump. */
+html[data-bcp-douyu-native-capsule-hidden='true']
+  [class*='danmuItem-']
+  [class*='afterpic-'] {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-bcp-douyu-native-capsule-hidden='true']
+  [class*='danmuItem-']
+  :is(
+    [class*='interactive-element-'],
+    [class*='reply-button-'],
+    [class*='action-button-'],
+    [data-action='plus-one' i],
+    [data-action='plusOne' i],
+    [data-action='reply' i],
+    [data-action='collect' i],
+    [data-action='favorite' i],
+    :is(div, span):has(> [class*='reply-button-']):has(> [class*='action-button-'])
+  ):not([data-bcp-one-owned]) {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
+
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-']::before,
+html[data-bcp-douyu-native-capsule-hidden='true'] [class*='btnscontainerrect-']::after,
+html[data-bcp-douyu-native-capsule-hidden='true']
+  [data-bcp-douyu-native-action-hidden]::before,
+html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-hidden]::after {
+  content: none !important;
+  display: none !important;
 }
 
 .bcp-one-frozen,

@@ -50,4 +50,22 @@ describe('inert overlay snapshots', () => {
 
     expect(snapshot.querySelectorAll('*').length).toBeLessThanOrEqual(8)
   })
+
+  it('can exclude a site-owned tail decoration from the frozen snapshot', () => {
+    const candidate = document.createElement('div')
+    candidate.innerHTML = [
+      '<span class="text-next">测试弹幕</span>',
+      '<span class="afterDiv-next"><span class="afterpic-next" style="border: 8px solid transparent; border-left-color: #000"></span></span>',
+    ].join('')
+
+    const snapshot = createInertOverlaySnapshot(candidate, {
+      skipSelector: inertSnapshotSkipSelector([
+        "[class*='afterpic-']",
+        "[class*='afterDiv-']",
+      ]),
+    })
+
+    expect(snapshot.textContent).toBe('测试弹幕')
+    expect(snapshot.children).toHaveLength(1)
+  })
 })

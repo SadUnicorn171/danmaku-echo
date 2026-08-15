@@ -72,7 +72,8 @@ test("merges partial settings with safe defaults", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
     plusOne: true,
     reply: true,
-    favorite: true
+    favorite: true,
+    copy: false
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.platforms)), {
     huya: true,
@@ -100,7 +101,32 @@ test("merges independent action visibility settings", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
     plusOne: false,
     reply: true,
-    favorite: false
+    favorite: false,
+    copy: false
+  });
+});
+
+test("keeps at least one capsule action enabled", () => {
+  const settings = shared.mergeSettings({
+    actions: { plusOne: false, reply: false, favorite: false, copy: false }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
+    plusOne: true,
+    reply: false,
+    favorite: false,
+    copy: false
+  });
+});
+
+test("supports an independently enabled copy-only capsule", () => {
+  const settings = shared.mergeSettings({
+    actions: { plusOne: false, reply: false, favorite: false, copy: true }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
+    plusOne: false,
+    reply: false,
+    favorite: false,
+    copy: true
   });
 });
 

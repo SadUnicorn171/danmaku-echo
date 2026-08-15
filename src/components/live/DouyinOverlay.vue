@@ -34,11 +34,13 @@
     </div>
     <ActionBar
       :actions="state.actions"
+      :cooldown-seconds="state.cooldownSeconds"
       :message="state.message"
       :sender="state.sender"
       :sending="state.sending"
       variant="douyin"
       :visible="state.cardVisible"
+      @copy="(event) => emit('copy', event)"
       @placeholder="(event, action) => emit('placeholder', event, action)"
       @favorite="(event) => emit('favorite', event)"
       @plus-one="(event) => emit('plusOne', event)"
@@ -66,6 +68,7 @@ const emit = defineEmits<{
   cardEnter: [];
   cardLeave: [];
   cardMove: [];
+  copy: [event: MouseEvent];
   favorite: [event: MouseEvent];
   placeholder: [event: MouseEvent, action: "reply"];
   plusOne: [event: MouseEvent];
