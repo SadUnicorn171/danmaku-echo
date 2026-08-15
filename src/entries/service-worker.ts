@@ -1,4 +1,13 @@
 import type { DouyinRuntimeRequest, PlatformId } from "../core/types";
+import {
+  isBilibiliDirectEmoticonSendRequest,
+  sendBilibiliRoomEmoticonInPage,
+  type BilibiliDirectEmoticonSendResponse
+} from "../platforms/bilibili/direct-emoticon-send";
+import {
+  installBilibiliNativeSendObserverInPage,
+  isBilibiliInstallNativeSendObserverRequest
+} from "../platforms/bilibili/native-send-observer";
 import { createFavoritesRepository } from "../features/favorites/repository";
 import {
   FAVORITE_WRITE_MESSAGE,
@@ -21,13 +30,17 @@ function isFavoriteWriteRequest(value: unknown): value is FavoriteWriteRequest {
   const operation = request.operation || "favorite";
   const room = request.room;
   return request.type === FAVORITE_WRITE_MESSAGE
-    && (operation === "favorite" || operation === "add-to-room"
-      || operation === "record-sent" || operation === "remove")
+    && (operation === "favorite" || operation === "add-to-room" || operation === "move"
+      || operation === "record-sent" || operation === "remove"
+      || operation === "reorder" || operation === "set-pinned" || operation === "set-tags")
     && (operation === "favorite"
       ? typeof request.text === "string"
         && Array.from(request.text).length > 0
         && Array.from(request.text).length <= 1_000
       : typeof request.id === "string" && request.id.length > 0 && request.id.length <= 200)
+    && (operation !== "reorder" || (typeof request.targetId === "string"
+      && request.targetId.length > 0 && request.targetId.length <= 200
+      && (request.placement === "after" || request.placement === "before")))
     && Boolean(room && typeof room === "object"
       && (room.platform === "bilibili" || room.platform === "douyin"
         || room.platform === "douyu" || room.platform === "huya")
@@ -45,7 +58,7 @@ function senderMatchesPlatform(senderUrl: unknown, platform: PlatformId): boolea
     if (platform === "bilibili") return host === "live.bilibili.com";
     if (platform === "huya") return host === "huya.com" || host.endsWith(".huya.com");
     if (platform === "douyu") return host === "douyu.com" || host.endsWith(".douyu.com");
-    return isDouyinLiveUrl(url.href);
+    return host === "live.douyin.com" || host === "www.douyin.com" || host.endsWith(".douyin.com");
   } catch {
     return false;
   }
@@ -64,6 +77,35 @@ function writeFavorite(request: FavoriteWriteRequest): Promise<{ added: boolean 
     }
     if (kind === "remove") {
       await favoritesRepository.remove(request.id || "");
+      return { added: false };
+    }
+    if (kind === "set-pinned") {
+      await favoritesRepository.setPinned(
+        request.id || "",
+        String(request.targetRoomKey || request.room.roomKey).slice(0, 320),
+        request.pinned === true
+      );
+      return { added: false };
+    }
+    if (kind === "set-tags") {
+      await favoritesRepository.setTags(request.id || "", request.tags);
+      return { added: false };
+    }
+    if (kind === "move") {
+      await favoritesRepository.move(
+        request.id || "",
+        String(request.targetRoomKey || request.room.roomKey).slice(0, 320),
+        request.direction === "up" ? "up" : "down"
+      );
+      return { added: false };
+    }
+    if (kind === "reorder") {
+      await favoritesRepository.reorder(
+        request.id || "",
+        request.targetId || "",
+        String(request.targetRoomKey || request.room.roomKey).slice(0, 320),
+        request.placement === "after" ? "after" : "before"
+      );
       return { added: false };
     }
     const result = await favoritesRepository.favorite(
@@ -145,7 +187,9 @@ function isDouyinRuntimeRequest(value: unknown): value is DouyinRuntimeRequest {
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
   if (isFavoriteWriteRequest(message)) {
     const senderUrl = sender.url || sender.tab?.url;
-    if (!senderMatchesPlatform(senderUrl, message.room.platform)) {
+    const roomUrl = message.room.url;
+    if (!senderMatchesPlatform(senderUrl, message.room.platform)
+      && !senderMatchesPlatform(roomUrl, message.room.platform)) {
       sendResponse({ ok: false, error: "invalid-favorite-sender" } satisfies FavoriteWriteResponse);
       return false;
     }
@@ -156,6 +200,90 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
         ok: false,
         error: String(error instanceof Error ? error.message : error)
       } satisfies FavoriteWriteResponse);
+    });
+    return true;
+  }
+  if (isBilibiliInstallNativeSendObserverRequest(message)) {
+    const tabId = sender.tab?.id;
+    const frameId = typeof sender.frameId === "number" ? sender.frameId : 0;
+    const senderUrl = sender.url;
+    const tabUrl = sender.tab?.url;
+    if (typeof tabId !== "number" || !Number.isInteger(tabId)
+      || !senderMatchesPlatform(senderUrl, "bilibili")
+      || !senderMatchesPlatform(tabUrl, "bilibili")) {
+      sendResponse({ error: "invalid-bilibili-sender", ok: false });
+      return false;
+    }
+    chrome.scripting.executeScript({
+      args: [{ nonce: message.nonce }],
+      func: installBilibiliNativeSendObserverInPage,
+      target: { tabId, frameIds: [frameId] },
+      world: "MAIN"
+    }).then(([execution]) => {
+      sendResponse(execution?.result || { error: "empty-result", ok: false });
+    }).catch((error: unknown) => {
+      sendResponse({
+        error: String(error instanceof Error ? error.message : error),
+        ok: false
+      });
+    });
+    return true;
+  }
+  if (isBilibiliDirectEmoticonSendRequest(message)) {
+    const tabId = sender.tab?.id;
+    const senderUrl = sender.url;
+    const tabUrl = sender.tab?.url;
+    if (typeof tabId !== "number" || !Number.isInteger(tabId)
+      || !senderMatchesPlatform(senderUrl, "bilibili")
+      || !senderMatchesPlatform(tabUrl, "bilibili")) {
+      console.error("[Danmaku Echo][background][Bilibili room Emoji +1] failed", {
+        hasIntegerTabId: typeof tabId === "number" && Number.isInteger(tabId),
+        senderPlatformValid: senderMatchesPlatform(senderUrl, "bilibili"),
+        stage: "validate-sender",
+        tabPlatformValid: senderMatchesPlatform(tabUrl, "bilibili")
+      });
+      sendResponse({
+        error: "invalid-bilibili-sender",
+        ok: false,
+        stage: "validate-sender"
+      } satisfies BilibiliDirectEmoticonSendResponse);
+      return false;
+    }
+    chrome.scripting.executeScript({
+      args: [{
+        href: String(tabUrl),
+        identity: message.identity,
+        sourceHints: message.sourceHints,
+        token: message.token,
+      }],
+      func: sendBilibiliRoomEmoticonInPage,
+      target: { tabId, frameIds: [0] },
+      world: "MAIN"
+    }).then(([execution]) => {
+      const result = execution?.result || {
+        error: "empty-result",
+        ok: false,
+        stage: "execute-main-world"
+      } satisfies BilibiliDirectEmoticonSendResponse;
+      if (!result.ok) {
+        console.error("[Danmaku Echo][background][Bilibili room Emoji +1] failed", {
+          code: result.code,
+          error: result.error,
+          message: result.message,
+          stage: result.stage
+        });
+      }
+      sendResponse(result);
+    }).catch((error: unknown) => {
+      console.error("[Danmaku Echo][background][Bilibili room Emoji +1] failed", {
+        error: String(error instanceof Error ? error.message : error),
+        stage: "execute-main-world"
+      });
+      sendResponse({
+        error: String(error instanceof Error ? error.message : error),
+        ok: false,
+        stage: "execute-main-world"
+      } satisfies BilibiliDirectEmoticonSendResponse);
     });
     return true;
   }

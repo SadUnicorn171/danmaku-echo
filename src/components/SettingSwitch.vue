@@ -10,6 +10,7 @@
       role="switch"
       :aria-label="ariaLabel || title"
       :checked="modelValue"
+      :disabled="disabled"
       @change="onChange"
     >
   </label>
@@ -19,6 +20,7 @@
 defineProps<{
   ariaLabel?: string;
   description: string;
+  disabled?: boolean;
   id: string;
   modelValue: boolean;
   title: string;
@@ -117,5 +119,9 @@ input[role="switch"]:focus-visible {
   outline: 3px solid rgb(39 174 96 / 28%);
   outline-offset: 3px;
 }
-</style>
 
+input[role="switch"]:disabled {
+  cursor: not-allowed;
+  opacity: .58;
+}
+</style>

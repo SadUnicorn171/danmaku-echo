@@ -98,10 +98,12 @@ const bilibiliPageHook = manifest.content_scripts.find((entry) =>
   && (entry.js || []).includes("src/bilibili-page-hook.js")
 );
 if (bilibiliPageHook) {
-  throw new Error("Bilibili must use its native editor instead of a MAIN-world send bridge");
+  throw new Error("Bilibili must not expose a persistent MAIN-world send bridge");
 }
-if ((manifest.host_permissions || []).some((match) => match.includes("bilibili.com"))) {
-  throw new Error("Bilibili native-editor sending must not add a host permission");
+if (!(manifest.host_permissions || []).includes("*://live.bilibili.com/*")
+    || (manifest.host_permissions || []).some((match) => match.includes("bilibili.com")
+      && match !== "*://live.bilibili.com/*")) {
+  throw new Error("Bilibili fallback permission must stay limited to live.bilibili.com");
 }
 
 const douyuContentScript = manifest.content_scripts.find((entry) =>
@@ -152,7 +154,9 @@ const serviceWorkerSource = fs.readFileSync(
 if (!serviceWorkerSource.includes("src/douyin-content.js")
     || !serviceWorkerSource.includes("src/douyin-content.css")
     || serviceWorkerSource.includes("src/favorites.scss")
-    || !serviceWorkerSource.includes("chrome.tabs.onUpdated")) {
+    || !serviceWorkerSource.includes("chrome.tabs.onUpdated")
+    || !serviceWorkerSource.includes("danmaku-echo.bilibili.direct-emoticon-send")
+    || !serviceWorkerSource.includes('world: "MAIN"')) {
   throw new Error("Douyin SPA recovery must inject the complete runtime on history URL changes");
 }
 

@@ -150,7 +150,7 @@ for (const [name, source] of [
   if (!source.includes("attachShadow")
       || !source.includes("bcp-favorites-host")
       || !source.includes("data-bcp-favorites-runtime-owner")
-      || !source.includes("FAVORITES_UI_VERSION = 2")) {
+      || !source.includes("FAVORITES_UI_VERSION = 3")) {
     throw new Error(`${name} favorites UI must keep its versioned Shadow DOM singleton`);
   }
   if (!source.includes("bcp-favorites-group-toggle")

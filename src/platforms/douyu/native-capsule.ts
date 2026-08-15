@@ -23,6 +23,18 @@ export const DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTORS = [
   ":is(div, span):not([class*='danmuItem-']):has(> [class*='reply-button-']):has(> [class*='action-button-'])",
 ] as const
 
+// Douyu mounts this triangle beside btnsInner-* inside #comment-dzjy-container,
+// rather than inside the action panel or the hovered danmaku item. Keep it in
+// a separate list so the content script can find the detached portal node
+// globally without broadening the scan for the older afterDiv-* wrapper.
+export const DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS = [
+  "[class*='btnscontainerrect-']",
+] as const
+
+export const DOUYU_NATIVE_DANMAKU_CAPSULE_DECORATION_SELECTORS = [
+  ...DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS,
+] as const
+
 const ACTION_LABELS = new Set(['+1', '回复', '收藏'])
 const DANMAKU_ITEM_SELECTOR = "[class*='danmuItem-']"
 const ACTION_KIND_SELECTORS = {
@@ -137,6 +149,12 @@ export class DouyuNativeCapsuleVisibilityController {
   hide(targets: Iterable<Element>): void {
     for (const target of targets) {
       if (!(target instanceof HTMLElement)) continue
+      // Never write attributes or inline styles into a moving danmaku item.
+      // Douyu's native hover controller owns that subtree and observes it
+      // while calculating its pause/resume position. CSS hides those visuals
+      // without changing their box metrics; only detached portal UI is
+      // collapsed by this controller.
+      if (target.closest(DANMAKU_ITEM_SELECTOR)) continue
       if (!this.snapshots.has(target)) {
         this.snapshots.set(target, captureVisibility(target))
       }
@@ -228,8 +246,42 @@ function closestMultiActionContainer(root: Element, element: Element): Element |
   return null
 }
 
+function actionOnlyShells(root: Element, element: Element): Element[] {
+  const shells: Element[] = []
+  let current = element.parentElement
+  while (current) {
+    if (current.matches(DANMAKU_ITEM_SELECTOR)) break
+
+    const hasMultipleActions =
+      actionKindsWithin(current).size >= 2 || actionLabelsWithin(current).size >= 2
+    if (hasMultipleActions) {
+      const remainingText = String(current.textContent || '')
+        .replace(/\+1|回复|收藏/gu, '')
+        .replace(/[\s|｜·•]/gu, '')
+      if (!remainingText) shells.push(current)
+    }
+
+    if (current === root) break
+    current = current.parentElement
+  }
+  return shells
+}
+
 export function findDouyuNativeDanmakuCapsuleTargets(root: Element): Element[] {
   const targets = new Set<Element>()
+  const decorationScopes = new Set<Element>()
+  const decorationSelector = DOUYU_NATIVE_DANMAKU_CAPSULE_DECORATION_SELECTORS.join(',')
+  const detachedDecorationSelector =
+    DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTORS.join(',')
+
+  // The current Douyu capsule portal renders btnscontainerrect-* as a sibling
+  // of btnsInner-*. It must be collected even when this root is not a danmaku
+  // item and the action panel has already been removed or hidden.
+  if (root.matches(detachedDecorationSelector)) targets.add(root)
+  root
+    .querySelectorAll(detachedDecorationSelector)
+    .forEach((decoration) => targets.add(decoration))
+
   const actionSelector = DOUYU_NATIVE_DANMAKU_ACTION_SELECTORS.join(',')
   const actionElements = [
     ...(root.matches(actionSelector) ? [root] : []),
@@ -237,16 +289,36 @@ export function findDouyuNativeDanmakuCapsuleTargets(root: Element): Element[] {
   ]
   for (const element of actionElements) {
     targets.add(element)
+    actionOnlyShells(root, element).forEach((shell) => targets.add(shell))
     const container = closestMultiActionContainer(root, element)
-    if (container) targets.add(container)
+    if (container) {
+      targets.add(container)
+    }
+
+    const danmakuItem = element.closest(DANMAKU_ITEM_SELECTOR)
+    if (danmakuItem && (danmakuItem === root || root.contains(danmakuItem))) {
+      decorationScopes.add(danmakuItem)
+    } else if (container?.parentElement) {
+      decorationScopes.add(container.parentElement)
+    }
   }
 
   const labelElements = [root, ...root.querySelectorAll('*')].filter((element) =>
     Boolean(actionLabel(element)),
   )
   for (const element of labelElements) {
+    actionOnlyShells(root, element).forEach((shell) => targets.add(shell))
     const container = closestMultiActionContainer(root, element)
-    if (container) targets.add(container)
+    if (container) {
+      targets.add(container)
+      const danmakuItem = container.closest(DANMAKU_ITEM_SELECTOR)
+      decorationScopes.add(danmakuItem || container.parentElement || container)
+    }
+  }
+
+  for (const scope of decorationScopes) {
+    if (scope.matches(decorationSelector)) targets.add(scope)
+    scope.querySelectorAll(decorationSelector).forEach((decoration) => targets.add(decoration))
   }
 
   return Array.from(targets)

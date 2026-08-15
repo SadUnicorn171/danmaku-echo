@@ -99,6 +99,7 @@ export function createDiagnosticsCollector(options: DiagnosticsCollectorOptions)
         plusOne: settings.actions.plusOne,
         reply: settings.actions.reply,
         favorite: settings.actions.favorite,
+        copy: settings.actions.copy,
         platformEnabled: settings.platforms[options.platform],
         sideChatCapsule: options.platform === 'douyin'
           ? true

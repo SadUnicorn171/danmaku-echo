@@ -25,9 +25,11 @@ test("detects all supported live platforms", () => {
   assert.equal(shared.detectPlatform("example.com"), null);
 });
 
-test("normalizes a username-prefixed message", () => {
-  assert.equal(shared.parseMessageText("某位观众：  主播晚上好  "), "主播晚上好");
-  assert.equal(shared.parseMessageText("alice: nice shot"), "nice shot");
+test("keeps colon-containing danmaku text intact", () => {
+  assert.equal(shared.parseMessageText("13:0了"), "13:0了");
+  assert.equal(shared.parseMessageText("某位观众：主播晚上好"), "某位观众：主播晚上好");
+  assert.equal(shared.parseMessageText("alice: nice shot"), "alice: nice shot");
+  assert.equal(shared.parseMessageText("比分 3:0"), "比分 3:0");
 });
 
 test("keeps a URL instead of treating its scheme as a username", () => {
@@ -50,8 +52,17 @@ test("normalizes reply senders and builds a focused reply draft", () => {
   assert.equal(shared.normalizeSenderName("点击查看个人信息"), "");
   assert.equal(shared.replyMention("主播:"), "@主播 ");
   assert.equal(shared.replyDraftValue("", "测试用户"), "@测试用户 ");
-  assert.equal(shared.replyDraftValue("已有草稿", "测试用户"), "@测试用户 已有草稿");
-  assert.equal(shared.replyDraftValue("@测试用户 已有草稿", "测试用户"), "@测试用户 已有草稿");
+  assert.equal(shared.replyDraftValue("已有草稿", "测试用户"), "已有草稿@测试用户");
+  assert.equal(
+    shared.replyDraftValue("1232312 3234", "sadunicorn", 10),
+    "1232312 32@sadunicorn34"
+  );
+  assert.equal(
+    shared.replyDraftValue("1232312 3234", "sadunicorn", 10, 12),
+    "1232312 32@sadunicorn"
+  );
+  assert.equal(shared.replyDraftValue("yes @sadunicorn", "sadunicorn"), "yes @sadunicorn");
+  assert.equal(shared.replyDraftValue("hello", "sadunicorn", 5), "hello@sadunicorn");
 });
 
 test("merges partial settings with safe defaults", () => {
@@ -61,7 +72,8 @@ test("merges partial settings with safe defaults", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
     plusOne: true,
     reply: true,
-    favorite: true
+    favorite: true,
+    copy: false
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.platforms)), {
     huya: true,
@@ -89,7 +101,32 @@ test("merges independent action visibility settings", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
     plusOne: false,
     reply: true,
-    favorite: false
+    favorite: false,
+    copy: false
+  });
+});
+
+test("keeps at least one capsule action enabled", () => {
+  const settings = shared.mergeSettings({
+    actions: { plusOne: false, reply: false, favorite: false, copy: false }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
+    plusOne: true,
+    reply: false,
+    favorite: false,
+    copy: false
+  });
+});
+
+test("supports an independently enabled copy-only capsule", () => {
+  const settings = shared.mergeSettings({
+    actions: { plusOne: false, reply: false, favorite: false, copy: true }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.actions)), {
+    plusOne: false,
+    reply: false,
+    favorite: false,
+    copy: true
   });
 });
 

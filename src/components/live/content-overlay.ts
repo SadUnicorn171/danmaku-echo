@@ -5,6 +5,7 @@ import ContentOverlay from "./ContentOverlay.vue";
 export interface OverlayUiState {
   actions: ActionSettings;
   actionVisible: boolean;
+  cooldownSeconds: number;
   message: string;
   sender: string;
   sending: boolean;
@@ -12,6 +13,7 @@ export interface OverlayUiState {
 }
 
 interface OverlayCallbacks {
+  onCopy(event: MouseEvent): void;
   onFavorite(event: MouseEvent): void;
   onPlaceholder(event: MouseEvent, action: "reply"): void;
   onPlusOne(event: MouseEvent): void;
@@ -25,8 +27,9 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
   portal.className = "bcp-one-portal";
   portal.dataset.bcpOneOwned = "true";
   const state = reactive<OverlayUiState>({
-    actions: { plusOne: true, reply: true, favorite: true },
+    actions: { copy: false, plusOne: true, reply: true, favorite: true },
     actionVisible: false,
+    cooldownSeconds: 0,
     message: "",
     sender: "",
     sending: false,
@@ -34,6 +37,7 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
   });
   const app = createApp(ContentOverlay, {
     state,
+    onCopy: callbacks.onCopy,
     onPlaceholder: callbacks.onPlaceholder,
     onFavorite: callbacks.onFavorite,
     onPlusOne: callbacks.onPlusOne,
@@ -97,6 +101,9 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
     setActions(actions: ActionSettings): void {
       state.actions = { ...actions };
       if (!Object.values(actions).some(Boolean)) state.actionVisible = false;
+    },
+    setCooldown(remainingMs: number): void {
+      state.cooldownSeconds = Math.max(0, Math.ceil(Number(remainingMs) / 1_000));
     },
     setSending(sending: boolean): void {
       state.sending = sending;

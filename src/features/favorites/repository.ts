@@ -68,6 +68,7 @@ function normalizeFavoriteAsset(value: unknown): FavoriteAsset | null {
 
 const GENERIC_RICH_LABEL = /^(?:图片|图片表情|表情|emoji|emote|image|sticker|贴纸)$/i;
 const IMAGE_FILE_EXTENSION = /\.(?:avif|gif|jpe?g|png|svg|webp)$/i;
+const DECORATIVE_IMAGE_DESCRIPTION = /(?:这是\s*(?:ta|他|她)\s*的[^\n]{0,32}(?:勋章|徽章)|(?:荣耀|荣誉|粉丝|用户|主播|舰长|守护|贵族)等级(?:勋章|徽章))/i;
 
 function humanAssetName(value: unknown): string {
   let name = normalizeFavoriteText(value, 120);
@@ -80,7 +81,7 @@ function humanAssetName(value: unknown): string {
     // Resource metadata is not guaranteed to be URI encoded.
   }
   name = name.replace(/[?#].*$/, "").replace(IMAGE_FILE_EXTENSION, "").trim();
-  if (!name || GENERIC_RICH_LABEL.test(name)
+  if (!name || GENERIC_RICH_LABEL.test(name) || DECORATIVE_IMAGE_DESCRIPTION.test(name)
       || /^(?:data|blob|https?):/i.test(name)
       || /[\\/]/.test(name)
       || Array.from(name).length > 80) {
@@ -113,6 +114,21 @@ export function favoriteAssetDisplayName(assetValue: unknown): string {
     ...asset.keys.filter((key) => key.startsWith("file:")).map((key) => key.slice(5))
   ];
   return candidates.map(formattedAssetName).find(Boolean) || "";
+}
+
+function favoriteAssetNameQuality(assetValue: unknown): number {
+  const name = humanAssetName(favoriteAssetDisplayName(assetValue));
+  if (!name) return 0;
+  if (/(?:\p{Extended_Pictographic}|\p{Regional_Indicator}{2})/u.test(name)) return 6;
+  // Douyu resource filenames commonly expose pinyin slugs such as gougutou,
+  // while the authoritative rel attribute exposes the official name 狗骨头.
+  if (/[\u3400-\u9fff]/u.test(name)) return 5;
+  if (/^[a-z][a-z\d_-]{0,40}$/i.test(name)) return 3;
+  return 4;
+}
+
+function richPayloadNameQuality(payload: FavoritePayload): number {
+  return payload.assets.reduce((total, asset) => total + favoriteAssetNameQuality(asset), 0);
 }
 
 function normalizeFavoriteParts(value: unknown, assets: FavoriteAsset[], plainText: string): FavoritePart[] {
@@ -177,6 +193,9 @@ export function favoriteDisplayText(payloadValue: unknown, fallbackText: unknown
 }
 
 function assetKey(asset: FavoriteAsset): string {
+  const bilibiliRoomIdentity = asset.keys.find((key) =>
+    /^(?:native-panel|bili-exclusive):room_[1-9]\d{0,19}_[1-9]\d{0,19}$/i.test(key));
+  if (bilibiliRoomIdentity) return bilibiliRoomIdentity.toLowerCase();
   const priority = ["fragment:", "stem:", "file:", "path:", "name:", "raw:"];
   for (const prefix of priority) {
     const key = asset.keys.filter((candidate) => candidate.startsWith(prefix)).sort()[0];
@@ -209,11 +228,20 @@ function normalizeStats(value: unknown): Record<string, FavoriteRoomStats> {
     const stats = raw as Partial<FavoriteRoomStats>;
     return [[key, {
       addedToRoomAt: Number(stats.addedToRoomAt) || undefined,
+      customOrder: Number.isFinite(Number(stats.customOrder)) ? Number(stats.customOrder) : 0,
       lastSentAt: Number(stats.lastSentAt) || 0,
       pinned: Boolean(stats.pinned),
       sendCount: Math.max(0, Number(stats.sendCount) || 0)
     }]];
   }));
+}
+
+export function normalizeFavoriteTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return Array.from(new Set(value
+    .map((tag) => normalizeFavoriteText(tag, 20))
+    .filter(Boolean)))
+    .slice(0, 8);
 }
 
 function normalizeDatabase(value: unknown): FavoritesDatabase {
@@ -235,11 +263,32 @@ function normalizeDatabase(value: unknown): FavoritesDatabase {
       origins: Array.isArray(candidate.origins) ? candidate.origins.filter(validOrigin) : [],
       payload,
       roomStats: normalizeStats(candidate.roomStats),
+      tags: normalizeFavoriteTags(candidate.tags),
       text,
       totalSendCount: Math.max(0, Number(candidate.totalSendCount) || 0),
       updatedAt: Number(candidate.updatedAt) || now
     } satisfies FavoriteDanmaku];
   }) : [];
+  const roomKeys = new Set(items.flatMap((item) => [
+    ...item.origins.map((origin) => origin.roomKey),
+    ...Object.entries(item.roomStats)
+      .filter(([, stats]) => stats.addedToRoomAt)
+      .map(([roomKey]) => roomKey)
+  ]));
+  roomKeys.forEach((roomKey) => {
+    items
+      .filter((item) => belongsToStatsRoom(item, roomKey))
+      .sort((first, second) => {
+        const firstOrder = Number(first.roomStats[roomKey]?.customOrder) || Number.MAX_SAFE_INTEGER;
+        const secondOrder = Number(second.roomStats[roomKey]?.customOrder) || Number.MAX_SAFE_INTEGER;
+        return firstOrder - secondOrder
+          || first.createdAt - second.createdAt
+          || first.id.localeCompare(second.id);
+      })
+      .forEach((item, index) => {
+        item.roomStats[roomKey] = { ...roomStats(item, roomKey), customOrder: index + 1 };
+      });
+  });
   return {
     items,
     revision: Math.max(0, Number(source.revision) || 0),
@@ -408,7 +457,20 @@ export async function importFavoritesData(
 }
 
 function roomStats(item: FavoriteDanmaku, roomKey: string): FavoriteRoomStats {
-  return item.roomStats[roomKey] || { lastSentAt: 0, pinned: false, sendCount: 0 };
+  return item.roomStats[roomKey]
+    || { customOrder: 0, lastSentAt: 0, pinned: false, sendCount: 0 };
+}
+
+function nextRoomOrder(items: FavoriteDanmaku[], roomKey: string): number {
+  return items.reduce((highest, item) => Math.max(
+    highest,
+    Number(item.roomStats[roomKey]?.customOrder) || 0
+  ), 0) + 1;
+}
+
+function belongsToStatsRoom(item: FavoriteDanmaku, roomKey: string): boolean {
+  return item.origins.some((origin) => origin.roomKey === roomKey)
+    || Boolean(item.roomStats[roomKey]?.addedToRoomAt);
 }
 
 export function createFavoritesRepository(area: StorageAreaLike) {
@@ -472,7 +534,9 @@ export function createFavoritesRepository(area: StorageAreaLike) {
         }
         item.roomStats[room.roomKey] = {
           ...roomStats(item, room.roomKey),
-          addedToRoomAt: now
+          addedToRoomAt: now,
+          customOrder: item.roomStats[room.roomKey]?.customOrder
+            || nextRoomOrder(database.items, room.roomKey)
         };
         item.updatedAt = now;
         return { changed: true, result: undefined };
@@ -492,9 +556,11 @@ export function createFavoritesRepository(area: StorageAreaLike) {
         let item = database.items.find((entry) => entry.normalizedText === key);
         if (!item && payload.assets.length && !payload.plainText) {
           const signature = richAssetSignature(payload);
+          const incomingNameQuality = richPayloadNameQuality(payload);
           item = database.items.find((entry) =>
             !entry.payload.plainText
-            && GENERIC_RICH_LABEL.test(entry.text)
+            && (GENERIC_RICH_LABEL.test(entry.text)
+              || incomingNameQuality > richPayloadNameQuality(entry.payload))
             && richAssetSignature(entry.payload) === signature);
           if (item) {
             item.normalizedText = key;
@@ -513,6 +579,7 @@ export function createFavoritesRepository(area: StorageAreaLike) {
             origins: [],
             payload,
             roomStats: {},
+            tags: [],
             text,
             totalSendCount: 0,
             updatedAt: now
@@ -530,7 +597,9 @@ export function createFavoritesRepository(area: StorageAreaLike) {
         }
         item.roomStats[room.roomKey] = {
           ...roomStats(item, room.roomKey),
-          addedToRoomAt: item.roomStats[room.roomKey]?.addedToRoomAt || now
+          addedToRoomAt: item.roomStats[room.roomKey]?.addedToRoomAt || now,
+          customOrder: item.roomStats[room.roomKey]?.customOrder
+            || nextRoomOrder(database.items, room.roomKey)
         };
         item.updatedAt = now;
         return { changed: true, result: { added, item } };
@@ -570,12 +639,111 @@ export function createFavoritesRepository(area: StorageAreaLike) {
         return { changed: true, result: undefined };
       });
     },
+    async move(id: string, roomKey: string, direction: "down" | "up"): Promise<void> {
+      return mutate(() => {
+        const item = database.items.find((entry) => entry.id === id);
+        if (!item || !belongsToStatsRoom(item, roomKey)) {
+          return { changed: false, result: undefined };
+        }
+        const pinned = roomStats(item, roomKey).pinned;
+        const peers = database.items
+          .filter((entry) => belongsToStatsRoom(entry, roomKey)
+            && roomStats(entry, roomKey).pinned === pinned)
+          .sort((first, second) => roomStats(first, roomKey).customOrder
+            - roomStats(second, roomKey).customOrder
+            || first.createdAt - second.createdAt
+            || first.id.localeCompare(second.id));
+        const index = peers.findIndex((entry) => entry.id === id);
+        const target = peers[index + (direction === "up" ? -1 : 1)];
+        if (!target) return { changed: false, result: undefined };
+        const itemOrder = roomStats(item, roomKey).customOrder || index + 1;
+        const targetIndex = peers.findIndex((entry) => entry.id === target.id);
+        const targetOrder = roomStats(target, roomKey).customOrder || targetIndex + 1;
+        item.roomStats[roomKey] = { ...roomStats(item, roomKey), customOrder: targetOrder };
+        target.roomStats[roomKey] = { ...roomStats(target, roomKey), customOrder: itemOrder };
+        const now = Date.now();
+        item.updatedAt = now;
+        target.updatedAt = now;
+        return { changed: true, result: undefined };
+      });
+    },
+    async reorder(
+      id: string,
+      targetId: string,
+      roomKey: string,
+      placement: "after" | "before"
+    ): Promise<void> {
+      return mutate(() => {
+        const item = database.items.find((entry) => entry.id === id);
+        const target = database.items.find((entry) => entry.id === targetId);
+        if (!item || !target || item.id === target.id
+            || !belongsToStatsRoom(item, roomKey)
+            || !belongsToStatsRoom(target, roomKey)
+            || roomStats(item, roomKey).pinned !== roomStats(target, roomKey).pinned) {
+          return { changed: false, result: undefined };
+        }
+        const peers = database.items
+          .filter((entry) => belongsToStatsRoom(entry, roomKey)
+            && roomStats(entry, roomKey).pinned === roomStats(item, roomKey).pinned)
+          .sort((first, second) => roomStats(first, roomKey).customOrder
+            - roomStats(second, roomKey).customOrder
+            || first.createdAt - second.createdAt
+            || first.id.localeCompare(second.id));
+        const sourceIndex = peers.findIndex((entry) => entry.id === id);
+        const currentTargetIndex = peers.findIndex((entry) => entry.id === targetId);
+        if (sourceIndex < 0 || currentTargetIndex < 0) {
+          return { changed: false, result: undefined };
+        }
+        const orders = peers.map((entry, index) =>
+          roomStats(entry, roomKey).customOrder || index + 1).sort((first, second) => first - second);
+        const [source] = peers.splice(sourceIndex, 1);
+        if (!source) return { changed: false, result: undefined };
+        const targetIndex = peers.findIndex((entry) => entry.id === targetId);
+        peers.splice(targetIndex + (placement === "after" ? 1 : 0), 0, source);
+        const now = Date.now();
+        let changed = false;
+        peers.forEach((entry, index) => {
+          const stats = roomStats(entry, roomKey);
+          if (stats.customOrder === orders[index]) return;
+          entry.roomStats[roomKey] = { ...stats, customOrder: orders[index] };
+          entry.updatedAt = now;
+          changed = true;
+        });
+        return { changed, result: undefined };
+      });
+    },
     async remove(id: string): Promise<void> {
       return mutate(() => {
         const next = database.items.filter((entry) => entry.id !== id);
         const changed = next.length !== database.items.length;
         database.items = next;
         return { changed, result: undefined };
+      });
+    },
+    async setPinned(id: string, roomKey: string, pinned: boolean): Promise<void> {
+      return mutate(() => {
+        const item = database.items.find((entry) => entry.id === id);
+        if (!item || !belongsToStatsRoom(item, roomKey)) {
+          return { changed: false, result: undefined };
+        }
+        const stats = roomStats(item, roomKey);
+        if (stats.pinned === pinned) return { changed: false, result: undefined };
+        item.roomStats[roomKey] = { ...stats, pinned };
+        item.updatedAt = Date.now();
+        return { changed: true, result: undefined };
+      });
+    },
+    async setTags(id: string, tagsValue: unknown): Promise<void> {
+      const tags = normalizeFavoriteTags(tagsValue);
+      return mutate(() => {
+        const item = database.items.find((entry) => entry.id === id);
+        if (!item || (item.tags.length === tags.length
+            && item.tags.every((tag, index) => tag === tags[index]))) {
+          return { changed: false, result: undefined };
+        }
+        item.tags = tags;
+        item.updatedAt = Date.now();
+        return { changed: true, result: undefined };
       });
     },
     subscribe(listener: (database: FavoritesDatabase) => void): () => void {

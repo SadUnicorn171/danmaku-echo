@@ -27,7 +27,7 @@ export function visibleActionsForSurface(
   const sideChatControlsCapsule = surface === "chat"
     && (platform === "huya" || platform === "bilibili" || platform === "douyu");
   if (sideChatControlsCapsule && !settings.sideChatCapsule[platform]) {
-    return { plusOne: false, reply: false, favorite: false };
+    return { copy: false, plusOne: false, reply: false, favorite: false };
   }
   return { ...settings.actions };
 }

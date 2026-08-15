@@ -258,6 +258,46 @@ async function inspect() {
     return { persisted, present: true, restored: input.checked === original };
   })()`);
 
+  const actionSettings = await evaluate(`(async () => {
+    const ids = ["action-plus-one", "action-reply", "action-favorite", "action-copy"];
+    const inputs = Object.fromEntries(ids.map((id) => [id, document.getElementById(id)]));
+    if (Object.values(inputs).some((input) => !input)) return { present: false };
+    const initial = Object.fromEntries(Object.entries(inputs).map(([id, input]) => [id, input.checked]));
+    const copy = inputs["action-copy"];
+    copy.checked = true;
+    copy.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    const copySaved = (await chrome.storage.sync.get(null)).actions?.copy === true;
+    await chrome.storage.sync.set({
+      actions: { plusOne: true, reply: false, favorite: false, copy: false }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const plusOne = inputs["action-plus-one"];
+    const lastActionDisabled = plusOne.disabled && plusOne.checked;
+    plusOne.checked = false;
+    plusOne.dispatchEvent(new Event("change", { bubbles: true }));
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    const saved = await chrome.storage.sync.get(null);
+    const minimumPreserved = saved.actions?.plusOne === true
+      && Object.values(saved.actions || {}).some(Boolean);
+    await chrome.storage.sync.set({
+      actions: {
+        plusOne: initial["action-plus-one"],
+        reply: initial["action-reply"],
+        favorite: initial["action-favorite"],
+        copy: initial["action-copy"]
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    return {
+      copyDefaultOff: initial["action-copy"] === false,
+      copySaved,
+      lastActionDisabled,
+      minimumPreserved,
+      present: true
+    };
+  })()`);
+
   const failures = [];
   for (const viewport of viewports) {
     if (!viewport.topbarFits) failures.push(`${viewport.width}:topbar-overflow`);
@@ -287,6 +327,10 @@ async function inspect() {
   if (!persistence.present || !persistence.persisted || !persistence.restored) {
     failures.push("settings-persistence");
   }
+  if (!actionSettings.present || !actionSettings.copyDefaultOff || !actionSettings.copySaved
+      || !actionSettings.lastActionDisabled || !actionSettings.minimumPreserved) {
+    failures.push("action-settings-invariant");
+  }
   if (protocolEvents.some((event) => event.method === "Runtime.exceptionThrown")) {
     failures.push("runtime-exception");
   }
@@ -294,6 +338,7 @@ async function inspect() {
   return {
     assertionFailures: failures,
     browserStderr: browserStderr.slice(-8_000),
+    actionSettings,
     locale,
     persistence,
     protocolEvents,

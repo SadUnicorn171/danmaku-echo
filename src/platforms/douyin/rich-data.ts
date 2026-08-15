@@ -10,6 +10,31 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object";
 }
 
+function decodedAssetIdentityValues(value: string): string[] {
+  const values = [value];
+  let current = value;
+  for (let depth = 0; depth < 3; depth += 1) {
+    try {
+      const decoded = decodeURIComponent(current);
+      if (!decoded || decoded === current) break;
+      values.push(decoded);
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return values;
+}
+
+function appendStableContentDigests(keys: Set<string>, value: string): void {
+  decodedAssetIdentityValues(value).forEach((candidate) => {
+    const matches = candidate.toLowerCase().matchAll(/(?:^|[^a-f\d])([a-f\d]{16,64})(?=[^a-f\d]|$)/g);
+    for (const match of matches) {
+      keys.add(`digest:${match[1]}`);
+    }
+  });
+}
+
 export function normalizedAssetKeys(value: unknown, baseUrl: string): string[] {
   const raw = normalizeText(value);
   if (!raw) {
@@ -20,6 +45,11 @@ export function normalizedAssetKeys(value: unknown, baseUrl: string): string[] {
   if (unwrapped) {
     keys.add(`name:${unwrapped.slice(0, 120)}`);
   }
+  // Douyu can render the same native Emoji through a resized/transcoded CDN
+  // filename (for example `<digest>_small.webp`) while its picker keeps the
+  // original `<digest>.png`. Keep the embedded content digest as a separate
+  // identity so those two URLs still resolve to the same official resource.
+  appendStableContentDigests(keys, raw);
   try {
     const url = new URL(raw, baseUrl);
     const pathname = decodeURIComponent(url.pathname).toLowerCase();
@@ -29,6 +59,15 @@ export function normalizedAssetKeys(value: unknown, baseUrl: string): string[] {
       if (file) {
         keys.add(`file:${file}`);
         keys.add(`stem:${file.split(/[@~!]/, 1)[0]}`);
+        const fileStem = file.replace(/\.[a-z\d]{2,8}$/i, "");
+        const stableBundleSlug = fileStem.replace(/[_-][a-f\d]{6,12}$/i, "");
+        if (stableBundleSlug && stableBundleSlug !== fileStem && stableBundleSlug.length >= 3) {
+          // Douyu's built-in picker uses bundle filenames such as
+          // `jiuzhe_ca93c68.png`. The renderer may use another format or a
+          // newer build hash, while the semantic asset slug (`jiuzhe`) stays
+          // stable across both representations.
+          keys.add(`slug:${stableBundleSlug.slice(0, 120)}`);
+        }
       }
       const fragments = pathname.match(/[a-z0-9][a-z0-9_-]{9,}/g) || [];
       fragments.slice(-12).forEach((fragment) => {

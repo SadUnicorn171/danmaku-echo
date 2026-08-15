@@ -1,15 +1,15 @@
-interface EmojiAssetLike {
+export interface EmojiAssetLike {
   keys?: unknown;
   token?: unknown;
 }
 
-interface RichPartLike {
+export interface RichPartLike {
   asset?: unknown;
   text?: unknown;
   type?: unknown;
 }
 
-interface RichPayloadLike {
+export interface RichPayloadLike {
   assets?: unknown;
   parts?: unknown;
   text?: unknown;

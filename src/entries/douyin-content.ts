@@ -20,9 +20,16 @@ import { createFavoritesRuntime } from '../features/favorites/launcher'
 import { unicodeEmojiFallbackText } from '../platforms/live/emoji-fallback'
 import { SenderCorrelationCache } from '../platforms/live/sender-correlation'
 import { createDouyinOverlay } from '../components/live/douyin-overlay'
+import { copyTextToClipboard } from '../core/clipboard'
 import { createDiagnosticsCollector } from '../core/diagnostics'
 import {
+  createPlatformFeedbackProbe,
+  createSendProtection,
+} from '../platforms/live/send-protection'
+import {
   dispatchEditorEnter as pressEnter,
+  editorSelectionOffsets,
+  placeEditorCaretAt as placeCaretAt,
   placeEditorCaretAtEnd as placeCaretAtEnd,
   readEditorText as inputText,
 } from '../platforms/live/editor-dom'
@@ -49,10 +56,12 @@ import { t } from '../core/i18n'
   const RENDERER_HEARTBEAT_INTERVAL = 5000
   const TRUSTED_ACTION_WINDOW = 1500
   const OWN_CHAT_MESSAGE_TTL = 12_000
+  const MANUAL_INPUT_SNAPSHOT_TTL = 4_000
+  const MANUAL_INPUT_SNAPSHOT_LIMIT = 8
   const SENDER_CACHE_TTL = 10 * 60_000
   const SENDER_CACHE_LIMIT = 320
   const SENDER_HISTORY_LIMIT = 480
-  const REPLY_RESOLVE_ATTEMPTS = 7
+  const REPLY_RESOLVE_ATTEMPTS = 36
   const REPLY_RESOLVE_INTERVAL = 70
   const REPLY_READY_WINDOW = 2_000
   const DOM_DANMAKU_SELECTORS = [
@@ -189,6 +198,8 @@ import { t } from '../core/i18n'
     "[class*='emojiItem']",
     "[class*='emoticon-item' i]",
   ]
+  const PLATFORM_FAILURE_FEEDBACK_WAIT_MS = 1_800
+  const PLATFORM_SUCCESS_FEEDBACK_WAIT_MS = 500
 
   const state = {
     settings: shared.mergeSettings(),
@@ -202,6 +213,7 @@ import { t } from '../core/i18n'
     favoriteButton: null,
     toast: null,
     candidate: null,
+    cooldownTimer: 0,
     hideTimer: 0,
     expiryTimer: 0,
     cardHovered: false,
@@ -209,6 +221,7 @@ import { t } from '../core/i18n'
     selectionPhase: 'idle',
     selectedAt: 0,
     lockedUntil: 0,
+    sendProtection: createSendProtection(),
     pointerX: 0,
     pointerY: 0,
     nextRequestId: 1,
@@ -217,11 +230,11 @@ import { t } from '../core/i18n'
     pageSnapshot: null,
     trustedAction: null,
     activationRequests: new Set(),
-    lastActionAt: 0,
     nextOwnAnnouncementId: 1,
     ownChatIntents: [],
     confirmedOwnMessageIds: new Set(),
     pendingManualEmojiIntents: [],
+    manualInputSnapshots: new Map(),
     ownChatScanTimer: 0,
     ownChatObserver: null,
     senderCache: new Map(),
@@ -272,6 +285,7 @@ import { t } from '../core/i18n'
       confirmedOwnMessageIds: state.confirmedOwnMessageIds.size,
       ownChatIntents: state.ownChatIntents.length,
       pendingManualEmojiIntents: state.pendingManualEmojiIntents.length,
+      manualInputSnapshots: state.manualInputSnapshots.size,
       replyRequests: state.replyRequests.size,
       senderCache: state.senderCache.size,
       senderCorrelation: state.senderCorrelation.size,
@@ -507,6 +521,7 @@ import { t } from '../core/i18n'
         onCardEnter,
         onCardLeave,
         onCardMove,
+        onCopy: onCopyActionClick,
         onFavorite: onFavoriteActionClick,
         onPlaceholder: onPlaceholderActionClick,
         onPlusOne: onPlusOneClick,
@@ -629,6 +644,16 @@ import { t } from '../core/i18n'
     }
   }
 
+  async function onCopyActionClick(event) {
+    event.preventDefault()
+    event.stopPropagation()
+    cancelHide()
+    if (!state.settings.actions.copy || !state.candidate?.message) return
+    const copied = await copyTextToClipboard(state.candidate.message)
+    showToast(t(copied ? 'toastDanmakuCopied' : 'toastDanmakuCopyFailed'), copied ? 'success' : 'error')
+    armExpiry()
+  }
+
   function onFavoriteActionClick(event) {
     event.preventDefault()
     event.stopPropagation()
@@ -647,6 +672,64 @@ import { t } from '../core/i18n'
   function showToast(message, kind) {
     ensurePortal()
     state.ui.showToast(message, kind || 'info')
+  }
+
+  function updateCooldownUi(message) {
+    if (!state.ui) return
+    const remainingMs = state.sendProtection.remainingMs(message)
+    state.ui.setCooldown(remainingMs)
+    if (remainingMs > 0 && !state.cooldownTimer) {
+      state.cooldownTimer = setInterval(() => {
+        const currentMessage = state.candidate?.message || message
+        const currentRemaining = state.sendProtection.remainingMs(currentMessage)
+        if (state.ui) state.ui.setCooldown(currentRemaining)
+        if (currentRemaining <= 0) {
+          clearInterval(state.cooldownTimer)
+          state.cooldownTimer = 0
+        }
+      }, 250)
+    }
+  }
+
+  function showSendBlock(block, message) {
+    const seconds = Math.max(1, Math.ceil(block.remainingMs / 1_000))
+    if (block.reason === 'duplicate') {
+      showToast(t('toastDuplicateCooldown', String(seconds)), 'warning')
+    } else if (block.reason === 'in-flight') {
+      showToast(t('toastSendInProgress'), 'warning')
+    } else if (block.reason === 'cooldown') {
+      showToast(t('toastSendCooldown', String(seconds)), 'warning')
+    } else {
+      showToast(t('toastAccidentalSendBlocked'), 'warning')
+    }
+    updateCooldownUi(message)
+  }
+
+  function beginProtectedSend(message) {
+    const block = state.sendProtection.begin(message)
+    if (!block.allowed) showSendBlock(block, message)
+    return block.allowed
+  }
+
+  async function finishProtectedSend(message, success, feedbackProbe) {
+    const feedback = await feedbackProbe.wait(
+      success ? PLATFORM_SUCCESS_FEEDBACK_WAIT_MS : PLATFORM_FAILURE_FEEDBACK_WAIT_MS,
+    )
+    if (feedback) {
+      state.sendProtection.applyPlatformFeedback(feedback, message)
+      const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
+      showToast(
+        feedback.cooldownMs > 0
+          ? t('toastPlatformCooldown', [t('platformDouyin'), feedback.message, String(seconds)])
+          : t('toastPlatformRejected', [t('platformDouyin'), feedback.message]),
+        feedback.kind === 'rejected' ? 'error' : 'warning',
+      )
+      updateCooldownUi(message)
+      return 'feedback'
+    }
+    state.sendProtection.finish(message, success)
+    updateCooldownUi(message)
+    return success
   }
 
   function emojiTokenFromImage(image) {
@@ -888,6 +971,7 @@ import { t } from '../core/i18n'
     'data-nickname',
     'data-author-name',
     'data-sender-name',
+    'data-sender',
     'data-display-id',
     'data-user-id',
     'data-sender-id',
@@ -983,9 +1067,13 @@ import { t } from '../core/i18n'
     if (!(row instanceof Element)) return ''
     let current = row
     for (let depth = 0; current && depth < 5; depth += 1) {
-      if (matchesAny(current, CHAT_ROOT_SELECTORS)) break
+      // Douyin chat rows carry the same "webcast-chatroom" classes as the
+      // chat root. The sender must be read from the element BEFORE stopping
+      // the upward walk, or every real row short-circuits here with an empty
+      // sender and replies always fail with "未能识别到这条弹幕的发送者".
       const sender = senderFromChatContext(current, depth === 0)
       if (sender) return sender
+      if (matchesAny(current, CHAT_ROOT_SELECTORS)) break
       current = current.parentElement
     }
     return ''
@@ -993,6 +1081,9 @@ import { t } from '../core/i18n'
 
   function richPayloadFromChatRow(row) {
     return {
+      // Chat rows and canvas barrages share the same pure normalization, so
+      // sender correlation and text matching stay consistent for messages
+      // that legitimately contain colons (e.g. scores like "13:0了").
       ...richPayloadFromElement(messageContentElement(row)),
       sender: senderFromChatRow(row),
     }
@@ -1416,6 +1507,7 @@ import { t } from '../core/i18n'
       selectionId: String(state.selectionId),
       selectionPhase: state.selectionPhase,
     })
+    state.ui.setCooldown(state.sendProtection.remainingMs(candidate.message))
     requestAnimationFrame(() => positionCard(candidate))
     armExpiry()
     debugState.counters.cardsShown += 1
@@ -1680,14 +1772,18 @@ import { t } from '../core/i18n'
     }
   }
 
-  function focusReplyInput(input, expectedValue) {
+  function focusReplyInput(input, expectedValue, caretOffset) {
     const focus = () => {
       const editor = input.isConnected ? input : findInput()
       if (!editor || inputText(editor) !== expectedValue) {
         return
       }
       editor.focus({ preventScroll: true })
-      placeCaretAtEnd(editor)
+      if (Number.isFinite(caretOffset)) {
+        placeCaretAt(editor, caretOffset)
+      } else {
+        placeCaretAtEnd(editor)
+      }
     }
     focus()
     requestAnimationFrame(focus)
@@ -1736,14 +1832,21 @@ import { t } from '../core/i18n'
   function finishPreparedReply(candidate, input, sender, reason, requestKey, alreadyFilled) {
     const normalizedSender = shared.normalizeSenderName(sender) || mentionFromInput(input)
     const currentValue = inputText(input)
+    const offsets = editorSelectionOffsets(input)
+    const mention = `@${normalizedSender}`
+    const insertionStart = offsets ? offsets.start : currentValue.length
     const nextValue = alreadyFilled
       ? currentValue
-      : shared.replyDraftValue(currentValue, normalizedSender)
-    if (!alreadyFilled) setInputValue(input, nextValue)
+      : shared.replyDraftValue(currentValue, normalizedSender, offsets && offsets.start, offsets && offsets.end)
+    const caretOffset =
+      !alreadyFilled && nextValue !== currentValue ? insertionStart + mention.length : null
+    if (!alreadyFilled) {
+      setInputValue(input, nextValue)
+    }
     markReplyReady(candidate, normalizedSender)
     state.replyRequests.set(requestKey, { status: 'ready', at: Date.now() })
     hideCard(reason || 'reply-ready')
-    focusReplyInput(input, nextValue)
+    focusReplyInput(input, nextValue, caretOffset)
     debugEvent(
       alreadyFilled ? 'reply-already-ready' : 'reply-ready',
       {
@@ -2340,11 +2443,12 @@ import { t } from '../core/i18n'
     state.ownChatScanTimer = setTimeout(scanOwnChatMessages, Number(delay) || 0)
   }
 
-  function queueOwnChatIntent(intentId, payload) {
+  function queueOwnChatIntent(intentId, payload, sourceType) {
     const rows = queryAll(CHAT_MESSAGE_SELECTORS).slice(-120)
     state.ownChatIntents.push({
       id: intentId,
       payload,
+      source: String(sourceType || 'unknown').slice(0, 40),
       at: Date.now(),
       baseline: new Map(rows.map((row) => [row, payloadSignature(richPayloadFromChatRow(row))])),
     })
@@ -2375,7 +2479,7 @@ import { t } from '../core/i18n'
       },
       '*',
     )
-    queueOwnChatIntent(intentId, payload)
+    queueOwnChatIntent(intentId, payload, sourceType)
     debugEvent('own-message-announced', {
       text,
       sourceType: sourceType || 'unknown',
@@ -2456,8 +2560,73 @@ import { t } from '../core/i18n'
     )
   }
 
+  const EDITABLE_ELEMENT_SELECTOR = [
+    'textarea',
+    'input:not([type="hidden"])',
+    "[contenteditable='true']",
+    "[contenteditable='plaintext-only']",
+    "[role='textbox']",
+  ].join(',')
+
+  function editableElementFrom(node) {
+    if (!(node instanceof Element)) {
+      return null
+    }
+    if (node.matches(EDITABLE_ELEMENT_SELECTOR)) {
+      return node
+    }
+    return node.closest(EDITABLE_ELEMENT_SELECTOR)
+  }
+
+  function rememberManualInputValue(input) {
+    // Input events on nested contenteditable editors can target an inner
+    // element while findInput() returns the outer editor. Normalize the
+    // snapshot key to the editable ancestor so the fallback always matches.
+    const editor = editableElementFrom(input)
+    if (!editor || !editor.isConnected) {
+      return
+    }
+    const text = shared.parseMessageText(richPayloadFromInput(editor).text || '', MAX_LENGTH)
+    if (!text) {
+      return
+    }
+    const now = Date.now()
+    state.manualInputSnapshots.forEach((snapshot, element) => {
+      if (now - snapshot.at > MANUAL_INPUT_SNAPSHOT_TTL || !element.isConnected) {
+        state.manualInputSnapshots.delete(element)
+      }
+    })
+    state.manualInputSnapshots.set(editor, { text, at: now })
+    if (state.manualInputSnapshots.size > MANUAL_INPUT_SNAPSHOT_LIMIT) {
+      let oldest = null
+      for (const [element, snapshot] of state.manualInputSnapshots) {
+        if (!oldest || snapshot.at < oldest.at) {
+          oldest = { element, at: snapshot.at }
+        }
+      }
+      if (oldest) {
+        state.manualInputSnapshots.delete(oldest.element)
+      }
+    }
+  }
+
+  function snapshotManualInputText(input) {
+    const snapshot = state.manualInputSnapshots.get(input)
+    if (snapshot && Date.now() - snapshot.at <= MANUAL_INPUT_SNAPSHOT_TTL) {
+      return snapshot.text
+    }
+    return ''
+  }
+
   function announceManualInput(input, sourceType) {
-    const base = normalizeRichPayload(richPayloadFromInput(input))
+    const editor = editableElementFrom(input) || input
+    let base = normalizeRichPayload(richPayloadFromInput(editor))
+    if (!base.text && !base.assets.length) {
+      const snapshotText = snapshotManualInputText(editor)
+      if (snapshotText) {
+        base = normalizeRichPayload({ text: snapshotText, plainText: snapshotText })
+      }
+    }
     const pending = recentManualEmojiIntents()
     if (!pending.length) {
       const intentId = announceOwnMessage(base, sourceType)
@@ -2547,12 +2716,7 @@ import { t } from '../core/i18n'
   }
 
   async function repeatMessage(message, richValue) {
-    const now = Date.now()
-    if (now - state.lastActionAt < 700) {
-      showToast(t('toastActionTooFast'), 'warning')
-      return false
-    }
-    state.lastActionAt = now
+    if (!beginProtectedSend(message)) return false
     debugState.counters.sendsAttempted += 1
     const richPayload = normalizeRichPayload(richValue || message)
     const emojiAssets = richPayload.assets
@@ -2568,11 +2732,13 @@ import { t } from '../core/i18n'
     )
     const input = findInput()
     if (!input) {
+      state.sendProtection.finish(message, false)
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: 'input-not-found' }, 'error')
       showToast(t('toastEditorNotFound', t('platformDouyin')), 'error')
       return false
     }
+    const feedbackProbe = createPlatformFeedbackProbe(document)
     const ownIntentId = announceOwnMessage(richPayload, 'plus-one')
     const prepared = await prepareRichInput(input, richPayload)
     await new Promise((resolve) => setTimeout(resolve, 80))
@@ -2581,12 +2747,15 @@ import { t } from '../core/i18n'
         prepared.reason === 'emoji-not-inserted' &&
         (await waitForOwnMessageConfirmation(ownIntentId, 3200))
       if (directSent) {
+        if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) return false
         debugState.counters.sendsSucceeded += 1
         debugEvent('send-succeeded', { message, mode: 'emoji-direct' }, 'info')
         showToast(t('toastRichPlusOneSent'), 'success')
         return true
       }
       cancelOwnMessageAnnouncement(ownIntentId)
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled === 'feedback') return false
       setInputValue(input, '')
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: prepared.reason }, 'error')
@@ -2621,6 +2790,8 @@ import { t } from '../core/i18n'
       cancelOwnMessageAnnouncement(ownIntentId)
       debugState.counters.sendsFailed += 1
       debugEvent('send-failed', { message, reason: 'input-not-consumed' }, 'error')
+      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      if (settled === 'feedback') return false
       showToast(t('toastAutomaticSendFailed'), 'error')
       return false
     }
@@ -2628,6 +2799,11 @@ import { t } from '../core/i18n'
       input.blur()
     } catch {
       // The controlled editor may be replaced during the send cycle.
+    }
+    if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) {
+      debugState.counters.sendsFailed += 1
+      debugEvent('send-failed', { message, reason: 'platform-feedback' }, 'warning')
+      return false
     }
     debugState.counters.sendsSucceeded += 1
     debugEvent('send-succeeded', { message, emojiCount: emojiAssets.length }, 'info')
@@ -2938,6 +3114,7 @@ import { t } from '../core/i18n'
       state.ownChatIntents = []
       state.confirmedOwnMessageIds.clear()
       state.pendingManualEmojiIntents = []
+      state.manualInputSnapshots.clear()
       document.querySelectorAll("[data-bcp-douyin-own-chat='true']").forEach((row) => {
         delete row.dataset.bcpDouyinOwnChat
         delete row.dataset.bcpDouyinOwnChatSignature
@@ -3036,7 +3213,12 @@ import { t } from '../core/i18n'
       const input = findInput()
       const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
       const clickedSend = path.find(
-        (item) => item instanceof Element && matchesAny(item, SEND_BUTTON_SELECTORS),
+        (item) =>
+          item instanceof Element &&
+          (matchesAny(item, SEND_BUTTON_SELECTORS) ||
+            /^(发送|发 送|send)$/i.test(
+              shared.normalizeWhitespace(item.innerText || item.textContent || ''),
+            )),
       )
       let sharesInputContainer = false
       for (
@@ -3057,6 +3239,16 @@ import { t } from '../core/i18n'
   )
   document.addEventListener('click', onAltClick, true)
   document.addEventListener(
+    'input',
+    (event) => {
+      if (!event.isTrusted || !enabled()) {
+        return
+      }
+      rememberManualInputValue(event.target)
+    },
+    true,
+  )
+  document.addEventListener(
     'keydown',
     (event) => {
       if (event.key === 'Escape') {
@@ -3064,8 +3256,15 @@ import { t } from '../core/i18n'
       }
       if (event.isTrusted && event.key === 'Enter' && !event.shiftKey && enabled()) {
         const input = findInput()
-        if (input && (event.target === input || input.contains(event.target))) {
-          announceManualInput(input, 'manual-enter')
+        const ownsTarget = input && (event.target === input || input.contains(event.target))
+        // A nested contenteditable editor can retarget keydown to an inner
+        // element. When findInput() finds no editor at all, fall back to the
+        // editable ancestor of the event target so manual sends inside shadow
+        // roots or unusual wrappers are still announced.
+        const targetEditor = editableElementFrom(event.target)
+        const activeInput = ownsTarget ? input : input ? null : targetEditor
+        if (activeInput) {
+          announceManualInput(activeInput, 'manual-enter')
         }
       }
       if (event.ctrlKey && event.altKey && String(event.key).toLowerCase() === 'd') {
@@ -3145,10 +3344,12 @@ import { t } from '../core/i18n'
     if (state.expiryTimer) clearTimeout(state.expiryTimer)
     if (state.ownChatScanTimer) clearTimeout(state.ownChatScanTimer)
     if (state.senderCacheTimer) clearTimeout(state.senderCacheTimer)
+    if (state.cooldownTimer) clearInterval(state.cooldownTimer)
     state.hideTimer = 0
     state.expiryTimer = 0
     state.ownChatScanTimer = 0
     state.senderCacheTimer = 0
+    state.cooldownTimer = 0
     state.ownChatObserver?.disconnect()
     state.ownChatObserver = null
     state.activationRequests.clear()
@@ -3159,6 +3360,7 @@ import { t } from '../core/i18n'
     state.senderCorrelation.clear()
     state.ownChatIntents = []
     state.pendingManualEmojiIntents = []
+    state.manualInputSnapshots.clear()
   }
 
   function onVisibilityChange() {
@@ -3191,6 +3393,31 @@ import { t } from '../core/i18n'
   window.addEventListener('pagehide', onPageHide, { once: true })
   chrome.runtime.onMessage.addListener(onDiagnosticsMessage)
 
+  function rememberRemovedChatSenders(nodes) {
+    // Douyin's virtual chat list recycles rows: a row can be removed before
+    // the scheduled sender scan ever sees it in the live DOM. Extract the
+    // sender from removed rows immediately so replies still resolve after the
+    // row is gone.
+    for (const node of nodes) {
+      if (!(node instanceof Element)) continue
+      const rows = matchesAny(node, CHAT_MESSAGE_SELECTORS)
+        ? [node]
+        : Array.from(node.querySelectorAll(CHAT_MESSAGE_SELECTORS.join(',')))
+      for (const row of rows) {
+        if (isOwned(row) || row.dataset.bcpDouyinOwnChat === 'true') continue
+        const payload = richPayloadFromChatRow(row)
+        const ids = messageIdsFromRow(row)
+        rememberMessageSender(
+          payload.plainText || payload.text,
+          payload.sender,
+          Date.now(),
+          ids,
+          row,
+        )
+      }
+    }
+  }
+
   function startOwnChatObserver() {
     if (state.ownChatObserver || !document.documentElement) {
       return
@@ -3215,6 +3442,12 @@ import { t } from '../core/i18n'
               Boolean(node.querySelector(CHAT_MESSAGE_SELECTORS.join(',')))),
         )
       })
+      const removedSenders = mutations.flatMap(
+        (mutation) => Array.from(mutation.removedNodes || []),
+      )
+      if (removedSenders.length) {
+        rememberRemovedChatSenders(removedSenders)
+      }
       if (relevant) {
         scheduleSenderCacheScan(40)
         if (

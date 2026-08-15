@@ -635,7 +635,28 @@
   padding: 12px 20px;
   border-top: 0;
   background: transparent;
-  transition: background-color 140ms ease;
+  transition: background-color 140ms ease, box-shadow 140ms ease, opacity 140ms ease;
+  flex-wrap: wrap;
+}
+
+.bcp-favorites-list li.is-draggable {
+  cursor: default;
+}
+
+.bcp-favorites-list li.is-dragging {
+  opacity: .42;
+}
+
+.bcp-favorites-list li.is-drop-before {
+  box-shadow: inset 0 3px 0 var(--bcp-favorite-accent);
+}
+
+.bcp-favorites-list li.is-drop-after {
+  box-shadow: inset 0 -3px 0 var(--bcp-favorite-accent);
+}
+
+.bcp-favorites-list li.is-pinned {
+  background: color-mix(in srgb, var(--bcp-favorite-accent) 6%, transparent);
 }
 
 .bcp-favorites-list li:hover,
@@ -670,6 +691,24 @@
   color: var(--bcp-favorite-subtle);
 }
 
+.bcp-favorites-drag-handle {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 22px;
+  object-fit: contain;
+  cursor: grab;
+  opacity: .68;
+  transition: opacity 140ms ease;
+}
+
+.bcp-favorites-drag-handle:hover {
+  opacity: 1;
+}
+
+.bcp-favorites-drag-handle:active {
+  cursor: grabbing;
+}
+
 .bcp-favorites-shortcut kbd {
   border: 0;
   background: transparent;
@@ -685,6 +724,22 @@
 .bcp-favorites-item-copy {
   flex: 1;
   gap: 4px;
+  min-width: 180px;
+}
+
+.bcp-favorites-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.bcp-favorites-tags > span {
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bcp-favorite-accent) 10%, transparent);
+  color: var(--bcp-favorite-accent);
+  font-size: 10px;
+  line-height: 16px;
 }
 
 .bcp-favorites-text {
@@ -733,6 +788,62 @@
   flex: 0 0 auto;
   justify-content: flex-end;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+.bcp-favorites-order-actions {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.bcp-favorites-order-actions button {
+  min-width: 24px;
+  padding-inline: 6px;
+  font-size: 15px;
+}
+
+.bcp-favorites-pin.is-active {
+  color: var(--bcp-favorite-accent);
+  font-weight: 600;
+}
+
+.bcp-favorites-tag-editor {
+  display: flex;
+  flex: 1 0 100%;
+  align-items: center;
+  gap: 8px;
+  padding-left: 30px;
+}
+
+.bcp-favorites-tag-editor label {
+  flex: 1;
+  min-width: 0;
+}
+
+.bcp-favorites-tag-editor input {
+  width: 100%;
+  height: 30px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--bcp-favorite-accent) 28%, transparent);
+  border-radius: 8px;
+  outline: none;
+  background: var(--bcp-favorite-surface);
+  color: var(--bcp-favorite-text);
+  font: inherit;
+}
+
+.bcp-favorites-tag-editor input:focus {
+  border-color: var(--bcp-favorite-accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--bcp-favorite-accent) 14%, transparent);
+}
+
+.bcp-favorites-tag-editor button {
+  min-height: 28px;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: 14px;
+  font-size: 12px;
+  cursor: pointer;
 }
 
 .bcp-favorites-item-actions button {
@@ -930,54 +1041,114 @@
 }
 
 .bcp-favorites-radial-center {
-  left: -48px;
-  top: -48px;
-  flex-direction: column;
-  width: 96px;
-  height: 96px;
-  padding: 11px;
-  border: 3px solid var(--bcp-favorite-accent);
+  --bcp-favorites-gaze-angle: -135deg;
+  --bcp-favorites-gaze-x: 0px;
+  --bcp-favorites-gaze-y: 0px;
+  left: -52px;
+  top: -52px;
+  width: 104px;
+  height: 104px;
+  overflow: hidden;
+  padding: 0;
+  border: 3px solid color-mix(in srgb, #fff 78%, var(--bcp-favorite-accent));
   border-radius: 50%;
-  background: #fff;
-  box-shadow: 0 12px 28px rgb(89 47 12 / 22%);
+  background: linear-gradient(145deg,
+    var(--bcp-favorite-accent), var(--bcp-favorite-accent-end));
+  box-shadow:
+    0 12px 28px rgb(89 47 12 / 26%),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
+  color: #fff;
+  isolation: isolate;
+  transition: box-shadow 140ms ease, transform 140ms ease;
 }
 
 .bcp-favorites-radial-center.has-selection {
-  background: var(--bcp-favorite-accent);
-  color: #fff;
+  box-shadow:
+    0 14px 32px color-mix(in srgb, var(--bcp-favorite-accent) 42%, transparent),
+    0 0 0 5px color-mix(in srgb, var(--bcp-favorite-accent) 18%, transparent),
+    inset 0 1px 0 rgb(255 255 255 / 28%);
+  transform: scale(1.035);
 }
 
-.bcp-favorites-radial-monogram {
-  margin-bottom: 2px;
-  color: var(--bcp-favorite-accent);
-  font: 700 22px/1 Bahnschrift, "Segoe UI", sans-serif;
+.bcp-favorites-radial-bot {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
+  pointer-events: none;
 }
 
-.bcp-favorites-radial-center strong {
+.bcp-favorites-radial-bot::before {
+  position: absolute;
+  top: 8px;
+  left: 15px;
+  width: 38px;
+  height: 22px;
+  transform: rotate(-18deg);
+  border-radius: 50%;
+  background: rgb(255 255 255 / 10%);
+  content: "";
+}
+
+.bcp-favorites-radial-bot-eyes {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(
+    calc(-50% + var(--bcp-favorites-gaze-x)),
+    calc(-50% + var(--bcp-favorites-gaze-y))
+  ) rotate(var(--bcp-favorites-gaze-angle));
+  transition: transform 70ms linear;
+  will-change: transform;
+}
+
+.bcp-favorites-radial-bot-expression {
+  display: flex;
+  gap: 12px;
+  transform-origin: center;
+}
+
+.bcp-favorites-radial-bot-eye {
   display: block;
-  max-width: 78px;
-  overflow: hidden;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  width: 10px;
+  height: 21px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(65 31 5 / 22%);
+  transform-origin: center;
+  transition: transform 160ms ease-out;
 }
 
-.bcp-favorites-radial-center span:not(.bcp-favorites-radial-monogram) {
-  display: block;
-  max-width: 78px;
-  margin-top: 3px;
-  overflow: hidden;
-  color: var(--bcp-favorite-muted);
-  font-size: 8px;
-  line-height: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.bcp-favorites-radial-center.is-idle .bcp-favorites-radial-bot-eye {
+  animation: bcp-favorites-bot-blink 4.6s ease-in-out infinite;
 }
 
-.bcp-favorites-radial-center.has-selection span {
-  color: rgb(255 255 255 / 78%);
+.bcp-favorites-radial-center.has-selection .bcp-favorites-radial-bot-expression {
+  animation: bcp-favorites-bot-react 220ms cubic-bezier(.2, .9, .25, 1.2) both;
+}
+
+.bcp-favorites-radial-center.is-favorite .bcp-favorites-radial-bot-eye:first-child {
+  transform: translateY(2px) rotate(-18deg) scaleY(.76);
+}
+
+.bcp-favorites-radial-center.is-favorite .bcp-favorites-radial-bot-eye:last-child {
+  transform: translateY(2px) rotate(18deg) scaleY(.76);
+}
+
+.bcp-favorites-radial-center.is-more .bcp-favorites-radial-bot-eye:first-child {
+  transform: rotate(-9deg);
+}
+
+.bcp-favorites-radial-center.is-more .bcp-favorites-radial-bot-eye:last-child {
+  transform: translateY(3px) scaleY(.22);
+}
+
+.bcp-favorites-radial-center.is-other .bcp-favorites-radial-bot-eye:first-child {
+  transform: translateY(-2px) scaleY(1.08);
+}
+
+.bcp-favorites-radial-center.is-other .bcp-favorites-radial-bot-eye:last-child {
+  transform: translateY(3px) scaleY(.58);
 }
 
 .bcp-favorites-radial-item {
@@ -1038,6 +1209,17 @@
   to { opacity: 1; transform: scale(1); }
 }
 
+@keyframes bcp-favorites-bot-blink {
+  0%, 91%, 95%, 100% { transform: scaleY(1); }
+  93% { transform: scaleY(.08); }
+}
+
+@keyframes bcp-favorites-bot-react {
+  from { opacity: .72; transform: translateY(3px) scale(.72); }
+  68% { opacity: 1; transform: translateY(-1px) scale(1.08); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @keyframes bcp-favorites-loading {
   from { background-position: 100% 0; }
   to { background-position: -120% 0; }
@@ -1077,6 +1259,18 @@
   .bcp-favorites-item-actions {
     width: 100%;
     padding-left: 30px;
+  }
+
+  .bcp-favorites-list li.is-draggable .bcp-favorites-item-actions {
+    padding-left: 52px;
+  }
+
+  .bcp-favorites-tag-editor {
+    padding-left: 30px;
+  }
+
+  .bcp-favorites-list li.is-draggable .bcp-favorites-tag-editor {
+    padding-left: 52px;
   }
 
   .bcp-favorites-item-actions .bcp-favorites-send {
@@ -1150,7 +1344,12 @@
   .bcp-favorites-layer,
   .bcp-favorites-panel,
   .bcp-favorites-radial,
+  .bcp-favorites-radial-center,
+  .bcp-favorites-radial-bot-eyes,
+  .bcp-favorites-radial-bot-expression,
+  .bcp-favorites-radial-bot-eye,
   .bcp-favorites-radial-item,
+  .bcp-favorites-drag-handle,
   .bcp-favorites-skeleton {
     animation: none !important;
     transition-duration: .01ms !important;

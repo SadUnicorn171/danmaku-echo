@@ -131,19 +131,38 @@ export function replyMention(sender: unknown): string {
   return name ? `@${name} ` : ''
 }
 
-export function replyDraftValue(currentValue: unknown, sender: unknown): string {
-  const mention = replyMention(sender)
-  if (!mention) {
+// Inserts the sender mention at the caret position inside the current draft,
+// replacing any selected text, e.g. "1232312 32|34" + reply becomes
+// "1232312 32@sadunicorn34". Without a caret position it appends at the end,
+// and an empty draft becomes a leading "@name " for quick typing. Re-replying
+// to a sender whose mention is already present is a no-op.
+export function replyDraftValue(
+  currentValue: unknown,
+  sender: unknown,
+  selectionStart?: number,
+  selectionEnd?: number,
+): string {
+  const name = normalizeSenderName(sender)
+  if (!name) {
     return String(currentValue == null ? '' : currentValue)
   }
   const current = String(currentValue == null ? '' : currentValue)
-  if (!current.trim()) {
-    return mention
+  if (!current) {
+    return `@${name} `
   }
-  if (current.startsWith(mention) || current.trimStart().startsWith(mention.trimEnd())) {
+  const mention = `@${name}`
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  if (new RegExp(`@${escapedName}(?=$|[^\\p{L}\\p{N}_])`, 'u').test(current)) {
     return current
   }
-  return `${mention}${current}`
+  const length = current.length
+  const start = Number.isFinite(selectionStart)
+    ? Math.max(0, Math.min(Number(selectionStart), length))
+    : length
+  const end = Number.isFinite(selectionEnd)
+    ? Math.max(start, Math.min(Number(selectionEnd), length))
+    : start
+  return `${current.slice(0, start)}${mention}${current.slice(end)}`
 }
 
 export function extractSenderFromRecord(value: unknown): string {

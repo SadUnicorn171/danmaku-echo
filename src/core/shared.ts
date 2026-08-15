@@ -1,4 +1,5 @@
 import type {
+  ActionSettings,
   ColorSettingKey,
   ColorSettings,
   ExtensionSettings,
@@ -56,6 +57,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
     plusOne: true,
     reply: true,
     favorite: true,
+    copy: false,
   }),
   platforms: Object.freeze({
     huya: true,
@@ -178,11 +180,7 @@ export function parseMessageText(value: unknown, maxLength?: number): string {
     .map((line) => line.trim())
     .filter(Boolean)
     .filter((line) => !/^(举报|屏蔽|回复|复制|更多|关注)$/.test(line))
-  let text = lines.length > 1 ? lines.at(-1) || '' : lines[0] || ''
-  const userPrefix = text.match(/^([^：:\n]{1,32})[：:]\s*(.+)$/)
-  if (userPrefix && !/^(https?|ftp)$/i.test(userPrefix[1].trim())) {
-    text = userPrefix[2].trim()
-  }
+  const text = lines.length > 1 ? lines.at(-1) || '' : lines[0] || ''
   return sliceGraphemes(text, limit)
 }
 
@@ -209,14 +207,17 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
     ? value.nativeDanmakuCapsule
     : {}
   const savedColors = isRecord(value.colors) ? value.colors : {}
+  const actions: ActionSettings = {
+    plusOne: typeof savedActions.plusOne === 'boolean' ? savedActions.plusOne : true,
+    reply: typeof savedActions.reply === 'boolean' ? savedActions.reply : true,
+    favorite: typeof savedActions.favorite === 'boolean' ? savedActions.favorite : true,
+    copy: typeof savedActions.copy === 'boolean' ? savedActions.copy : false,
+  }
+  if (!Object.values(actions).some(Boolean)) actions.plusOne = true
   return {
     enabled: typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_SETTINGS.enabled,
     altClick: typeof value.altClick === 'boolean' ? value.altClick : DEFAULT_SETTINGS.altClick,
-    actions: {
-      plusOne: typeof savedActions.plusOne === 'boolean' ? savedActions.plusOne : true,
-      reply: typeof savedActions.reply === 'boolean' ? savedActions.reply : true,
-      favorite: typeof savedActions.favorite === 'boolean' ? savedActions.favorite : true,
-    },
+    actions,
     platforms: {
       huya: typeof savedPlatforms.huya === 'boolean' ? savedPlatforms.huya : true,
       bilibili: typeof savedPlatforms.bilibili === 'boolean' ? savedPlatforms.bilibili : true,

@@ -29,6 +29,32 @@ const SNAPSHOT_STYLE_PROPERTIES = [
   'max-height',
 ]
 
+// Descendants inherit most typography from the frozen root. Copying every
+// computed typography field into every nested span made a real-site hover pay
+// for hundreds of style writes before the browser could paint the paused
+// danmaku. Keep only properties that can materially change an inline child.
+const SNAPSHOT_DESCENDANT_STYLE_PROPERTIES = [
+  'display',
+  'box-sizing',
+  'font',
+  'text-shadow',
+  '-webkit-text-stroke',
+  'color',
+  'background',
+  'border',
+  'border-radius',
+  'padding',
+  'margin',
+  'opacity',
+  'filter',
+  'white-space',
+  'vertical-align',
+  'width',
+  'height',
+  'max-width',
+  'max-height',
+]
+
 const BASE_SKIP_SELECTORS = [
   ACTIVE_MEDIA_SELECTOR,
   'script',
@@ -75,9 +101,10 @@ export function containsActiveMediaDeep(element: Element): boolean {
   return false
 }
 
-function copyPresentation(source: Element, target: HTMLElement): void {
+function copyPresentation(source: Element, target: HTMLElement, descendant = false): void {
   const computed = getComputedStyle(source)
-  for (const property of SNAPSHOT_STYLE_PROPERTIES) {
+  const properties = descendant ? SNAPSHOT_DESCENDANT_STYLE_PROPERTIES : SNAPSHOT_STYLE_PROPERTIES
+  for (const property of properties) {
     const value = computed.getPropertyValue(property)
     if (value) target.style.setProperty(property, value, 'important')
   }
@@ -119,7 +146,7 @@ function appendChildren(
       inertChild = document.createElement('span')
     }
 
-    copyPresentation(child, inertChild)
+    copyPresentation(child, inertChild, true)
     target.appendChild(inertChild)
     budget.count += 1
     if (!(child instanceof HTMLImageElement) && child.tagName !== 'BR') {
