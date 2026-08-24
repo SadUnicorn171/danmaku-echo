@@ -72,6 +72,116 @@
                 :description="t('settingsAltClickDescription')"
                 @change="save"
               />
+              <label class="repeat-reminder-number-setting" for="capsule-scale-percent">
+                <span>
+                  <strong>{{ t('settingsCapsuleScale') }}</strong>
+                  <small>{{ t('settingsCapsuleScaleDescription') }}</small>
+                </span>
+                <span class="repeat-reminder-number-input">
+                  <input
+                    id="capsule-scale-percent"
+                    v-model.number="settings.interfaceScale.capsulePercent"
+                    type="number"
+                    :min="MIN_CAPSULE_SCALE_PERCENT"
+                    :max="MAX_CAPSULE_SCALE_PERCENT"
+                    step="5"
+                    @change="saveCapsuleScale"
+                  >
+                  <em>%</em>
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <section id="repeat-reminder-settings" class="settings-section" aria-labelledby="repeat-reminder-title">
+            <div class="section-heading">
+              <div>
+                <h2 id="repeat-reminder-title">{{ t('settingsRepeatReminder') }}</h2>
+                <p>{{ t('settingsRepeatReminderDescription') }}</p>
+              </div>
+              <span>{{ t('settingsRepeatReminderLocalBadge') }}</span>
+            </div>
+            <div class="settings-card">
+              <SettingSwitch
+                id="repeat-reminder-enabled"
+                v-model="settings.repeatReminder.enabled"
+                :title="t('settingsRepeatReminderEnabled')"
+                :description="t('settingsRepeatReminderEnabledDescription')"
+                :aria-label="t('settingsRepeatReminderEnabled')"
+                @change="save"
+              />
+              <label class="repeat-reminder-number-setting" for="repeat-reminder-threshold">
+                <span>
+                  <strong>{{ t('settingsRepeatReminderThreshold') }}</strong>
+                  <small>{{ t('settingsRepeatReminderThresholdDescription') }}</small>
+                </span>
+                <span class="repeat-reminder-number-input">
+                  <input
+                    id="repeat-reminder-threshold"
+                    v-model.number="settings.repeatReminder.threshold"
+                    type="number"
+                    :min="MIN_REPEAT_REMINDER_THRESHOLD"
+                    :max="MAX_REPEAT_REMINDER_THRESHOLD"
+                    step="1"
+                    @change="saveRepeatReminderThreshold"
+                  >
+                  <em>{{ t('settingsRepeatReminderThresholdUnit') }}</em>
+                </span>
+              </label>
+              <label class="repeat-reminder-number-setting" for="repeat-reminder-prompt-duration">
+                <span>
+                  <strong>{{ t('settingsRepeatReminderPromptDuration') }}</strong>
+                  <small>{{ t('settingsRepeatReminderPromptDurationDescription') }}</small>
+                </span>
+                <span class="repeat-reminder-number-input">
+                  <input
+                    id="repeat-reminder-prompt-duration"
+                    v-model.number="settings.repeatReminder.promptDurationSeconds"
+                    type="number"
+                    :min="MIN_REPEAT_REMINDER_PROMPT_SECONDS"
+                    :max="MAX_REPEAT_REMINDER_PROMPT_SECONDS"
+                    step="1"
+                    @change="saveRepeatReminderPromptDuration"
+                  >
+                  <em>{{ t('settingsRepeatReminderPromptDurationUnit') }}</em>
+                </span>
+              </label>
+              <label class="repeat-reminder-number-setting" for="repeat-reminder-queue-limit">
+                <span>
+                  <strong>{{ t('settingsRepeatReminderQueueLimit') }}</strong>
+                  <small>{{ t('settingsRepeatReminderQueueLimitDescription') }}</small>
+                </span>
+                <span class="repeat-reminder-number-input">
+                  <input
+                    id="repeat-reminder-queue-limit"
+                    v-model.number="settings.repeatReminder.queueLimit"
+                    type="number"
+                    :min="MIN_REPEAT_REMINDER_QUEUE_LIMIT"
+                    :max="MAX_REPEAT_REMINDER_QUEUE_LIMIT"
+                    step="1"
+                    @change="saveRepeatReminderQueueLimit"
+                  >
+                  <em>{{ t('settingsRepeatReminderQueueLimitUnit') }}</em>
+                </span>
+              </label>
+              <label class="repeat-reminder-number-setting" for="repeat-reminder-prompt-scale">
+                <span>
+                  <strong>{{ t('settingsRepeatReminderPromptScale') }}</strong>
+                  <small>{{ t('settingsRepeatReminderPromptScaleDescription') }}</small>
+                </span>
+                <span class="repeat-reminder-number-input">
+                  <input
+                    id="repeat-reminder-prompt-scale"
+                    v-model.number="settings.repeatReminder.promptScalePercent"
+                    type="number"
+                    :min="MIN_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
+                    :max="MAX_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
+                    step="5"
+                    @change="saveRepeatReminderPromptScale"
+                  >
+                  <em>%</em>
+                </span>
+              </label>
             </div>
           </section>
 
@@ -261,6 +371,23 @@ import { useSectionNavigation } from "./composables/useSectionNavigation";
 import { useSettings } from "./composables/useSettings";
 import { t } from "./core/i18n";
 import { SETTINGS_SECTION_IDS } from "./core/settings-sections";
+import {
+  MAX_CAPSULE_SCALE_PERCENT,
+  MAX_REPEAT_REMINDER_PROMPT_SECONDS,
+  MAX_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+  MAX_REPEAT_REMINDER_QUEUE_LIMIT,
+  MAX_REPEAT_REMINDER_THRESHOLD,
+  MIN_CAPSULE_SCALE_PERCENT,
+  MIN_REPEAT_REMINDER_PROMPT_SECONDS,
+  MIN_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+  MIN_REPEAT_REMINDER_QUEUE_LIMIT,
+  MIN_REPEAT_REMINDER_THRESHOLD,
+  normalizeCapsuleScalePercent,
+  normalizeRepeatReminderPromptSeconds,
+  normalizeRepeatReminderPromptScalePercent,
+  normalizeRepeatReminderQueueLimit,
+  normalizeRepeatReminderThreshold
+} from "./core/repeat-reminder-settings";
 
 const feedbackEmail = "sadunicorn1113@gmail.com";
 const platforms: ReadonlyArray<{ id: PlatformId; label: string }> = [
@@ -285,7 +412,6 @@ const colorFields: ReadonlyArray<{
   { key: "warning", label: t("colorWarning"), defaultValue: "#E6A000" },
   { key: "error", label: t("colorError"), defaultValue: "#FF4747" }
 ];
-
 const {
   copyFeedbackEmail,
   save,
@@ -307,8 +433,42 @@ const activeSectionTitle = computed(() => ({
   "native-danmaku-capsule": t("settingsNativeCapsule"),
   "platform-colors": t("settingsColors"),
   "platform-connections": t("settingsPlatforms"),
+  "repeat-reminder-settings": t("settingsRepeatReminder"),
   "side-chat-capsule": t("settingsSideCapsule")
 }[activeSection.value]));
+
+function saveRepeatReminderThreshold(): void {
+  settings.repeatReminder.threshold = normalizeRepeatReminderThreshold(settings.repeatReminder.threshold);
+  save();
+}
+
+function saveRepeatReminderPromptDuration(): void {
+  settings.repeatReminder.promptDurationSeconds = normalizeRepeatReminderPromptSeconds(
+    settings.repeatReminder.promptDurationSeconds
+  );
+  save();
+}
+
+function saveRepeatReminderQueueLimit(): void {
+  settings.repeatReminder.queueLimit = normalizeRepeatReminderQueueLimit(
+    settings.repeatReminder.queueLimit
+  );
+  save();
+}
+
+function saveRepeatReminderPromptScale(): void {
+  settings.repeatReminder.promptScalePercent = normalizeRepeatReminderPromptScalePercent(
+    settings.repeatReminder.promptScalePercent
+  );
+  save();
+}
+
+function saveCapsuleScale(): void {
+  settings.interfaceScale.capsulePercent = normalizeCapsuleScalePercent(
+    settings.interfaceScale.capsulePercent
+  );
+  save();
+}
 
 function isOnlyActionEnabled(action: keyof ActionSettings): boolean {
   return settings.actions[action]
@@ -479,6 +639,68 @@ a {
   border-radius: 4px;
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.repeat-reminder-number-setting {
+  align-items: center;
+  border-top: 1px solid var(--border);
+  display: flex;
+  gap: 24px;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 12px 16px;
+}
+
+.repeat-reminder-number-setting > span:first-child {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.repeat-reminder-number-setting strong {
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+}
+
+.repeat-reminder-number-setting small {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.repeat-reminder-number-input {
+  align-items: center;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  display: flex;
+  flex: 0 0 auto;
+  overflow: hidden;
+}
+
+.repeat-reminder-number-input input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font: 500 12px/20px ui-monospace, Consolas, monospace;
+  outline: 0;
+  padding: 6px 4px 6px 10px;
+  text-align: right;
+  width: 62px;
+}
+
+.repeat-reminder-number-input em {
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-style: normal;
+  padding-right: 10px;
+}
+
+.repeat-reminder-number-input:focus-within {
+  border-color: #fd8101;
+  outline: 2px solid rgb(253 129 1 / 40%);
+  outline-offset: 1px;
 }
 
 .section-heading {

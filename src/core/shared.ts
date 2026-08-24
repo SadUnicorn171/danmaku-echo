@@ -12,6 +12,19 @@ import {
   replyDraftValue,
   replyMention,
 } from './reply'
+import {
+  DEFAULT_CAPSULE_SCALE_PERCENT,
+  DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
+  DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+  DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
+  DEFAULT_REPEAT_REMINDER_THRESHOLD,
+  legacySensitivityThreshold,
+  normalizeCapsuleScalePercent,
+  normalizeRepeatReminderPromptSeconds,
+  normalizeRepeatReminderPromptScalePercent,
+  normalizeRepeatReminderQueueLimit,
+  normalizeRepeatReminderThreshold,
+} from './repeat-reminder-settings'
 
 export {
   extractSenderFromRecord,
@@ -65,6 +78,16 @@ export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
     douyin: true,
     douyu: true,
   }),
+  repeatReminder: Object.freeze({
+    enabled: true,
+    promptDurationSeconds: DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
+    promptScalePercent: DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+    queueLimit: DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
+    threshold: DEFAULT_REPEAT_REMINDER_THRESHOLD,
+  }),
+  interfaceScale: Object.freeze({
+    capsulePercent: DEFAULT_CAPSULE_SCALE_PERCENT,
+  }),
   sideChatCapsule: Object.freeze({
     huya: false,
     bilibili: false,
@@ -117,6 +140,47 @@ export function applyPlatformColors(root: unknown, colors: unknown): void {
       style.removeProperty!(property)
     }
   })
+}
+
+const CAPSULE_SCALE_DIMENSIONS = Object.freeze({
+  '--bcp-capsule-divider-height': 24,
+  '--bcp-capsule-divider-width': 2,
+  '--bcp-capsule-height': 40,
+  '--bcp-capsule-item-font-size': 16,
+  '--bcp-capsule-item-line-height': 22,
+  '--bcp-capsule-item-padding': 12,
+  '--bcp-capsule-item-width': 56,
+  '--bcp-capsule-plus-font-size': 14.4,
+  '--bcp-capsule-radius': 16,
+  '--bcp-douyin-action-space': 174,
+})
+
+// Keep the horizontal flex rhythm on whole device pixels. When item and
+// divider widths accumulate fractional device-pixel offsets, each divider
+// lands on a different rasterization phase and appears randomly thicker or
+// thinner while a moving capsule is rendered.
+const CAPSULE_PIXEL_SNAPPED_DIMENSIONS = new Set([
+  '--bcp-capsule-divider-width',
+  '--bcp-capsule-item-width',
+])
+
+function capsuleDevicePixelRatio(): number {
+  const ratio = Number(globalThis.devicePixelRatio)
+  return Number.isFinite(ratio) && ratio > 0 ? ratio : 1
+}
+
+export function applyCapsuleScale(root: unknown, percent: unknown): void {
+  if (!isRecord(root) || !isRecord(root.style)) return
+  const style = root.style as { setProperty?: (property: string, value: string) => void }
+  if (typeof style.setProperty !== 'function') return
+  const scale = normalizeCapsuleScalePercent(percent) / 100
+  const deviceScale = capsuleDevicePixelRatio()
+  for (const [property, pixels] of Object.entries(CAPSULE_SCALE_DIMENSIONS)) {
+    const scaledPixels = CAPSULE_PIXEL_SNAPPED_DIMENSIONS.has(property)
+      ? Math.max(1 / deviceScale, Math.round(pixels * scale * deviceScale) / deviceScale)
+      : Math.round(pixels * scale * 100) / 100
+    style.setProperty(property, `${scaledPixels}px`)
+  }
 }
 
 export function detectPlatform(hostname: unknown, pathname?: unknown): PlatformId | null {
@@ -207,6 +271,10 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
     ? value.nativeDanmakuCapsule
     : {}
   const savedColors = isRecord(value.colors) ? value.colors : {}
+  const savedInterfaceScale = isRecord(value.interfaceScale) ? value.interfaceScale : {}
+  const savedRepeatReminder = isRecord(value.repeatReminder)
+    ? value.repeatReminder
+    : isRecord(value.radar) ? value.radar : {}
   const actions: ActionSettings = {
     plusOne: typeof savedActions.plusOne === 'boolean' ? savedActions.plusOne : true,
     reply: typeof savedActions.reply === 'boolean' ? savedActions.reply : true,
@@ -217,12 +285,28 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
   return {
     enabled: typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_SETTINGS.enabled,
     altClick: typeof value.altClick === 'boolean' ? value.altClick : DEFAULT_SETTINGS.altClick,
+    interfaceScale: {
+      capsulePercent: normalizeCapsuleScalePercent(savedInterfaceScale.capsulePercent),
+    },
     actions,
     platforms: {
       huya: typeof savedPlatforms.huya === 'boolean' ? savedPlatforms.huya : true,
       bilibili: typeof savedPlatforms.bilibili === 'boolean' ? savedPlatforms.bilibili : true,
       douyin: typeof savedPlatforms.douyin === 'boolean' ? savedPlatforms.douyin : true,
       douyu: typeof savedPlatforms.douyu === 'boolean' ? savedPlatforms.douyu : true,
+    },
+    repeatReminder: {
+      enabled: typeof savedRepeatReminder.enabled === 'boolean' ? savedRepeatReminder.enabled : true,
+      promptDurationSeconds: normalizeRepeatReminderPromptSeconds(
+        savedRepeatReminder.promptDurationSeconds,
+      ),
+      promptScalePercent: normalizeRepeatReminderPromptScalePercent(
+        savedRepeatReminder.promptScalePercent,
+      ),
+      queueLimit: normalizeRepeatReminderQueueLimit(savedRepeatReminder.queueLimit),
+      threshold: Object.hasOwn(savedRepeatReminder, 'threshold')
+        ? normalizeRepeatReminderThreshold(savedRepeatReminder.threshold)
+        : legacySensitivityThreshold(savedRepeatReminder.sensitivity),
     },
     sideChatCapsule: {
       huya:
@@ -256,6 +340,7 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
 const shared: SharedExtensionApi = Object.freeze({
   COLOR_SETTING_KEYS,
   DEFAULT_SETTINGS,
+  applyCapsuleScale,
   applyPlatformColors,
   detectPlatform,
   isPlausibleMessage,

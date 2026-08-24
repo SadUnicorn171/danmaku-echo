@@ -12,11 +12,15 @@ export interface BilibiliDirectEmoticonSendRequest {
 
 export interface BilibiliDirectEmoticonSendResponse {
   code?: number
+  endpoint?: string
   error?: string
+  httpStatus?: number
   message?: string
+  method?: 'POST'
   ok: boolean
   identity?: string
   stage?: string
+  transport?: 'fetch'
 }
 
 export function isBilibiliDirectEmoticonSendRequest(
@@ -442,20 +446,40 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
       method: 'POST',
     })
     if (!sendResponse.ok) {
-      return { error: `http-${sendResponse.status}`, ok: false, stage: 'send-http' }
+      return {
+        endpoint: 'api.live.bilibili.com/msg/send',
+        error: `http-${sendResponse.status}`,
+        httpStatus: sendResponse.status,
+        method: 'POST',
+        ok: false,
+        stage: 'send-http',
+        transport: 'fetch',
+      }
     }
     const sendEnvelope = await jsonEnvelope(sendResponse)
     const code = codeOf(sendEnvelope)
     const message = messageOf(sendEnvelope)
     return code === 0
-      ? { code, identity, ok: true }
+      ? {
+          code,
+          endpoint: 'api.live.bilibili.com/msg/send',
+          httpStatus: sendResponse.status,
+          identity,
+          method: 'POST',
+          ok: true,
+          transport: 'fetch',
+        }
       : {
           code,
+          endpoint: 'api.live.bilibili.com/msg/send',
           error: code === undefined ? 'invalid-response' : `api-${code}`,
+          httpStatus: sendResponse.status,
           identity,
           message,
+          method: 'POST',
           ok: false,
           stage: 'send-api',
+          transport: 'fetch',
         }
   } catch (error) {
     const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error || '')

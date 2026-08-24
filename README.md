@@ -4,12 +4,12 @@
   <img src="public/assets/danmaku-echo-icon.png" width="180" alt="Danmaku Echo icon">
 </p>
 
-> 为虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播提供弹幕 `+1`、回复、复制与本地收藏。
-> Danmaku echoing, replies, copying, and local favorites for Huya, Bilibili, Douyin, and Douyu Live.
+> 为虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播提供弹幕 `+1`、回复、复制、本地收藏，以及高频弹幕 +1 提醒。
+> Danmaku echoing, replies, copying, local favorites, and frequent-message +1 reminders for Huya, Bilibili, Douyin, and Douyu Live.
 
 [中文](#中文) · [English](#english) · [隐私权政策](PRIVACY.md)
 
-![Version](https://img.shields.io/badge/version-2.3.0-orange)
+![Version](https://img.shields.io/badge/version-2.3.1-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
@@ -22,12 +22,12 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 支持平台
 
-| 平台 | 右侧聊天区 | 视频弹幕 | 全屏模式 |
-| --- | --- | --- | --- |
-| 虎牙直播 | ✅ | ✅ | ✅ |
-| 哔哩哔哩直播 | ✅ | ✅ | ✅ |
-| 抖音直播 | ✅ | ✅（DOM 接管） | ✅ |
-| 斗鱼直播 | ✅ | ✅ | ✅ |
+| 平台 | 右侧聊天区 | 视频弹幕 | 高频 +1 提醒 | 全屏模式 |
+| --- | --- | --- | --- | --- |
+| 虎牙直播 | ✅ | ✅ | ✅ | ✅ |
+| 哔哩哔哩直播 | ✅ | ✅ | ✅ | ✅ |
+| 抖音直播 | ✅ | ✅（DOM 接管） | ✅（Canvas 队列 + 侧聊） | ✅ |
+| 斗鱼直播 | ✅ | ✅ | ✅ | ✅ |
 
 ### 弹幕收藏
 
@@ -36,6 +36,12 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 所有可识别弹幕都可以收藏，包括普通文字、Unicode Emoji、平台图片表情以及文字与表情混排。富弹幕会同时保存显示文字、内容顺序和平台资源识别信息；同样显示为“图片表情”的不同资源不会被错误合并，旧版纯文字收藏会自动兼容。发送富弹幕时优先使用当前平台的官方输入框与表情面板，能否发送取决于当前平台和账号是否仍可使用对应资源；B 站房间图片表情在面板无法唯一定位时，会校验资源所属真实房间并通过当前 B 站页面的官方弹幕接口后备发送。
 
 在直播间短按 `Alt + Q` 会打开固定收藏面板，可置顶收藏、添加可搜索标签，并按发送次数、收藏时间或“轮盘顺序”排列。选择“轮盘顺序”后，可拖动左侧手柄或使用上下按钮持久调整本房顺序；长按 `Alt + Q` 打开的快捷轮盘会读取这一顺序并展示前 6 条弹幕。数字键 `1–9` 可发送当前页弹幕；轮盘可直接指向并松开发送，“其他收藏”和“更多”会进入对应列表。原生全屏时界面会挂载到 `document.fullscreenElement` 内，因此全屏状态也可操作。
+
+### 轻量弹幕雷达
+
+启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到自定义门槛后加入“暂不 / +1”提示队列。雷达首次生成有效队列时会显示一次性说明框，明确该功能只提醒、不自动发送，并介绍可调整的开关、触发次数、停留时间、队列上限和提示大小；点击“知道了”或“进入设置”后只保存一个本地确认标记，后续不再显示。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
+
+每条提示默认保留 6 秒，`+1` 后方会独立逐秒倒数，到时自动隐藏并在本轮窗口内保持忽略。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。扩展主页可将触发次数设置为 2–99 次、提示时间设置为 1–60 秒、队列上限设置为 1–10 条，并将整个提示队列和弹幕操作胶囊分别缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端请求或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
 
 ### 抖音 DOM 接管说明
 
@@ -49,11 +55,12 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 核心功能
 
+- 最近一分钟内相同文字弹幕达到自定义次数后，会显示带可配置倒计时的 +1 提示。
 - 鼠标悬停弹幕时显示 `+1` 按钮，点击后自动发送相同内容。
 - 点击“回复”会自动填入 `@发送者 `，聚焦官方输入框并等待用户继续输入，不会自动发送。
 - 点击“收藏”会把文字、Unicode Emoji、平台图片表情和混排内容完整保存到浏览器本地，不会把图片表情降级成替代文字。
 - 可在设置中独立显示或隐藏 `+1`、回复、收藏和复制；复制默认关闭，其余三项默认开启，并始终至少保留一个胶囊操作。
-- `+1` 发送具有冷却、重复点击和并发保护；平台返回发言频率、重复发送、禁言等限制时，会优先显示对应官方反馈，而不是统一提示“发送失败”。
+- `+1` 发送具有连续点击、并发和同内容 3 秒冷却保护；平台返回发言频率、重复发送、禁言等限制时，会优先显示官方文案，并附带脱敏后的请求路径、HTTP 状态或业务码，而不是统一提示“发送失败”。
 - B 站房间图片表情优先点击官方表情面板；若面板无法唯一定位且弹幕带有可信的 `room_<房间>_<资源>` 标识，则在确认资源所属房间与当前直播间一致后使用直发后备路径。
 - 收藏跨直播间可用且本房优先；收藏页支持拖拽设置持久化的“轮盘顺序”，快捷轮盘取本房该顺序的前 6 条，短按 `Alt + Q` 打开列表、长按呼出轮盘，全屏模式同样可用。
 - 回复会按显示模式选择输入面：普通模式写入侧边聊天框，全屏模式优先写入播放器快捷回复栏。
@@ -133,6 +140,8 @@ npm run check
 
 该命令会进行 TypeScript 类型检查、使用 Vite 构建 `build/extension`、验证构建产物中的 Manifest，并运行语法与单元测试。
 
+浏览器 E2E 仅作为本地可选回归测试保留，可手动运行 `npm run test:browser`；普通 CI 和发布工作流均不执行浏览器 E2E。涉及直播消息采集时仍需手工验证四个平台的普通页面与网页全屏。
+
 仅构建扩展时运行：
 
 ```powershell
@@ -157,6 +166,7 @@ index.html                 create-vue 标准 HTML 入口，同时作为扩展设
 src/core/                  跨平台共享类型、文本清洗和设置合并
 src/entries/               后台、内容脚本和页面 Hook 的 Vite 构建入口
 src/features/favorites/    本地收藏仓库、房间识别、排序、Vue 面板与轮盘运行时
+src/features/repeat-reminder/ 高频文字计数、跨来源去重和 Shadow DOM +1 提示
 src/platforms/live/        通用直播平台配置
 src/platforms/bilibili/    哔哩哔哩 DOM 选择器与平台适配配置
 src/platforms/douyin/      抖音协议、弹幕轨迹、富文本和消息模型
@@ -176,11 +186,12 @@ tests/                     清单校验、单元测试和浏览器测试夹具
 ### 隐私与权限
 
 - 申请 `storage` 权限保存扩展设置及本地弹幕收藏；设置使用 `chrome.storage.sync`，收藏使用 `chrome.storage.local` 且不会上传。
-- 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时，也用于在用户主动发送 B 站房间图片表情且官方面板定位失败时，在当前 B 站标签页中执行一次性后备发送函数。
-- B 站主机权限仅覆盖 `live.bilibili.com/*`，用于既有弹幕识别以及官方面板定位失败后的房间图片表情一次性后备发送；抖音主机权限覆盖 `live.douyin.com/*` 与 `www.douyin.com/*`，普通抖音页面只运行不读取页面内容的轻量 URL 启动器。
+- 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时、执行 B 站房间图片表情一次性后备发送，以及在用户主动发送时短暂观察当前平台的原生发送结果。
+- 主机权限仅覆盖四个受支持直播站点。一次性发送观察器最多运行 8 秒，只输出请求方法、去除查询参数后的接口路径、HTTP 状态、平台业务码和官方错误文案；不会输出请求体、Cookie、CSRF、签名或请求头。
 - 完整功能脚本仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面启用。
 - 不读取密码，也不存储或传出 Cookie/登录令牌。B 站房间图片表情后备发送只在当前页面内临时读取 CSRF Cookie，并调用与官方网页相同的直播弹幕接口；其他发送仍走平台官方编辑器。
-- 不收集、上传或出售用户数据。
+- 高频 +1 提醒仅在当前直播页内存中计数，不持久化弹幕内容，也不发送任何分析数据。
+- 不收集、出售或用于广告、画像的数据。
 
 ### 兼容性说明
 
@@ -208,16 +219,16 @@ Copyright © 2026 sadUnicorn.
 
 ### Overview
 
-Danmaku Echo is a Manifest V3 browser extension for Chrome and Edge. It adds a `+1` button to live-chat messages and on-video scrolling danmaku, providing a one-click echo experience similar to Douyu's native danmaku `+1` feature.
+Danmaku Echo is a Manifest V3 browser extension for Chrome and Edge. It adds quick actions to live-chat and on-video danmaku and can prompt a direct +1 when the same text message repeats frequently.
 
 ### Supported platforms
 
-| Platform | Side chat | On-video danmaku | Fullscreen |
-| --- | --- | --- | --- |
-| Huya Live | ✅ | ✅ | ✅ |
-| Bilibili Live | ✅ | ✅ | ✅ |
-| Douyin Live | ✅ | ✅ (DOM takeover) | ✅ |
-| Douyu Live | ✅ | ✅ | ✅ |
+| Platform | Side chat | On-video danmaku | Frequent +1 reminder | Fullscreen |
+| --- | --- | --- | --- | --- |
+| Huya Live | ✅ | ✅ | ✅ | ✅ |
+| Bilibili Live | ✅ | ✅ | ✅ | ✅ |
+| Douyin Live | ✅ | ✅ (DOM takeover) | ✅ (Canvas queue + chat) | ✅ |
+| Douyu Live | ✅ | ✅ | ✅ | ✅ |
 
 ### Favorites and quick actions
 
@@ -226,6 +237,12 @@ Favorites stay in `chrome.storage.local`; they are neither uploaded nor synchron
 All recognizable messages can be favorited, including plain text, Unicode emoji, platform image emotes, and mixed text/emote content. Rich favorites preserve their display text, content order, and platform resource identity while remaining compatible with legacy plain-text data.
 
 Short-press `Alt + Q` in a live room to open the fixed panel, where search, send-count/collection-time/**Wheel order** sorting, number keys `1–9` for the current message page, add-to-room, and delete are available. In **Wheel order**, drag the handle or use the move buttons to persistently reorder favorites. Hold `Alt + Q` to open a cursor-centered radial menu containing the first six current-room favorites in that order; releasing sends the selected favorite, while **Other favorites** and **More** open the corresponding room list. In native fullscreen the launcher mounts inside `document.fullscreenElement`.
+
+### Lightweight danmaku radar
+
+When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the current trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the custom threshold. The first valid queue opens a one-time introduction explaining that the radar never sends automatically and listing its configurable controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the introduction does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
+
+Prompts remain visible for six seconds by default, with an independent live countdown beside +1, then hide and stay dismissed for the current window. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. New prompts fade in, existing cards move smoothly to their next queue position, and handled or expired prompts fade out; reduced-motion preferences disable these transitions. Extension settings allow a 2–99 occurrence threshold, a 1–60 second prompt duration, a 1–10 entry queue, and independent 50%–200% prompt and capsule scaling. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud requests, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
 
 ### Douyin DOM takeover
 
@@ -239,10 +256,11 @@ The native Canvas is hidden with `visibility: hidden` only after the first DOM n
 
 ### Features
 
+- Prompts whether to +1 when identical text reaches a custom occurrence threshold, with a configurable auto-hide countdown.
 - Shows a `+1` action when a danmaku is hovered and sends the same content automatically.
 - The Reply action inserts `@sender `, focuses the official editor, and waits for user input without sending automatically.
 - The Favorite action stores plain text, Unicode emoji, platform image emotes, and mixed content locally.
-- +1 sending includes cooldown, repeated-click, and concurrent-send protection. Official rate-limit, duplicate-message, moderation, and similar platform feedback is surfaced instead of being collapsed into a generic failure.
+- +1 sending includes repeated-click, concurrent-send, and a three-second same-message cooldown. Native rate-limit, duplicate-message, and moderation feedback is shown with a sanitized endpoint, HTTP status, or platform code when available instead of being collapsed into a generic failure.
 - Favorites work across rooms with current-room priority; the panel provides a persistent draggable **Wheel order**, and the radial menu uses its first six current-room entries. Short-press `Alt + Q` for the panel or hold it for the radial menu, including in fullscreen.
 - Reply targets the side-chat editor in normal mode and the visible in-player quick editor in fullscreen mode.
 - Treats the barrage, the visual gap, and its capsule as one continuous hover target on all four platforms, so crossing the gap never briefly resumes movement.
@@ -316,6 +334,8 @@ npm run check
 
 This type-checks TypeScript, builds `build/extension` with Vite, validates the built manifest, and runs the syntax and unit tests.
 
+Browser E2E remains a local optional suite (`npm run test:browser`) and is not run by regular or release CI. Live-message collection changes should still be manually regressed on normal and web-fullscreen pages for all four platforms.
+
 To build the extension only:
 
 ```powershell
@@ -340,6 +360,7 @@ index.html                 Standard create-vue HTML entry and extension settings
 src/core/                  Cross-platform types, text parsing, and settings
 src/entries/               Vite entries for background, content scripts, and page hooks
 src/features/favorites/    Local repository, room identity, ranking, Vue panel, and radial runtime
+src/features/repeat-reminder/ Lightweight exact-text counting, source deduplication, and Shadow DOM +1 prompt
 src/platforms/live/        Shared live-platform configuration
 src/platforms/bilibili/    Bilibili DOM selectors and adapter configuration
 src/platforms/douyin/      Douyin protocol, trajectory, rich-data, and message models
@@ -359,11 +380,12 @@ tests/                     Manifest checks, unit tests, and browser fixtures
 ### Privacy and permissions
 
 - Requests `storage` for synchronized settings and local favorites. Favorites use `chrome.storage.local` and are never uploaded.
-- Requests `scripting` only to recover the Douyin live runtime on direct and SPA room entry.
-- Bilibili host access is limited to `live.bilibili.com/*` for existing danmaku recognition and the one-shot room-image fallback after a failed panel lookup. Douyin host access covers `live.douyin.com/*` and `www.douyin.com/*`; ordinary Douyin pages run only a lightweight URL bootstrap.
+- Requests `scripting` to recover the Douyin runtime, run the one-shot Bilibili room-image fallback, and briefly observe a native send result after a user-initiated send.
+- Host access is limited to the four supported live sites. The one-shot send observer runs for at most eight seconds and exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text. It never exposes request bodies, headers, cookies, CSRF values, or signatures.
 - Activates complete feature scripts only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages.
 - Does not read cookies, passwords, or login tokens and does not call private live APIs.
-- Does not collect, upload, or sell user data.
+- The frequent +1 reminder counts only in page memory, does not persist danmaku content, and sends no analysis data.
+- Does not collect, sell, or use data for advertising or profiling.
 
 ### Compatibility
 

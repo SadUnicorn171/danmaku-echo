@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   classifyPlatformSendFeedback,
+  classifyPlatformSendResponse,
   createPlatformFeedbackProbe,
   createSendProtection,
+  formatPlatformSendFeedback,
 } from '../send-protection'
 
 describe('send protection', () => {
@@ -56,6 +58,46 @@ describe('send protection', () => {
     document.body.replaceChildren()
   })
 
+  it('classifies and formats sanitized native response metadata', () => {
+    const feedback = classifyPlatformSendResponse({
+      code: 10031,
+      endpoint: 'https://api.live.bilibili.com/msg/send?w_rid=secret&csrf=secret',
+      httpStatus: 200,
+      message: '弹幕发送过于频繁，请 6 秒后再试',
+      method: 'post',
+      transport: 'fetch',
+    })
+
+    expect(feedback).toMatchObject({
+      code: 10031,
+      cooldownMs: 6_000,
+      endpoint: 'api.live.bilibili.com/msg/send',
+      httpStatus: 200,
+      kind: 'rate-limit',
+      method: 'POST',
+      source: 'network',
+    })
+    expect(formatPlatformSendFeedback(feedback!)).toBe(
+      '弹幕发送过于频繁，请 6 秒后再试（POST api.live.bilibili.com/msg/send · HTTP 200 · code 10031）',
+    )
+    expect(JSON.stringify(feedback)).not.toContain('secret')
+    expect(classifyPlatformSendResponse({ code: 0, httpStatus: 200 })).toBeNull()
+  })
+
+  it('treats HTTP 429 as a global platform cooldown without requiring a message', () => {
+    expect(classifyPlatformSendResponse({
+      endpoint: '/room/chat?token=secret',
+      httpStatus: 429,
+      method: 'POST',
+      transport: 'xhr',
+    })).toMatchObject({
+      cooldownMs: 15_000,
+      endpoint: '/room/chat',
+      kind: 'rate-limit',
+      message: '平台拒绝了本次发送',
+    })
+  })
+
   it('blocks accidental double actions and repeated successful content', () => {
     let time = 10_000
     const guard = createSendProtection({
@@ -72,6 +114,19 @@ describe('send protection', () => {
     guard.finish('另一条', false)
     time += 900
     expect(guard.begin('你好').allowed).toBe(true)
+  })
+
+  it('keeps the default same-message guard active beyond the accidental-click window', () => {
+    let time = 30_000
+    const guard = createSendProtection({ now: () => time, successCooldownMs: 0 })
+    expect(guard.begin('重复内容').allowed).toBe(true)
+    guard.finish('重复内容', true)
+    time += 1_500
+    expect(guard.begin('重复内容')).toMatchObject({
+      allowed: false,
+      reason: 'duplicate',
+      remainingMs: 1_500,
+    })
   })
 
   it('applies platform rate limits globally and duplicate limits per message', () => {

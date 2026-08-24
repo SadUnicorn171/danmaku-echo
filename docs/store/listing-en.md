@@ -1,22 +1,22 @@
-# Store listing and privacy disclosures (2.3.0)
+# Store listing and privacy disclosures (2.3.1)
 
 ## Single purpose
 
-Danmaku Echo provides consistent danmaku actions on Huya, Bilibili, Douyin, and Douyu Live: users can echo a side-chat or on-video message through the site's official editor, prepare a reply, copy a message, and keep reusable danmaku in browser-local favorites. The favorites page provides a persistent draggable **Wheel order**, and the quick wheel always shows its first six current-room entries; move buttons remain available for precise and keyboard operation. Version 2.3.0 unifies capsule sizing and adaptive left/right placement across all four platforms, keeps the barrage-to-capsule gap inside one continuous hover target, and surfaces official rate-limit, duplicate-message, and moderation feedback through send protection. If Bilibili's official panel cannot uniquely locate a room image emoji, a guarded fallback verifies its real room and submits it through the live-page danmaku endpoint.
+Danmaku Echo provides consistent danmaku actions on Huya, Bilibili, Douyin, and Douyu Live. Users can echo, prepare replies, copy, and keep local favorites. A lightweight radar counts frequent text in the current page for one minute and shows a newest-first +1 queue with independent countdowns at a custom occurrence threshold. Its first trigger explains the feature and the configurable enable state, threshold, duration, queue limit, and prompt scale. Favorites retain their draggable **Wheel order**. Capsules use consistent sizing, adaptive placement, and a continuous hover target, while send protection surfaces official rate-limit, duplicate-message, and moderation feedback with sanitized request metadata when available.
 
 ## Permission justifications
 
-- **Storage:** saves user-selected settings and locally favorited danmaku. Browser sync may synchronize settings; favorites remain in local extension storage. Schema v2 remains backward compatible.
-- **Scripting:** restores the packaged Douyin live runtime after single-page navigation into a supported live route, and runs a one-shot Bilibili room-image fallback in the current tab only after an explicit send action and a failed unique panel lookup. It neither downloads nor executes remote code.
-- **Host access:** recognizes danmaku and drives the existing official editor on supported live pages. `live.bilibili.com/*` also authorizes the one-shot room-image fallback after a failed panel lookup. The broader `www.douyin.com/*` match only detects navigation into `/follow/live/*`; non-live routes run a lightweight URL bootstrap.
+- **Storage:** saves user-selected settings, favorites, and one local Boolean acknowledging the radar introduction. Frequent-message counts remain only in current-page memory and clear on refresh or close.
+- **Scripting:** restores the packaged Douyin live runtime, runs the one-shot Bilibili room-image fallback, and observes a native send result for at most eight seconds after an explicit user action. The observer exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text—not bodies, headers, cookies, CSRF values, or signatures. It neither downloads nor executes remote code.
+- **Host access:** recognizes danmaku and drives official editors on supported live pages. `live.bilibili.com/*` also authorizes the room-image fallback, while `www.douyin.com/*` detects live SPA navigation. The extension requests no model or arbitrary cloud-analysis origins.
 
 ## Remote code
 
-No. All JavaScript, CSS, images, and dependencies are bundled in the submitted Manifest V3 package. There are no external scripts or modules, remote Wasm, `eval()`, `new Function()`, or downloaded executable code.
+No. All JavaScript, CSS, and images are bundled in the submitted Manifest V3 package. There are no external scripts or modules, remote Wasm, `eval()`, `new Function()`, model downloads, or downloaded executable code.
 
 ## Data use
 
-The extension does not collect, upload, sell, or share user data. Preferences use browser-managed storage, and favorites stay in `storage.local`. The Bilibili fallback uses its CSRF credential only inside the current page and submits it back to Bilibili; it is never returned, logged, or stored. Diagnostics are privacy-filtered, generated in memory, and copied only after a user action; they are not persisted or uploaded.
+The extension does not collect, sell, profile, or share user data. Frequent-message counts stay in current-page memory and are neither persisted nor transmitted. The Bilibili fallback uses CSRF only inside the current page; diagnostics remain privacy-filtered and never upload automatically.
 
 ## Privacy policy
 

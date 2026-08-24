@@ -7,7 +7,8 @@ import {
   plausibleText,
   rendererBox,
   rendererPaint,
-  serializeBarrage
+  serializeBarrage,
+  serializedBarrageText
 } from "../platforms/douyin/barrage-model";
 import {
   DOUYIN_CONTENT_SOURCE,
@@ -15,7 +16,10 @@ import {
   isDouyinProtocolMessage
 } from "../platforms/douyin/protocol";
 import { serializedEmojiAssets } from "../platforms/douyin/rich-data";
-import { allAssetsMatch } from "../platforms/douyin/own-message";
+import {
+  allAssetsMatch,
+  douyinOwnMessageTextMatches
+} from "../platforms/douyin/own-message";
 import { overlayCapsulePlacement } from "../platforms/live/capsule-position";
 import {
   canvasPixelSize,
@@ -33,6 +37,7 @@ import {
   trackSpeed
 } from "../platforms/douyin/track-model";
 import { extractSenderFromRecord } from "../core/reply";
+import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-guard";
 
 (function installDanmakuEchoDouyinTracker() {
   "use strict";
@@ -78,6 +83,7 @@ import { extractSenderFromRecord } from "../core/reply";
   let rendererEnabled = false;
   let rendererHeartbeatAt = 0;
   let rendererActions = { copy: false, plusOne: true, reply: true, favorite: true };
+  let rendererCapsuleScale = 1;
 
   function normalizeRendererActions(value) {
     const actions = value && typeof value === "object" ? value : {};
@@ -93,10 +99,29 @@ import { extractSenderFromRecord } from "../core/reply";
     return ["plusOne", "reply", "favorite", "copy"].filter((key) => rendererActions[key]);
   }
 
+  function normalizeCapsuleScale(value) {
+    const percent = Number(value);
+    if (!Number.isFinite(percent)) return 1;
+    return Math.min(200, Math.max(50, Math.round(percent))) / 100;
+  }
+
+  function rendererSnapToDevicePixel(pixels) {
+    const ratio = Number(globalThis.devicePixelRatio);
+    const deviceScale = Number.isFinite(ratio) && ratio > 0 ? ratio : 1;
+    return Math.max(1 / deviceScale,
+      Math.round(pixels * rendererCapsuleScale * deviceScale) / deviceScale);
+  }
+
   function rendererActionWidth() {
     const actions = enabledRendererActions();
-    return actions.reduce((width, key) => width + DOM_ACTION_ITEM_WIDTHS[key], 0)
-      + Math.max(0, actions.length - 1) * DOM_ACTION_DIVIDER_WIDTH;
+    const itemWidth = (key) => rendererSnapToDevicePixel(DOM_ACTION_ITEM_WIDTHS[key]);
+    const dividerWidth = rendererSnapToDevicePixel(DOM_ACTION_DIVIDER_WIDTH);
+    return actions.reduce((width, key) => width + itemWidth(key), 0)
+      + Math.max(0, actions.length - 1) * dividerWidth;
+  }
+
+  function rendererActionHeight() {
+    return DOM_ACTION_HEIGHT * rendererCapsuleScale;
   }
   function rendererRouteKey(value) {
     try {
@@ -417,9 +442,8 @@ import { extractSenderFromRecord } from "../core/reply";
       ? data.assets.filter((asset) => asset && Array.isArray(asset.keys) && asset.keys.length)
         .slice(0, 8)
       : [];
-    const text = normalizeText(data && Object.hasOwn(data, "plainText")
-      ? data.plainText
-      : data && data.text);
+    const text = normalizeText(data && data.text)
+      || normalizeText(data && data.plainText);
     if (!plausibleText(text) && !assets.length) {
       return;
     }
@@ -451,11 +475,16 @@ import { extractSenderFromRecord } from "../core/reply";
   function ownMessageMatches(item, text, content) {
     const normalized = normalizeText(text);
     const observedAssets = serializedEmojiAssets(content, location.href);
+    const textMatches = douyinOwnMessageTextMatches(
+      item.text,
+      normalized,
+      observedAssets.length > 0
+    );
     if (item.assets && item.assets.length) {
       return allAssetsMatch(item.assets, observedAssets)
-        && (!item.text || item.text === normalized);
+        && (!item.text || textMatches);
     }
-    return Boolean(item.text && item.text === normalized);
+    return Boolean(item.text && textMatches);
   }
 
   function completeOwnMessageMatch(item, track, mode) {
@@ -736,6 +765,39 @@ import { extractSenderFromRecord } from "../core/reply";
     }
   }
 
+  function applyResolvedRendererMessage(data) {
+    const instance = instances.get(String(data.instanceId || ""))
+      || instances.get(Number(data.instanceId));
+    const track = instance && instance.tracks.get(Number(data.trackId));
+    const text = normalizeText(data.text);
+    if (!track || !plausibleText(text)) return;
+    const expectedMessageId = String(track.options.id == null ? track.id : track.options.id);
+    if (data.messageId != null && String(data.messageId) !== expectedMessageId) return;
+    if (track.description.text === text) return;
+    track.description.text = text;
+    const state = track.renderer;
+    if (state) {
+      [
+        state.node,
+        state.barrage,
+        state.actionBar,
+        state.button,
+        state.replyButton,
+        state.favoriteButton,
+        state.copyButton
+      ].forEach((element) => setRendererMetadata(element, track));
+      state.button.setAttribute("aria-label", `发送相同弹幕：${text}`);
+      state.replyButton.setAttribute("aria-label", `回复弹幕：${text}`);
+      state.favoriteButton.setAttribute("aria-label", `收藏弹幕：${text}`);
+      state.copyButton.setAttribute("aria-label", `复制弹幕：${text}`);
+    }
+    debugEvent("renderer-message-resolved", {
+      instanceId: track.instance.id,
+      trackId: track.id,
+      text
+    }, "info");
+  }
+
   function ensureRendererLayer(instance, canvasRect) {
     let layer = instance.rendererLayer;
     if (!layer) {
@@ -853,12 +915,14 @@ import { extractSenderFromRecord } from "../core/reply";
   }
 
   function clearActivationRequests(instance) {
-    for (const [requestId, request] of activationRequests) {
-      if (request.track.instance !== instance) {
-        continue;
+    for (const requests of [activationRequests, favoriteRequests]) {
+      for (const [requestId, request] of requests) {
+        if (request.track.instance !== instance) {
+          continue;
+        }
+        clearTimeout(request.timer);
+        requests.delete(requestId);
       }
-      clearTimeout(request.timer);
-      activationRequests.delete(requestId);
     }
   }
 
@@ -951,6 +1015,23 @@ import { extractSenderFromRecord } from "../core/reply";
         releaseRendererTrack(track);
       }
     }, HOVER_LEAVE_GRACE);
+  }
+
+  function rendererPointerTouchesRepeatReminder(event) {
+    return pointTouchesRepeatReminder(document, Number(event.clientX), Number(event.clientY));
+  }
+
+  function releaseRendererTracksCoveredByRepeatReminder(event) {
+    if (!rendererPointerTouchesRepeatReminder(event)) {
+      return;
+    }
+    for (const instance of instances.values()) {
+      for (const track of instance.tracks.values()) {
+        if (track.renderer && track.renderer.hovered) {
+          releaseRendererTrack(track);
+        }
+      }
+    }
   }
 
   function settleRendererActivation(requestId, ok, reason) {
@@ -1304,7 +1385,13 @@ import { extractSenderFromRecord } from "../core/reply";
     track.renderer = state;
     renderRendererActionBar(state);
     instance.rendererNodes.set(track.id, node);
-    node.addEventListener("pointerenter", () => holdRendererTrack(track));
+    node.addEventListener("pointerenter", (event) => {
+      if (rendererPointerTouchesRepeatReminder(event)) {
+        releaseRendererTrack(track);
+        return;
+      }
+      holdRendererTrack(track);
+    });
     node.addEventListener("pointerleave", () => scheduleRendererTrackRelease(track));
     node.addEventListener("click", (event) => event.stopPropagation());
     button.addEventListener("pointerdown", (event) => {
@@ -1374,7 +1461,7 @@ import { extractSenderFromRecord } from "../core/reply";
         actionWidth + DOM_ACTION_GAP + DOM_ACTION_TRAILING_SPACE + 1,
         barrageRect.width
       );
-      const height = Math.max(DOM_ACTION_HEIGHT, barrageRect.height);
+      const height = Math.max(rendererActionHeight(), barrageRect.height);
       if (Math.abs(width - state.visualWidth) > 0.1) {
         state.node.style.width = `${width}px`;
         state.visualWidth = width;
@@ -1672,7 +1759,11 @@ import { extractSenderFromRecord } from "../core/reply";
     // use the same deterministic square fallback in both measurement and DOM.
     const description = describeBarrage(options, instance.config, null);
     const content = serializeBarrage(options);
-    const interactionText = barrageInteractionText(description.text, description.imageCount);
+    const nativeMessageText = serializedBarrageText(content);
+    const interactionText = barrageInteractionText(
+      nativeMessageText || description.text,
+      description.imageCount
+    );
     if (!interactionText) {
       debugState.counters.skippedBarrages += 1;
       debugEvent("barrage-skipped", {
@@ -1685,6 +1776,22 @@ import { extractSenderFromRecord } from "../core/reply";
     }
     description.imageOnly = !plausibleText(description.text) && description.imageCount > 0;
     description.text = interactionText;
+    const repeatReminderMessageId = String(
+      options.id ?? options.messageId ?? options.msgId ?? options.itemId ?? ""
+    ).slice(0, 180);
+    window.postMessage({
+      source: DOUYIN_PAGE_SOURCE,
+      type: "repeat-reminder-message",
+      message: {
+        content,
+        instanceId: instance.id,
+        messageId: repeatReminderMessageId,
+        observedAt,
+        sender: extractSenderFromRecord(options),
+        text: interactionText,
+        trackId: nextTrackId
+      }
+    }, "*");
     const sourcePadding = boxEdges(options.padding);
     const uniformPadding = Math.min(DOM_BARRAGE_PADDING_MAX, Math.max(
       DOM_BARRAGE_PADDING,
@@ -1704,9 +1811,10 @@ import { extractSenderFromRecord } from "../core/reply";
     description.height += description.rendererPadding[0] + description.rendererPadding[2]
       - sourcePadding.top - sourcePadding.bottom;
     description.contentWidth = description.width;
+    description.contentHeight = description.height;
     description.actionWidth = rendererActionWidth();
     description.width += description.actionWidth + DOM_ACTION_GAP + DOM_ACTION_TRAILING_SPACE;
-    description.height = Math.max(DOM_ACTION_HEIGHT, description.height);
+    description.height = Math.max(rendererActionHeight(), description.height);
     const maxCount = Math.max(1, numberOr(instance.config.maxCount, 200));
     if (instance.pending.length >= maxCount) {
       debugState.counters.skippedBarrages += 1;
@@ -2090,18 +2198,25 @@ import { extractSenderFromRecord } from "../core/reply";
   function updateRendererSettings(data) {
     const wasEnabled = rendererEnabled;
     const nextActions = normalizeRendererActions(data.actions);
+    const nextCapsuleScale = normalizeCapsuleScale(data.capsuleScalePercent);
     const actionsChanged = ["plusOne", "reply", "favorite", "copy"]
       .some((key) => nextActions[key] !== rendererActions[key]);
+    const scaleChanged = nextCapsuleScale !== rendererCapsuleScale;
     rendererHeartbeatAt = Date.now();
     rendererActions = nextActions;
+    rendererCapsuleScale = nextCapsuleScale;
     rendererEnabled = Boolean(data.enabled);
-    if (actionsChanged) {
+    if (actionsChanged || scaleChanged) {
       const actionWidth = rendererActionWidth();
       for (const instance of instances.values()) {
         for (const track of instance.tracks.values()) {
           const previousWidth = Math.max(0, numberOr(track.description.actionWidth, actionWidth));
           track.description.actionWidth = actionWidth;
           track.description.width += actionWidth - previousWidth;
+          track.description.height = Math.max(
+            numberOr(track.description.contentHeight, track.description.height),
+            rendererActionHeight()
+          );
           if (track.renderer) {
             renderRendererActionBar(track.renderer);
             track.renderer.visualWidth = 0;
@@ -2120,10 +2235,11 @@ import { extractSenderFromRecord } from "../core/reply";
         }
       }
     }
-    if (rendererEnabled !== wasEnabled || actionsChanged) {
+    if (rendererEnabled !== wasEnabled || actionsChanged || scaleChanged) {
       debugEvent("renderer-settings", {
         enabled: rendererEnabled,
         actions: rendererActions,
+        capsuleScale: rendererCapsuleScale,
         instanceCount: instances.size
       }, "info");
     }
@@ -2153,6 +2269,10 @@ import { extractSenderFromRecord } from "../core/reply";
     }
     if (event.data.type === "renderer-settings") {
       updateRendererSettings(event.data);
+      return;
+    }
+    if (event.data.type === "renderer-message-resolved") {
+      applyResolvedRendererMessage(event.data);
       return;
     }
     if (event.data.type === "own-message-intent") {
@@ -2256,6 +2376,7 @@ import { extractSenderFromRecord } from "../core/reply";
       }
     }
   });
+  document.addEventListener("pointermove", releaseRendererTracksCoveredByRepeatReminder, true);
 
   debugEvent("installed", {
     href: location.href,

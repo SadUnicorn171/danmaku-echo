@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
 import {
+  bilibiliNativeEmoticonDisplayToken,
   bilibiliNativeEmoticonToken,
   isBilibiliDecorativeImageDescription,
   isBilibiliEmoticonFallbackLabel,
+  isBilibiliOpaqueEmoticonIdentity,
 } from '../emoticon-metadata'
 
 describe('Bilibili native emoticon metadata', () => {
@@ -14,7 +16,21 @@ describe('Bilibili native emoticon metadata', () => {
 
   it('does not expose native identities or generic image labels as names', () => {
     expect(bilibiliNativeEmoticonToken('room_5236391_63398')).toBe('')
+    expect(bilibiliNativeEmoticonToken('official_332')).toBe('')
+    expect(isBilibiliOpaqueEmoticonIdentity('[official_332]')).toBe(true)
     expect(bilibiliNativeEmoticonToken('图片表情')).toBe('')
+  })
+
+  it('prefers a rendered image label over an opaque send identity', () => {
+    expect(bilibiliNativeEmoticonDisplayToken([
+      '冲鸭',
+      'official_332',
+    ])).toBe('[冲鸭]')
+    expect(bilibiliNativeEmoticonDisplayToken([
+      '',
+      'official_332',
+      '发财了',
+    ])).toBe('[发财了]')
   })
 
   it('recognizes Bilibili badge accessibility text as decorative metadata', () => {

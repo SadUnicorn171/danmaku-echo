@@ -1,4 +1,5 @@
 const GENERIC_EMOTICON_LABEL = /^(?:图片|图片表情|表情|表情包|emoji|emote|emoticon|image|sticker)$/i
+const OPAQUE_EMOTICON_IDENTITY = /^(?:official|room|anchor|up|live|emoji|emote|emoticon|face|sticker|pack|package|group|custom)(?:[_:-][a-z\d]+)+$/i
 
 function normalizeLabel(value: unknown): string {
   return String(value == null ? '' : value)
@@ -18,6 +19,12 @@ export function isBilibiliDecorativeImageDescription(value: unknown): boolean {
   )
 }
 
+/** Returns true for a send/resource identity that must never be shown as an Emoji name. */
+export function isBilibiliOpaqueEmoticonIdentity(value: unknown): boolean {
+  const normalized = normalizeLabel(value).replace(/^\[|\]$/g, '')
+  return Boolean(normalized && OPAQUE_EMOTICON_IDENTITY.test(normalized))
+}
+
 /**
  * Room Emoji use a native `room_<room>_<id>` identity for sending, while the
  * side-chat row exposes their user-facing name as plain `data-danmaku` text.
@@ -35,12 +42,22 @@ export function bilibiliNativeEmoticonToken(value: unknown): string {
     /^(?:data|blob|https?):/i.test(name) ||
     /[\\/]/.test(name) ||
     Array.from(name).length > 40 ||
+    isBilibiliOpaqueEmoticonIdentity(name) ||
     /^room_\d+_\d+$/i.test(name) ||
     /^(?:\d{6,}|[a-f\d]{16,}|[a-z\d_-]{24,})$/i.test(name)
   ) {
     return ''
   }
   return `[${name}]`
+}
+
+/** Picks a user-facing label while keeping the platform identity separate. */
+export function bilibiliNativeEmoticonDisplayToken(values: Iterable<unknown>): string {
+  for (const value of values) {
+    const token = bilibiliNativeEmoticonToken(value)
+    if (token) return token
+  }
+  return ''
 }
 
 /** Returns true for Bilibili's hidden text copy beside one rendered Emoji. */

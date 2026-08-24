@@ -91,10 +91,13 @@ test("adds renderer IDs and names to serialized Emoji descriptors", () => {
   const assets = richData.serializedEmojiAssets([{
     type: "image",
     src: "https://signed.example.test/emoji.webp?signature=temporary",
+    emojiToken: "[挥手]",
     assetHints: ["emoji-42", "native-wave-resource"]
   }], "https://live.douyin.com/");
 
   assert.equal(assets.length, 1);
+  assert.equal(assets[0].token, "[挥手]");
+  assert.equal(assets[0].keys.includes("name:挥手"), true);
   assert.equal(assets[0].keys.includes("name:emoji-42"), true);
   assert.equal(assets[0].keys.includes("name:native-wave-resource"), true);
 });

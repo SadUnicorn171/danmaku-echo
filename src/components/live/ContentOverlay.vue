@@ -63,11 +63,11 @@ const emit = defineEmits<{
     var(--bcp-action-end, #fd8101)
   );
   border: 0;
-  border-radius: 16px;
+  border-radius: var(--bcp-capsule-radius, 16px);
   box-sizing: border-box;
   color: var(--bcp-action-text, #fff);
   display: flex;
-  height: 40px;
+  height: var(--bcp-capsule-height, 40px);
   overflow: hidden;
   padding: 0;
   pointer-events: auto;
@@ -100,9 +100,9 @@ const emit = defineEmits<{
   color: var(--bcp-action-text, #fff);
   cursor: pointer;
   display: flex;
-  flex: 0 0 56px;
+  flex: 0 0 var(--bcp-capsule-item-width, 56px);
   font:
-    600 16px/22px 'Inter',
+    600 var(--bcp-capsule-item-font-size, 16px) / var(--bcp-capsule-item-line-height, 22px) 'Inter',
     -apple-system,
     BlinkMacSystemFont,
     'Segoe UI',
@@ -111,18 +111,18 @@ const emit = defineEmits<{
     'ss01' on,
     'cv01' on;
   justify-content: center;
-  min-width: 56px;
-  padding: 0 12px;
+  min-width: var(--bcp-capsule-item-width, 56px);
+  padding: 0 var(--bcp-capsule-item-padding, 12px);
   pointer-events: auto;
   transition:
     background-color 140ms ease,
     transform 140ms ease;
   white-space: nowrap;
-  width: 56px;
+  width: var(--bcp-capsule-item-width, 56px);
 }
 
 .bcp-one-action[data-action='plus-one'] {
-  font-size: 14.4px;
+  font-size: var(--bcp-capsule-plus-font-size, 14.4px);
 }
 
 .bcp-one-action:hover {
@@ -151,12 +151,12 @@ const emit = defineEmits<{
   border-radius: 999px;
   box-sizing: border-box;
   display: block;
-  flex: 0 0 2px;
-  height: 24px;
-  max-width: 2px;
-  min-width: 2px;
+  flex: 0 0 var(--bcp-capsule-divider-width, 2px);
+  height: var(--bcp-capsule-divider-height, 24px);
+  max-width: var(--bcp-capsule-divider-width, 2px);
+  min-width: var(--bcp-capsule-divider-width, 2px);
   pointer-events: none;
-  width: 2px;
+  width: var(--bcp-capsule-divider-width, 2px);
 }
 
 .bcp-one-target {
@@ -268,7 +268,7 @@ html[data-bcp-douyu-native-capsule-hidden='true'] [data-bcp-douyu-native-action-
   left: 50%;
   min-height: 36px;
   min-width: 84px;
-  max-width: min(420px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
   opacity: 0;
   overflow: visible;
   overflow-wrap: anywhere;

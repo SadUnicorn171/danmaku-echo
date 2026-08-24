@@ -24,12 +24,13 @@ for (const [description, pattern] of [
   ['Windows release runner', /runs-on:\s*windows-latest/],
   ['main ancestry validation', /scripts\/validate-release\.cjs/],
   ['full check', /npm run check/],
-  ['browser E2E', /npm run test:browser/],
-  ['browser failure diagnostics', /name:\s*browser-e2e-release-failure/],
   ['checksum', /scripts\/write-checksum\.cjs/],
   ['GitHub Release creation', /gh release create/],
 ]) {
   if (!pattern.test(release)) throw new Error(`Release workflow is missing ${description}`)
+}
+if (/npm run test:browser|browser-e2e/.test(release)) {
+  throw new Error('Browser E2E must remain a local optional test and must not run in release CI')
 }
 for (const [description, pattern] of [
   ['main branch', /branches:\s*\n\s+- main/],

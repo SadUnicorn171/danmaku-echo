@@ -15,8 +15,17 @@
         :aria-current="activeSection === 'general-settings' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'general-settings')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 8.25A3.75 3.75 0 1 0 12 15.75 3.75 3.75 0 0 0 12 8.25Z"/><path d="M19.1 13.2c.06-.4.06-.8 0-1.2l1.46-1.13-1.75-3.04-1.72.7a7.3 7.3 0 0 0-1.04-.6L15.8 6.1h-3.5l-.26 1.83c-.36.17-.7.37-1.03.6l-1.72-.7-1.75 3.04L9 12c-.03.4-.03.8 0 1.2l-1.46 1.13 1.75 3.04 1.72-.7c.33.23.67.43 1.03.6l.26 1.83h3.5l.26-1.83c.36-.17.7-.37 1.03-.6l1.72.7 1.75-3.04z"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/settings.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsGeneral') }}</span>
+      </a>
+      <a
+        :class="['nav-item', { 'is-active': activeSection === 'repeat-reminder-settings' }]"
+        href="#repeat-reminder-settings"
+        :aria-current="activeSection === 'repeat-reminder-settings' ? 'location' : undefined"
+        @click.prevent="emit('navigate', 'repeat-reminder-settings')"
+      >
+        <img class="nav-item__icon" src="/assets/icons/radar.svg" alt="" aria-hidden="true">
+        <span>{{ t('settingsRepeatReminder') }}</span>
       </a>
       <a
         :class="['nav-item', { 'is-active': activeSection === 'platform-connections' }]"
@@ -24,7 +33,7 @@
         :aria-current="activeSection === 'platform-connections' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'platform-connections')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="6" height="6" rx=".75"/><rect x="14" y="4" width="6" height="6" rx=".75"/><rect x="4" y="14" width="6" height="6" rx=".75"/><rect x="14" y="14" width="6" height="6" rx=".75"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/live-room.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsPlatforms') }}</span>
       </a>
       <a
@@ -33,7 +42,7 @@
         :aria-current="activeSection === 'side-chat-capsule' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'side-chat-capsule')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h14v9.25H9.25L5 19z"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/chat.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsSideCapsule') }}</span>
       </a>
       <a
@@ -42,7 +51,7 @@
         :aria-current="activeSection === 'native-danmaku-capsule' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'native-danmaku-capsule')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="5" height="5" rx=".5"/><rect x="10" y="4" width="5" height="5" rx=".5"/><rect x="16" y="4" width="5" height="5" rx=".5"/><rect x="4" y="10" width="5" height="5" rx=".5"/><rect x="16" y="10" width="5" height="5" rx=".5"/><rect x="4" y="16" width="5" height="5" rx=".5"/><rect x="10" y="16" width="5" height="5" rx=".5"/><rect x="16" y="16" width="5" height="5" rx=".5"/><path d="M9 8h2v8H9zM14 8h2v8h-2z"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/capsule.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsNativeCapsule') }}</span>
       </a>
       <a
@@ -51,7 +60,7 @@
         :aria-current="activeSection === 'platform-colors' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'platform-colors')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4.25a7.75 7.75 0 1 0 0 15.5h1.25a1.5 1.5 0 0 0 0-3H12a1.5 1.5 0 0 1 0-3h3.75A4 4 0 0 0 19.75 10 7.75 7.75 0 0 0 12 4.25Z"/><circle cx="8" cy="10" r=".75" class="filled"/><circle cx="10.25" cy="7.25" r=".75" class="filled"/><circle cx="14" cy="7.25" r=".75" class="filled"/><circle cx="16.25" cy="10" r=".75" class="filled"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/colors.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsColors') }}</span>
       </a>
       <a
@@ -60,11 +69,11 @@
         :aria-current="activeSection === 'favorites-guide' ? 'location' : undefined"
         @click.prevent="emit('navigate', 'favorites-guide')"
       >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.25"/><path d="m12 7.8 1.3 2.64 2.92.42-2.11 2.06.5 2.9L12 14.45l-2.61 1.37.5-2.9-2.11-2.06 2.92-.42z"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/favorite-filled.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsFavorites') }}</span>
       </a>
       <a class="nav-item" href="https://github.com/SadUnicorn171/danmaku-echo" target="_blank" rel="noreferrer">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.25"/><path d="M12 10.75v5"/><circle cx="12" cy="7.75" r=".6" class="filled"/></svg>
+        <img class="nav-item__icon" src="/assets/icons/about.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsAbout') }}</span>
       </a>
     </nav>
@@ -171,20 +180,20 @@ const emit = defineEmits<{
   color: #646464;
 }
 
-.nav-item svg {
-  fill: none;
+.nav-item__icon {
+  display: block;
   flex: 0 0 16px;
   height: 16px;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.65;
+  object-fit: contain;
+  opacity: 0.72;
+  transition: opacity 140ms ease, transform 140ms ease;
   width: 16px;
 }
 
-.nav-item svg .filled {
-  fill: currentColor;
-  stroke: none;
+.nav-item:hover .nav-item__icon,
+.nav-item.is-active .nav-item__icon {
+  opacity: 1;
+  transform: scale(1.04);
 }
 
 @media (max-width: 900px) {

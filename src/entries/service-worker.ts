@@ -8,6 +8,10 @@ import {
   installBilibiliNativeSendObserverInPage,
   isBilibiliInstallNativeSendObserverRequest
 } from "../platforms/bilibili/native-send-observer";
+import {
+  installNativeSendObserverInPage,
+  isInstallNativeSendObserverRequest
+} from "../platforms/live/native-send-observer";
 import { createFavoritesRepository } from "../features/favorites/repository";
 import {
   FAVORITE_WRITE_MESSAGE,
@@ -217,6 +221,32 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     chrome.scripting.executeScript({
       args: [{ nonce: message.nonce }],
       func: installBilibiliNativeSendObserverInPage,
+      target: { tabId, frameIds: [frameId] },
+      world: "MAIN"
+    }).then(([execution]) => {
+      sendResponse(execution?.result || { error: "empty-result", ok: false });
+    }).catch((error: unknown) => {
+      sendResponse({
+        error: String(error instanceof Error ? error.message : error),
+        ok: false
+      });
+    });
+    return true;
+  }
+  if (isInstallNativeSendObserverRequest(message)) {
+    const tabId = sender.tab?.id;
+    const frameId = typeof sender.frameId === "number" ? sender.frameId : 0;
+    const senderUrl = sender.url;
+    const tabUrl = sender.tab?.url;
+    if (typeof tabId !== "number" || !Number.isInteger(tabId)
+      || !senderMatchesPlatform(senderUrl, message.platform)
+      || !senderMatchesPlatform(tabUrl, message.platform)) {
+      sendResponse({ error: "invalid-platform-sender", ok: false });
+      return false;
+    }
+    chrome.scripting.executeScript({
+      args: [{ nonce: message.nonce, platform: message.platform }],
+      func: installNativeSendObserverInPage,
       target: { tabId, frameIds: [frameId] },
       world: "MAIN"
     }).then(([execution]) => {

@@ -1,5 +1,17 @@
 export type PlatformId = 'bilibili' | 'douyin' | 'douyu' | 'huya'
 
+export interface RepeatReminderSettings {
+  enabled: boolean
+  promptDurationSeconds: number
+  promptScalePercent: number
+  queueLimit: number
+  threshold: number
+}
+
+export interface InterfaceScaleSettings {
+  capsulePercent: number
+}
+
 export type ColorSettingKey =
   | 'actionStart'
   | 'actionEnd'
@@ -43,14 +55,17 @@ export interface ExtensionSettings {
   altClick: boolean
   colors: Record<PlatformId, ColorSettings>
   enabled: boolean
+  interfaceScale: InterfaceScaleSettings
   nativeDanmakuCapsule: NativeDanmakuCapsuleSettings
   platforms: PlatformSettings
+  repeatReminder: RepeatReminderSettings
   sideChatCapsule: SideChatCapsuleSettings
 }
 
 export interface SharedExtensionApi {
   COLOR_SETTING_KEYS: readonly ColorSettingKey[]
   DEFAULT_SETTINGS: ExtensionSettings
+  applyCapsuleScale(root: unknown, percent: unknown): void
   applyPlatformColors(root: unknown, colors: unknown): void
   detectPlatform(hostname: unknown, pathname: unknown): PlatformId | null
   extractSenderFromRecord(value: unknown): string

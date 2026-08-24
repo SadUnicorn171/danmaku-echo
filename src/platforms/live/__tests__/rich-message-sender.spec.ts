@@ -25,6 +25,8 @@ function runtime() {
     reportEmojiNameUnavailable: vi.fn<() => void>(),
     sendBilibiliNative:
       vi.fn<(payload: LiveRichMessagePayload) => Promise<boolean>>().mockResolvedValue(true),
+    sendDouyuNative:
+      vi.fn<(payload: LiveRichMessagePayload) => Promise<boolean>>().mockResolvedValue(true),
     sendText: vi.fn<(message: string) => Promise<boolean>>().mockResolvedValue(true),
   }
   return context satisfies LiveRichMessageSenderRuntime
@@ -43,13 +45,50 @@ describe('platform rich-message senders', () => {
     expect(context.sendBilibiliNative).not.toHaveBeenCalled()
   })
 
-  it('sends Douyu image Emoji through its bracket-name editor conversion', async () => {
+  it('keeps mixed Douyu image content on its bracket-name editor conversion', async () => {
     const context = runtime()
 
     await expect(liveRichMessageSender('douyu')(payload('[开心]'), context)).resolves.toBe(true)
 
     expect(context.sendText).toHaveBeenCalledWith('前[开心]后')
+    expect(context.sendDouyuNative).not.toHaveBeenCalled()
     expect(context.sendBilibiliNative).not.toHaveBeenCalled()
+  })
+
+  it('sends an image-only Douyu Emoji through its native picker', async () => {
+    const context = runtime()
+    const asset = {
+      keys: ['digest:14988198d32369566ecbe3312cbc82c7'],
+      token: '[像个小丑]',
+    }
+    const richPayload = {
+      assets: [asset],
+      parts: [{ asset, type: 'emoji' as const }],
+      text: '[像个小丑]',
+    }
+
+    await expect(liveRichMessageSender('douyu')(richPayload, context)).resolves.toBe(true)
+
+    expect(context.sendDouyuNative).toHaveBeenCalledWith(richPayload)
+    expect(context.sendText).not.toHaveBeenCalled()
+  })
+
+  it('keeps a duplicate Douyu accessibility label on the native image path', async () => {
+    const context = runtime()
+    const asset = { keys: ['digest:exclusive'], token: '[像个小丑]' }
+    const richPayload = {
+      assets: [asset],
+      parts: [
+        { asset, type: 'emoji' as const },
+        { text: '像个小丑', type: 'text' as const },
+      ],
+      text: '[像个小丑]像个小丑',
+    }
+
+    await expect(liveRichMessageSender('douyu')(richPayload, context)).resolves.toBe(true)
+
+    expect(context.sendDouyuNative).toHaveBeenCalledWith(richPayload)
+    expect(context.sendText).not.toHaveBeenCalled()
   })
 
   it('lets the Bilibili editor auto-recognize ordinary bracket Emoji', async () => {
@@ -134,6 +173,7 @@ describe('platform rich-message senders', () => {
       expect(context.reportEmojiNameUnavailable).toHaveBeenCalledOnce()
       expect(context.sendText).not.toHaveBeenCalled()
       expect(context.sendBilibiliNative).not.toHaveBeenCalled()
+      expect(context.sendDouyuNative).not.toHaveBeenCalled()
     },
   )
 })

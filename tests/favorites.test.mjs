@@ -194,6 +194,59 @@ test("prefers a Bilibili room Emoji name over a neighboring badge description", 
   }), "[发财了]");
 });
 
+test("prefers a Bilibili Emoji alt name over an official resource identity", () => {
+  assert.equal(favorites.favoriteAssetDisplayName({
+    keys: [
+      "native-panel:official_332",
+      "name:冲鸭",
+      "raw:official_332",
+      "file:dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png"
+    ],
+    src: "https://i0.hdslb.com/bfs/live/dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png",
+    token: "[official_332]"
+  }), "[冲鸭]");
+});
+
+test("repairs a stored Bilibili official-id display name while preserving send identity", async () => {
+  const asset = {
+    keys: ["native-panel:official_332", "name:冲鸭", "raw:official_332"],
+    src: "https://i0.hdslb.com/bfs/live/dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png",
+    token: "[official_332]"
+  };
+  const legacy = {
+    danmakuEchoFavoritesV1: {
+      schemaVersion: 2,
+      updatedAt: 1,
+      items: [{
+        id: "official-id-name",
+        text: "[official_332]",
+        payload: {
+          text: "[official_332]",
+          plainText: "",
+          assets: [asset],
+          parts: [{ type: "emoji", asset }]
+        },
+        normalizedText: "[official_332]",
+        createdAt: 1,
+        updatedAt: 1,
+        lastSentAt: 0,
+        totalSendCount: 0,
+        globalPinned: false,
+        origins: [],
+        roomStats: {}
+      }]
+    }
+  };
+  const repository = favorites.createFavoritesRepository(memoryStorage(legacy));
+  await repository.load();
+
+  assert.equal(repository.database.items[0].text, "[冲鸭]");
+  assert.equal(
+    repository.database.items[0].payload.assets[0].keys.includes("native-panel:official_332"),
+    true
+  );
+});
+
 test("re-favoriting repairs a Bilibili room Emoji previously saved as a badge image", async () => {
   const repository = favorites.createFavoritesRepository(memoryStorage());
   await repository.load();

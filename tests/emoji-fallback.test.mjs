@@ -128,8 +128,8 @@ test("all three live adapters use the shared lossless Emoji fallback", () => {
   const douyinSource = readFileSync(resolve(root, "src", "entries", "douyin-content.ts"), "utf8");
   assert.match(sharedLiveSource, /const unicodeFallback = unicodeEmojiFallbackText\(payload\);?/);
   assert.match(sharedLiveSource, /repeatPlatformRichPayload\(richPayload\);?/);
-  assert.match(douyinSource, /const unicodeFallback = unicodeEmojiFallbackText\(payload\);?/);
-  assert.match(douyinSource, /reason: ["']unicode-emoji-fallback["']/);
+  assert.doesNotMatch(douyinSource, /unicodeEmojiFallbackText/);
+  assert.match(douyinSource, /douyinAutoRecognizedEmojiText\(payload\)/);
 });
 
 test("Bilibili uses its native editor and Emoji panel", () => {
@@ -317,7 +317,7 @@ test("common feedback toasts wrap long Bilibili errors instead of clipping them"
   assert.doesNotMatch(toastRule, /overflow:\s*hidden/);
 });
 
-test("Douyin keeps native image-only Emoji renderable and confirms direct panel sends", () => {
+test("Douyin sends native image Emoji as bracket text without using the panel", () => {
   const contentSource = readFileSync(resolve(root, "src", "entries", "douyin-content.ts"), "utf8");
   const pageHookSource = readFileSync(
     resolve(root, "src", "entries", "douyin-page-hook.ts"),
@@ -331,16 +331,16 @@ test("Douyin keeps native image-only Emoji renderable and confirms direct panel 
     contentSource,
     /return mergeRendererPayloadWithChatRow\(rendererPayload, matched, canvasText\)/
   );
-  assert.match(contentSource, /waitForOwnMessageConfirmation\(ownIntentId, 3200\)/);
-  assert.match(contentSource, /"\[class\*='emoji-icon' i\]"/);
-  assert.match(contentSource, /\(!isVisible\(element\) && !insideEmojiSurface\)/);
-  assert.match(contentSource, /debugEvent\(\s*["']emoji-asset-not-found["']/);
-  assert.match(contentSource, /await restoreRichInputCaret\(input\)/);
-  assert.match(contentSource, /appendedMutationValue\(before, input\.value\)/);
+  assert.match(contentSource, /const nativeText = douyinAutoRecognizedEmojiText\(payload\)/);
+  assert.match(contentSource, /setInputValue\(input, nativeText\)/);
+  assert.doesNotMatch(contentSource, /function insertEmojiAsset\(/);
+  assert.doesNotMatch(contentSource, /emoji-panel-open-request/);
+  assert.doesNotMatch(contentSource, /emoji-asset-not-found/);
   assert.match(
     pageHookSource,
-    /barrageInteractionText\(description\.text, description\.imageCount\)/
+    /serializedBarrageText\(content\)/
   );
+  assert.match(contentSource, /findDouyinMessageContent\(row, MESSAGE_TEXT_SELECTORS\)/);
   assert.match(pageHookSource, /type: ["']own-message-consumed["']/);
 });
 
@@ -360,7 +360,8 @@ test("Douyin frames manually sent native Emoji by resource identity", () => {
     /type: ["']own-message-intent["'],[\s\S]*?plainText: payload\.plainText,[\s\S]*?assets: payload\.assets/
   );
   assert.match(pageHookSource, /allAssetsMatch\(item\.assets, observedAssets\)/);
-  assert.match(pageHookSource, /!item\.text \|\| item\.text === normalized/);
+  assert.match(pageHookSource, /douyinOwnMessageTextMatches\(/);
+  assert.match(pageHookSource, /!item\.text \|\| textMatches/);
   assert.match(pageHookSource, /own: consumeOwnMessage\(description\.text, content\)/);
 });
 

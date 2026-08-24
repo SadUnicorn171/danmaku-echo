@@ -66,18 +66,35 @@ test("requires a distinct observed asset for every expected Emoji", () => {
   ), true);
 });
 
+test("matches a manually typed bracket Emoji message to Canvas text that omits images", () => {
+  assert.equal(ownMessage.douyinOwnMessageTextMatches(
+    "[杀马特][杀马特][杀马特]cyh[杀马特][杀马特][杀马特]cyh",
+    "cyhcyh",
+    true
+  ), true);
+  assert.equal(ownMessage.douyinOwnMessageTextMatches("[杀马特]", "表情", true), true);
+  assert.equal(ownMessage.douyinOwnMessageTextMatches("[杀马特]cyh", "other", true), false);
+});
+
 test("keeps both Douyin own-message frames larger than their content", () => {
   const videoFrame = douyinStyles.match(
     /\.bcp-douyin-dom-barrage\[data-own='true'\] \.bcp-douyin-dom-content\s*\{[\s\S]*?\}/
   );
   const sideChatFrame = douyinStyles.match(
+    /\[data-bcp-douyin-own-chat-frame='true'\]\s*\{[\s\S]*?\}/
+  );
+  const sideChatContent = douyinStyles.match(
     /\[data-bcp-douyin-own-chat-content='true'\]\s*\{[\s\S]*?\}/
   );
   assert.ok(videoFrame);
   assert.ok(sideChatFrame);
+  assert.ok(sideChatContent);
   assert.match(videoFrame[0], /outline:\s*3px solid/);
   assert.match(videoFrame[0], /outline-offset:\s*3px/);
   assert.doesNotMatch(videoFrame[0], /inset/);
-  assert.match(sideChatFrame[0], /outline:\s*3px solid/);
-  assert.match(sideChatFrame[0], /outline-offset:\s*3px/);
+  assert.match(sideChatFrame[0], /border:\s*3px solid/);
+  assert.match(sideChatFrame[0], /position:\s*absolute/);
+  assert.match(sideChatFrame[0], /pointer-events:\s*none/);
+  assert.match(sideChatContent[0], /outline:\s*none/);
+  assert.doesNotMatch(sideChatContent[0], /outline-offset/);
 });

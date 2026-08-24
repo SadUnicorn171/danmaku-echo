@@ -106,6 +106,42 @@ test("merges independent action visibility settings", () => {
   });
 });
 
+test("migrates the removed radar setting to the lightweight repeat reminder", () => {
+  const settings = shared.mergeSettings({
+    radar: { enabled: false, sensitivity: "high" }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    enabled: false,
+    promptDurationSeconds: 6,
+    promptScalePercent: 100,
+    queueLimit: 3,
+    threshold: 3
+  });
+});
+
+test("normalizes custom radar queue, trigger, duration, and scale settings", () => {
+  const settings = shared.mergeSettings({
+    interfaceScale: { capsulePercent: 300 },
+    repeatReminder: {
+      enabled: true,
+      promptDurationSeconds: 500,
+      promptScalePercent: 20,
+      queueLimit: 99,
+      threshold: 1
+    }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    enabled: true,
+    promptDurationSeconds: 60,
+    promptScalePercent: 50,
+    queueLimit: 10,
+    threshold: 2
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.interfaceScale)), {
+    capsulePercent: 200
+  });
+});
+
 test("keeps at least one capsule action enabled", () => {
   const settings = shared.mergeSettings({
     actions: { plusOne: false, reply: false, favorite: false, copy: false }
@@ -201,6 +237,68 @@ test("applies only validated platform color variables", () => {
   assert.equal(values.has("--bcp-error"), false);
   shared.applyPlatformColors(root, {});
   assert.equal(values.size, 0);
+});
+
+test("scales capsule dimensions without scaling its positioned coordinate system", () => {
+  const values = new Map();
+  shared.applyCapsuleScale({
+    style: {
+      setProperty(name, value) {
+        values.set(name, value);
+      }
+    }
+  }, 125);
+  assert.equal(values.get("--bcp-capsule-height"), "50px");
+  assert.equal(values.get("--bcp-capsule-item-width"), "70px");
+  assert.equal(values.get("--bcp-capsule-item-font-size"), "20px");
+  assert.equal(values.get("--bcp-douyin-action-space"), "217.5px");
+  assert.equal(values.has("--bcp-capsule-scale"), false);
+});
+
+test("snaps the capsule's horizontal rhythm to whole pixels", () => {
+  const previousRatio = Object.getOwnPropertyDescriptor(sharedContext, "devicePixelRatio");
+  try {
+    for (const deviceScale of [1, 1.25, 1.5, 1.75, 2, 2.25]) {
+      Object.defineProperty(sharedContext, "devicePixelRatio", {
+        configurable: true,
+        value: deviceScale
+      });
+      for (let percent = 50; percent <= 200; percent += 1) {
+        const values = new Map();
+        shared.applyCapsuleScale({
+          style: {
+            setProperty(name, value) {
+              values.set(name, value);
+            }
+          }
+        }, percent);
+        const dividerWidth = Number.parseFloat(values.get("--bcp-capsule-divider-width"));
+        const itemWidth = Number.parseFloat(values.get("--bcp-capsule-item-width"));
+        assert.equal(
+          Math.abs(dividerWidth * deviceScale - Math.round(dividerWidth * deviceScale)) < 1e-9,
+          true,
+          `divider width at ${percent}% and ${deviceScale}x DPR`
+        );
+        assert.equal(
+          Math.abs(itemWidth * deviceScale - Math.round(itemWidth * deviceScale)) < 1e-9,
+          true,
+          `item width at ${percent}% and ${deviceScale}x DPR`
+        );
+        assert.equal(
+          Math.abs((itemWidth + dividerWidth) * deviceScale
+            - Math.round((itemWidth + dividerWidth) * deviceScale)) < 1e-9,
+          true,
+          `divider step at ${percent}% and ${deviceScale}x DPR`
+        );
+      }
+    }
+  } finally {
+    if (previousRatio) {
+      Object.defineProperty(sharedContext, "devicePixelRatio", previousRatio);
+    } else {
+      delete sharedContext.devicePixelRatio;
+    }
+  }
 });
 
 test("Douyin bootstrap requests the full runtime after an SPA live-route entry", () => {
