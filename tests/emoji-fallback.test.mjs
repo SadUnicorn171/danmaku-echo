@@ -448,9 +448,12 @@ test("remembers senders from recycled Douyin chat rows", () => {
   assert.match(contentSource, /function rememberRemovedChatSenders\(nodes\)/);
   assert.match(
     contentSource,
-    /const removedSenders = mutations\.flatMap\([\s\S]*?mutation\.removedNodes/
+    /function handleOwnChatMutations\(mutations\)[\s\S]*?removedSenders\.push\(\.\.\.Array\.from\(mutation\.removedNodes/
   );
-  assert.match(contentSource, /rememberRemovedChatSenders\(removedSenders\)/);
+  assert.match(
+    contentSource,
+    /if \(removedSenders\.length\) rememberRemovedChatSenders\(removedSenders\)/
+  );
   assert.match(contentSource, /const REPLY_RESOLVE_ATTEMPTS = 36/);
 });
 

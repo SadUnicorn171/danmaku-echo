@@ -39,6 +39,7 @@ import {
   isBilibiliAdvertisementMarker,
 } from '../platforms/bilibili/dom-config'
 import { BilibiliOverlayMotionController } from '../platforms/bilibili/overlay-motion'
+import { bilibiliRepeatReminderExclusionReason } from '../platforms/bilibili/repeat-reminder-filter'
 import { bilibiliAutoRecognizedEmojiText } from '../platforms/bilibili/rich-message-sender'
 import {
   bilibiliNativeEmoticonDisplayToken,
@@ -151,6 +152,8 @@ import { t } from '../core/i18n'
   const REPLY_RESOLVE_INTERVAL = 70
   const PLATFORM_FAILURE_FEEDBACK_WAIT_MS = 1_800
   const PLATFORM_SUCCESS_FEEDBACK_WAIT_MS = 500
+  const BILIBILI_REPEAT_REMINDER_SUPPRESSION_TTL = 90_000
+  const bilibiliRepeatReminderSuppressions = new Map()
   const state = {
     settings: shared.mergeSettings(),
     candidate: null,
@@ -5620,6 +5623,54 @@ import { t } from '../core/i18n'
     }
   }
 
+  function bilibiliRepeatReminderSuppressionKey(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .replace(/\s+/gu, '')
+      .toLocaleLowerCase()
+      .slice(0, config.maxLength)
+  }
+
+  function pruneBilibiliRepeatReminderSuppressions(now = Date.now()) {
+    for (const [key, entry] of bilibiliRepeatReminderSuppressions) {
+      if (!entry || entry.expiresAt <= now) bilibiliRepeatReminderSuppressions.delete(key)
+    }
+  }
+
+  function rememberBilibiliRepeatReminderSuppression(text) {
+    const key = bilibiliRepeatReminderSuppressionKey(text)
+    if (!key) return
+    const now = Date.now()
+    pruneBilibiliRepeatReminderSuppressions(now)
+    bilibiliRepeatReminderSuppressions.set(key, {
+      expiresAt: now + BILIBILI_REPEAT_REMINDER_SUPPRESSION_TTL,
+      roomKey: currentRoomContext('bilibili').roomKey,
+    })
+    state.repeatReminderRuntime?.suppressText(text)
+  }
+
+  function isBilibiliRepeatReminderSuppressed(text) {
+    const key = bilibiliRepeatReminderSuppressionKey(text)
+    if (!key) return false
+    pruneBilibiliRepeatReminderSuppressions()
+    const entry = bilibiliRepeatReminderSuppressions.get(key)
+    return Boolean(entry && entry.roomKey === currentRoomContext('bilibili').roomKey)
+  }
+
+  function describeRepeatReminderCandidate(element, source) {
+    const descriptor = platformAdapter.describe(element, source)
+    if (!descriptor || platformId !== 'bilibili') return descriptor
+    if (isBilibiliRepeatReminderSuppressed(descriptor.text)) return null
+    const excluded = bilibiliRepeatReminderExclusionReason({
+      element,
+      source,
+      text: descriptor.text,
+    })
+    if (!excluded) return descriptor
+    rememberBilibiliRepeatReminderSuppression(descriptor.text)
+    return null
+  }
+
   function startSenderObserver() {
     if (state.senderObserver || !document.documentElement) return
     state.senderObserver = new MutationObserver((mutations) => {
@@ -5726,7 +5777,7 @@ import { t } from '../core/i18n'
   }
 
   state.repeatReminderRuntime = createRepeatReminderRuntime({
-    describe: (element, source) => platformAdapter.describe(element, source),
+    describe: describeRepeatReminderCandidate,
     initialSettings: state.settings,
     messageSelectors: config.messages,
     overlaySelectors: config.overlayMessages,

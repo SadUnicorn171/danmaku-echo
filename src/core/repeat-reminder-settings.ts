@@ -1,8 +1,14 @@
-export const DEFAULT_REPEAT_REMINDER_THRESHOLD = 5
+export const DEFAULT_REPEAT_REMINDER_THRESHOLD = 6
 export const MIN_REPEAT_REMINDER_THRESHOLD = 2
 export const MAX_REPEAT_REMINDER_THRESHOLD = 99
 
-export const DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS = 6
+import type {
+  PlatformId,
+  RepeatReminderPlatformSettings,
+  RepeatReminderSettings,
+} from './types'
+
+export const DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS = 10
 export const MIN_REPEAT_REMINDER_PROMPT_SECONDS = 1
 export const MAX_REPEAT_REMINDER_PROMPT_SECONDS = 60
 
@@ -73,4 +79,25 @@ export function legacySensitivityThreshold(value: unknown): number {
   if (value === 'high') return 3
   if (value === 'low') return 8
   return DEFAULT_REPEAT_REMINDER_THRESHOLD
+}
+
+export function repeatReminderPlatformSettings(
+  settings: RepeatReminderSettings,
+  platform: PlatformId,
+): RepeatReminderPlatformSettings {
+  if (settings.mode === 'manual') {
+    const manual = settings.manual[platform]
+    return {
+      promptDurationSeconds: normalizeRepeatReminderPromptSeconds(manual?.promptDurationSeconds),
+      promptScalePercent: normalizeRepeatReminderPromptScalePercent(manual?.promptScalePercent),
+      queueLimit: normalizeRepeatReminderQueueLimit(manual?.queueLimit),
+      threshold: normalizeRepeatReminderThreshold(manual?.threshold),
+    }
+  }
+  return {
+    promptDurationSeconds: DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
+    promptScalePercent: DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+    queueLimit: DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
+    threshold: DEFAULT_REPEAT_REMINDER_THRESHOLD,
+  }
 }

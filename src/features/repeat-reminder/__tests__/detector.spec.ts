@@ -52,12 +52,53 @@ describe('RepeatReminderDetector', () => {
     expect(detector.suggestion(BASE_TIME + 1_000)?.count).toBe(3)
   })
 
+  it('requires crowd participation when sender coverage is reliable', () => {
+    const detector = new RepeatReminderDetector(6)
+    for (let index = 0; index < 6; index += 1) {
+      const item = observation({ observedAt: BASE_TIME + index * 100, senderId: 'same-user' })
+      detector.ingest(item, item.observedAt)
+    }
+    expect(detector.suggestion(BASE_TIME + 1_000)).toBeNull()
+
+    for (let index = 0; index < 6; index += 1) {
+      const item = observation({
+        observedAt: BASE_TIME + 2_000 + index * 100,
+        senderId: index % 2 ? 'second-user' : 'same-user',
+        text: '另一条共鸣弹幕',
+      })
+      detector.ingest(item, item.observedAt)
+    }
+    expect(detector.suggestion(BASE_TIME + 3_000)).toMatchObject({
+      count: 6,
+      senders: 2,
+      text: '另一条共鸣弹幕',
+    })
+  })
+
   it('expires counts outside the one-minute window', () => {
     const detector = new RepeatReminderDetector(3)
     for (let index = 0; index < 3; index += 1) {
       detector.ingest(observation({ observedAt: BASE_TIME + index * 100 }), BASE_TIME + index * 100)
     }
     expect(detector.suggestion(BASE_TIME + 61_000)).toBeNull()
+  })
+
+  it('forgets a dynamically excluded text that already reached the threshold', () => {
+    const detector = new RepeatReminderDetector(3)
+    for (let index = 0; index < 3; index += 1) {
+      const item = observation({
+        messageId: `command-${index}`,
+        observedAt: BASE_TIME + index * 100,
+        senderId: `u${index}`,
+        text: '点点关注铝厂ev63键盘',
+      })
+      detector.ingest(item, item.observedAt)
+    }
+    const suggestion = detector.suggestion(BASE_TIME + 500)
+    expect(suggestion).toMatchObject({ count: 3, text: '点点关注铝厂ev63键盘' })
+
+    expect(detector.forgetText('点点关注铝厂ev63键盘')).toEqual([suggestion?.id])
+    expect(detector.suggestion(BASE_TIME + 600)).toBeNull()
   })
 
   it('triggers a newly qualified message even while another message has a higher count', () => {

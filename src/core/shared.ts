@@ -4,6 +4,7 @@ import type {
   ColorSettings,
   ExtensionSettings,
   PlatformId,
+  RepeatReminderPlatformSettings,
   SharedExtensionApi,
 } from './types'
 import {
@@ -63,6 +64,42 @@ function emptyColorSettings(): ColorSettings {
   return Object.fromEntries(COLOR_SETTING_KEYS.map((key) => [key, ''])) as ColorSettings
 }
 
+function defaultManualRepeatReminderSettings(
+  platform: PlatformId,
+  base: RepeatReminderPlatformSettings = {
+    promptDurationSeconds: DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
+    promptScalePercent: DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
+    queueLimit: DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
+    threshold: DEFAULT_REPEAT_REMINDER_THRESHOLD,
+  },
+): RepeatReminderPlatformSettings {
+  return {
+    promptDurationSeconds: base.promptDurationSeconds,
+    promptScalePercent: base.promptScalePercent,
+    queueLimit: base.queueLimit,
+    threshold: normalizeRepeatReminderThreshold(
+      base.threshold + (platform === 'huya' || platform === 'douyu' ? 2 : 0),
+    ),
+  }
+}
+
+function normalizedManualRepeatReminderSettings(
+  value: unknown,
+  fallback: RepeatReminderPlatformSettings,
+): RepeatReminderPlatformSettings {
+  const saved = isRecord(value) ? value : {}
+  return {
+    promptDurationSeconds: normalizeRepeatReminderPromptSeconds(
+      saved.promptDurationSeconds ?? fallback.promptDurationSeconds,
+    ),
+    promptScalePercent: normalizeRepeatReminderPromptScalePercent(
+      saved.promptScalePercent ?? fallback.promptScalePercent,
+    ),
+    queueLimit: normalizeRepeatReminderQueueLimit(saved.queueLimit ?? fallback.queueLimit),
+    threshold: normalizeRepeatReminderThreshold(saved.threshold ?? fallback.threshold),
+  }
+}
+
 export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
   enabled: true,
   altClick: true,
@@ -80,10 +117,18 @@ export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
   }),
   repeatReminder: Object.freeze({
     enabled: true,
+    manual: Object.freeze({
+      bilibili: Object.freeze(defaultManualRepeatReminderSettings('bilibili')),
+      douyin: Object.freeze(defaultManualRepeatReminderSettings('douyin')),
+      douyu: Object.freeze(defaultManualRepeatReminderSettings('douyu')),
+      huya: Object.freeze(defaultManualRepeatReminderSettings('huya')),
+    }),
+    mode: 'auto',
     promptDurationSeconds: DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
     promptScalePercent: DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
     queueLimit: DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
     threshold: DEFAULT_REPEAT_REMINDER_THRESHOLD,
+    thresholdVersion: 2,
   }),
   interfaceScale: Object.freeze({
     capsulePercent: DEFAULT_CAPSULE_SCALE_PERCENT,
@@ -275,6 +320,40 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
   const savedRepeatReminder = isRecord(value.repeatReminder)
     ? value.repeatReminder
     : isRecord(value.radar) ? value.radar : {}
+  const normalizedRepeatReminderBase: RepeatReminderPlatformSettings = {
+    promptDurationSeconds: normalizeRepeatReminderPromptSeconds(
+      savedRepeatReminder.promptDurationSeconds,
+    ),
+    promptScalePercent: normalizeRepeatReminderPromptScalePercent(
+      savedRepeatReminder.promptScalePercent,
+    ),
+    queueLimit: normalizeRepeatReminderQueueLimit(savedRepeatReminder.queueLimit),
+    threshold: Object.hasOwn(savedRepeatReminder, 'threshold')
+      ? normalizeRepeatReminderThreshold(
+          savedRepeatReminder.thresholdVersion === 2
+            ? savedRepeatReminder.threshold
+            : Number(savedRepeatReminder.threshold) === 5
+              ? DEFAULT_REPEAT_REMINDER_THRESHOLD
+              : savedRepeatReminder.threshold,
+        )
+      : legacySensitivityThreshold(savedRepeatReminder.sensitivity),
+  }
+  const savedManualRepeatReminder = isRecord(savedRepeatReminder.manual)
+    ? savedRepeatReminder.manual
+    : {}
+  const legacyRepeatReminderCustomized =
+    normalizedRepeatReminderBase.threshold !== DEFAULT_REPEAT_REMINDER_THRESHOLD
+    || normalizedRepeatReminderBase.queueLimit !== DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT
+    || normalizedRepeatReminderBase.promptScalePercent
+      !== DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT
+    || (Object.hasOwn(savedRepeatReminder, 'promptDurationSeconds')
+      && normalizedRepeatReminderBase.promptDurationSeconds !== 6)
+  const repeatReminderMode = savedRepeatReminder.mode === 'manual'
+    || savedRepeatReminder.mode === 'auto'
+    ? savedRepeatReminder.mode
+    : legacyRepeatReminderCustomized
+      ? 'manual'
+      : 'auto'
   const actions: ActionSettings = {
     plusOne: typeof savedActions.plusOne === 'boolean' ? savedActions.plusOne : true,
     reply: typeof savedActions.reply === 'boolean' ? savedActions.reply : true,
@@ -297,16 +376,27 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
     },
     repeatReminder: {
       enabled: typeof savedRepeatReminder.enabled === 'boolean' ? savedRepeatReminder.enabled : true,
-      promptDurationSeconds: normalizeRepeatReminderPromptSeconds(
-        savedRepeatReminder.promptDurationSeconds,
-      ),
-      promptScalePercent: normalizeRepeatReminderPromptScalePercent(
-        savedRepeatReminder.promptScalePercent,
-      ),
-      queueLimit: normalizeRepeatReminderQueueLimit(savedRepeatReminder.queueLimit),
-      threshold: Object.hasOwn(savedRepeatReminder, 'threshold')
-        ? normalizeRepeatReminderThreshold(savedRepeatReminder.threshold)
-        : legacySensitivityThreshold(savedRepeatReminder.sensitivity),
+      manual: {
+        bilibili: normalizedManualRepeatReminderSettings(
+          savedManualRepeatReminder.bilibili,
+          defaultManualRepeatReminderSettings('bilibili', normalizedRepeatReminderBase),
+        ),
+        douyin: normalizedManualRepeatReminderSettings(
+          savedManualRepeatReminder.douyin,
+          defaultManualRepeatReminderSettings('douyin', normalizedRepeatReminderBase),
+        ),
+        douyu: normalizedManualRepeatReminderSettings(
+          savedManualRepeatReminder.douyu,
+          defaultManualRepeatReminderSettings('douyu', normalizedRepeatReminderBase),
+        ),
+        huya: normalizedManualRepeatReminderSettings(
+          savedManualRepeatReminder.huya,
+          defaultManualRepeatReminderSettings('huya', normalizedRepeatReminderBase),
+        ),
+      },
+      mode: repeatReminderMode,
+      ...normalizedRepeatReminderBase,
+      thresholdVersion: 2,
     },
     sideChatCapsule: {
       huya:

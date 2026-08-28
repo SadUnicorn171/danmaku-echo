@@ -25,6 +25,18 @@ const douyuNativeMotionFallbackSource = fs.readFileSync(
   path.join(__dirname, '..', 'src', 'platforms', 'douyu', 'native-motion-fallback.ts'),
   'utf8',
 )
+const douyinContentSource = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'entries', 'douyin-content.ts'),
+  'utf8',
+)
+const douyinPageHookSource = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'entries', 'douyin-page-hook.ts'),
+  'utf8',
+)
+const repeatReminderCollectorSource = fs.readFileSync(
+  path.join(__dirname, '..', 'src', 'features', 'repeat-reminder', 'collector.ts'),
+  'utf8',
+)
 const freezeOverlaySource = contentSource.match(
   /function freezeOverlayCandidate\(candidate\) \{[\s\S]*?\n  \}/,
 )
@@ -47,6 +59,53 @@ test('rejects media-bearing overlay candidates and builds inert frozen snapshots
   assert.match(freezeOverlaySource[0], /nodeLimit: OVERLAY_SNAPSHOT_NODE_LIMIT/)
   assert.match(inertSnapshotSource, /SNAPSHOT_DESCENDANT_STYLE_PROPERTIES/)
   assert.match(inertSnapshotSource, /copyPresentation\(child, inertChild, true\)/)
+})
+
+test('keeps Douyin repeat-reminder collection off whole-page hot paths', () => {
+  const queueNodeSource = repeatReminderCollectorSource.match(
+    /function queueNode\(node: Node\): void \{[\s\S]*?\n  \}/,
+  )
+  const ingestSource = douyinContentSource.match(
+    /function ingestDouyinRendererRepeatReminderMessage\(data\) \{[\s\S]*?\n  \}/,
+  )
+  const ownChatObserverSource = douyinContentSource.match(
+    /function startOwnChatObserver\(\) \{[\s\S]*?\n  \}/,
+  )
+
+  assert.ok(queueNodeSource, 'repeat-reminder queueNode should exist')
+  assert.doesNotMatch(queueNodeSource[0], /discoverRoots\(node\)/)
+  assert.ok(ingestSource, 'Douyin renderer reminder ingestion should exist')
+  assert.match(ingestSource[0], /richPayloadFromRendererContent/)
+  assert.doesNotMatch(ingestSource[0], /resolveRichPayloadWithRetry/)
+  assert.match(douyinContentSource, /rootSelectors: CHAT_ROOT_SELECTORS/)
+  assert.match(
+    douyinContentSource,
+    /repeatReminderEnabled: rendererEnabled && repeatReminderEnabled\(\)/,
+  )
+  assert.ok(ownChatObserverSource, 'scoped Douyin chat observer should exist')
+  assert.match(ownChatObserverSource[0], /ownChatRoots\(\)/)
+  assert.doesNotMatch(ownChatObserverSource[0], /observe\(document\.documentElement/)
+  assert.match(
+    douyinPageHookSource,
+    /if \(rendererRepeatReminderEnabled\) \{[\s\S]*?type: "repeat-reminder-message"/,
+  )
+  assert.match(douyinPageHookSource, /douyinRepeatReminderExclusionReason/)
+  assert.match(douyinPageHookSource, /excludedReason: repeatReminderExclusion/)
+  assert.match(douyinContentSource, /rememberRepeatReminderSuppression\(resolvedText\)/)
+  assert.match(douyinContentSource, /state\.repeatReminderRuntime\?\.suppressText\(text\)/)
+})
+
+test('suppresses Bilibili lottery entries across chat and video reminder sources', () => {
+  assert.match(contentSource, /platforms\/bilibili\/repeat-reminder-filter/)
+  assert.match(contentSource, /describe: describeRepeatReminderCandidate/)
+  assert.match(
+    contentSource,
+    /function describeRepeatReminderCandidate[\s\S]*?bilibiliRepeatReminderExclusionReason[\s\S]*?rememberBilibiliRepeatReminderSuppression/,
+  )
+  assert.match(
+    contentSource,
+    /function rememberBilibiliRepeatReminderSuppression[\s\S]*?state\.repeatReminderRuntime\?\.suppressText\(text\)/,
+  )
 })
 
 test("uses an ownership-scoped Douyu pause fallback after native resume", () => {

@@ -92,6 +92,10 @@ test("merges partial settings with safe defaults", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.colors.huya)), Object.fromEntries(
     shared.COLOR_SETTING_KEYS.map((key) => [key, ""])
   ));
+  assert.equal(settings.repeatReminder.mode, "auto");
+  assert.equal(settings.repeatReminder.promptDurationSeconds, 10);
+  assert.equal(settings.repeatReminder.manual.bilibili.threshold, 6);
+  assert.equal(settings.repeatReminder.manual.huya.threshold, 8);
 });
 
 test("merges independent action visibility settings", () => {
@@ -112,10 +116,18 @@ test("migrates the removed radar setting to the lightweight repeat reminder", ()
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
     enabled: false,
-    promptDurationSeconds: 6,
+    manual: {
+      bilibili: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 3 },
+      douyin: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 3 },
+      douyu: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 5 },
+      huya: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 5 }
+    },
+    mode: "manual",
+    promptDurationSeconds: 10,
     promptScalePercent: 100,
     queueLimit: 3,
-    threshold: 3
+    threshold: 3,
+    thresholdVersion: 2
   });
 });
 
@@ -132,14 +144,31 @@ test("normalizes custom radar queue, trigger, duration, and scale settings", () 
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
     enabled: true,
+    manual: {
+      bilibili: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 2 },
+      douyin: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 2 },
+      douyu: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 4 },
+      huya: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 4 }
+    },
+    mode: "manual",
     promptDurationSeconds: 60,
     promptScalePercent: 50,
     queueLimit: 10,
-    threshold: 2
+    threshold: 2,
+    thresholdVersion: 2
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.interfaceScale)), {
     capsulePercent: 200
   });
+});
+
+test("migrates the old default threshold once while preserving later custom values", () => {
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { threshold: 5 }
+  }).repeatReminder.threshold, 6);
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { threshold: 5, thresholdVersion: 2 }
+  }).repeatReminder.threshold, 5);
 });
 
 test("keeps at least one capsule action enabled", () => {

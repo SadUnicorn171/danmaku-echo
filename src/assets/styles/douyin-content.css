@@ -73,8 +73,8 @@
   white-space: nowrap;
 }
 
-.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage,
-.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage {
+.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage:not([data-own='true']),
+.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage:not([data-own='true']) {
   background: transparent;
   box-shadow: 0 0 0 3px var(--bcp-selection, #fd8101);
 }
@@ -99,16 +99,20 @@
 }
 
 /*
- * Keep the user's frame outside the rendered content. The gap prevents the
- * frame from covering text or image Emoji without changing barrage geometry.
+ * Own and hovered barrages share the same outer frame owner. Keeping the
+ * frame on the barrage prevents an inner own-message outline from combining
+ * with the hover box-shadow into two visible rings.
  */
-.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
-  background: color-mix(in srgb,
-    var(--bcp-selection, #fd8101) 18%, transparent);
-  border-radius: 7px;
-  outline: 3px solid color-mix(in srgb,
+.bcp-douyin-dom-barrage[data-own='true'] {
+  background: transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb,
     var(--bcp-selection, #fd8101) 96%, transparent);
-  outline-offset: 3px;
+}
+
+.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
 }
 
 /*
@@ -117,8 +121,14 @@
  * owns the visible frame while the native content keeps its original layout.
  */
 [data-bcp-douyin-own-chat-content='true'] {
+  background: transparent !important;
   box-shadow: none !important;
   outline: none !important;
+}
+
+[data-bcp-douyin-own-chat='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 [data-bcp-douyin-own-chat-frame='true'] {

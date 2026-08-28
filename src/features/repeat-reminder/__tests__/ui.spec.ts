@@ -11,6 +11,7 @@ afterEach(() => {
   document
     .querySelectorAll('[data-bcp-repeat-reminder-owned]')
     .forEach((element) => element.remove())
+  document.documentElement.removeAttribute('data-bcp-repeat-reminder-owner')
 })
 
 const ENABLED_SETTINGS = {
@@ -22,6 +23,38 @@ const ENABLED_SETTINGS = {
 } as const
 
 describe('repeat reminder UI', () => {
+  it('keeps one portal when another runtime starts or a stale portal is reattached', async () => {
+    const options = {
+      dismiss: vi.fn<() => void>(),
+      openSettings: vi.fn<() => void>(),
+      plusOne: vi.fn<() => void>(),
+    }
+    const first = createRepeatReminderUi(options)
+    const firstPortal = document.querySelector<HTMLElement>('[data-bcp-repeat-reminder-owned]')
+    const second = createRepeatReminderUi(options)
+    try {
+      const secondPortal = document.querySelector<HTMLElement>('[data-bcp-repeat-reminder-owned]')
+      expect(firstPortal).not.toBeNull()
+      expect(secondPortal).not.toBe(firstPortal)
+      expect(document.querySelectorAll('[data-bcp-repeat-reminder-owned]')).toHaveLength(1)
+
+      first.ensureHost()
+      expect(firstPortal?.isConnected).toBe(false)
+
+      const stalePortal = document.createElement('div')
+      stalePortal.dataset.bcpRepeatReminderOwned = 'true'
+      document.documentElement.append(stalePortal)
+      await vi.waitFor(() => {
+        expect(document.querySelectorAll('[data-bcp-repeat-reminder-owned]')).toHaveLength(1)
+        expect(secondPortal?.isConnected).toBe(true)
+        expect(stalePortal.isConnected).toBe(false)
+      })
+    } finally {
+      first.destroy()
+      second.destroy()
+    }
+  })
+
   it('shows onboarding on the first triggered queue and persists acknowledgement', async () => {
     let acknowledged = false
     const onboardingStorage = {
@@ -45,7 +78,16 @@ describe('repeat reminder UI', () => {
         expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(true)
       })
       expect(shadow?.querySelector('.onboarding-card')?.getAttribute('aria-modal')).toBe('true')
+      expect(shadow?.querySelector('.onboarding-card')?.getAttribute('data-placement')).toBe('left')
+      expect(shadow?.querySelector<HTMLElement>('.onboarding-card')?.style.left).not.toBe('')
+      expect(shadow?.querySelector('.onboarding-arrow')).not.toBeNull()
+      expect(shadow?.querySelector('.launcher')?.classList.contains('is-onboarding')).toBe(true)
+      expect(shadow?.querySelector('.onboarding-accent')).not.toBeNull()
+      expect(shadow?.querySelectorAll('.onboarding-feature')).toHaveLength(2)
+      expect(shadow?.querySelectorAll('.onboarding-setting-list li')).toHaveLength(6)
+      expect(shadow?.querySelector('.onboarding-note')).not.toBeNull()
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('只提醒，不自动发送')
+      expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('箭头指向的按钮')
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('触发次数')
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('提示停留时间')
       expect(shadow?.querySelector('.prompt-list')?.classList.contains('is-visible')).toBe(false)
@@ -53,6 +95,7 @@ describe('repeat reminder UI', () => {
       shadow?.querySelector<HTMLButtonElement>('.onboarding-acknowledge')?.click()
       expect(onboardingStorage.acknowledge).toHaveBeenCalledOnce()
       expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(false)
+      expect(shadow?.querySelector('.launcher')?.classList.contains('is-onboarding')).toBe(false)
       expect(shadow?.querySelector('.prompt-list')?.classList.contains('is-visible')).toBe(true)
 
       ui.destroy()
@@ -217,6 +260,66 @@ describe('repeat reminder UI', () => {
     ).toBe('1.25')
     shadow?.querySelector<HTMLButtonElement>('.open-settings')?.click()
     expect(openSettings).toHaveBeenCalledOnce()
+    ui.destroy()
+  })
+
+  it('shows the live audience signal without changing the reminder threshold', () => {
+    const ui = createRepeatReminderUi({
+      dismiss: vi.fn<() => void>(),
+      openSettings: vi.fn<() => void>(),
+      plusOne: vi.fn<() => void>(),
+    })
+    ui.applySettings(ENABLED_SETTINGS)
+    ui.setAudience({
+      kind: 'viewers',
+      label: '在线观众',
+      platform: 'douyin',
+      rawText: '4974',
+      value: 4_974,
+    })
+    const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+    shadow?.querySelector<HTMLButtonElement>('.launcher')?.click()
+    expect(shadow?.querySelector('[data-audience-label]')?.textContent).toBe('在线观众')
+    expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('4,974 人')
+    expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('5 次')
+
+    ui.setAudience({
+      kind: 'guests',
+      label: '贵宾数',
+      platform: 'huya',
+      rawText: '2656',
+      value: 2_656,
+    })
+    expect(shadow?.querySelector('[data-audience-label]')?.textContent).toBe('贵宾数')
+    expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('2,656 位')
+    expect(shadow?.querySelector('[data-value="audience"]')?.getAttribute('title')).toContain(
+      '直播间贵宾数',
+    )
+    ui.destroy()
+  })
+
+  it('shows danmaku traffic as the fallback basis when audience data is unavailable', () => {
+    const ui = createRepeatReminderUi({
+      dismiss: vi.fn<() => void>(),
+      openSettings: vi.fn<() => void>(),
+      plusOne: vi.fn<() => void>(),
+    })
+    ui.applySettings(ENABLED_SETTINGS)
+    ui.setTraffic({
+      burstRate: 600,
+      level: 'active',
+      messageCount: 420,
+      rate: 486,
+      ready: true,
+      senderCoverage: 0.8,
+      stableRate: 430,
+    })
+    const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+    expect(shadow?.querySelector('[data-audience-label]')?.textContent).toBe('弹幕流量')
+    expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('约 486 条/分')
+    expect(shadow?.querySelector('[data-value="audience"]')?.getAttribute('title')).toContain(
+      '等级：活跃',
+    )
     ui.destroy()
   })
 

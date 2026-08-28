@@ -11,6 +11,11 @@ import {
   serializedBarrageText
 } from "../platforms/douyin/barrage-model";
 import {
+  douyinEmojiMessageText,
+  registerDouyinEmojiCatalog
+} from "../platforms/douyin/emoji-token";
+import { douyinRepeatReminderExclusionReason } from "../platforms/douyin/repeat-reminder-filter";
+import {
   DOUYIN_CONTENT_SOURCE,
   DOUYIN_PAGE_SOURCE,
   isDouyinProtocolMessage
@@ -47,7 +52,7 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
   }
   globalThis.__bulletPlusOneDouyinCanvasHook = true;
 
-  const DEBUG_VERSION = "douyin-dom-renderer-v13-manual-own-race";
+  const DEBUG_VERSION = "douyin-dom-renderer-v14-gated-repeat-collector";
   const DOM_ACTION_HEIGHT = 40;
   const DOM_ACTION_ITEM_WIDTHS = Object.freeze({
     plusOne: 56,
@@ -84,6 +89,10 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
   let rendererHeartbeatAt = 0;
   let rendererActions = { copy: false, plusOne: true, reply: true, favorite: true };
   let rendererCapsuleScale = 1;
+  let rendererRepeatReminderEnabled = false;
+  let repeatReminderPointerFrame = 0;
+  let repeatReminderPointerX = 0;
+  let repeatReminderPointerY = 0;
 
   function normalizeRendererActions(value) {
     const actions = value && typeof value === "object" ? value : {};
@@ -798,6 +807,42 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     }, "info");
   }
 
+  function nativeBarrageMessageText(options, content) {
+    const serializedMessageText = serializedBarrageText(content);
+    const fallbackMessageText = douyinEmojiMessageText(options);
+    const serializedEmojiCount = (serializedMessageText.match(/\[[^\]\r\n]{1,40}\]/gu) || []).length;
+    const fallbackEmojiCount = (fallbackMessageText.match(/\[[^\]\r\n]{1,40}\]/gu) || []).length;
+    return fallbackEmojiCount > serializedEmojiCount
+      ? fallbackMessageText
+      : serializedMessageText || fallbackMessageText;
+  }
+
+  function applyDouyinEmojiCatalog(data) {
+    const registered = registerDouyinEmojiCatalog(data.entries);
+    if (!registered) return;
+    let resolved = 0;
+    for (const instance of instances.values()) {
+      for (const track of instance.tracks.values()) {
+        const content = serializeBarrage(track.options);
+        const nativeMessageText = nativeBarrageMessageText(track.options, content);
+        const interactionText = barrageInteractionText(
+          nativeMessageText || track.description.text,
+          track.description.imageCount
+        );
+        track.content = content;
+        if (!plausibleText(interactionText) || interactionText === track.description.text) continue;
+        applyResolvedRendererMessage({
+          instanceId: instance.id,
+          messageId: String(track.options.id == null ? track.id : track.options.id),
+          text: interactionText,
+          trackId: track.id
+        });
+        resolved += 1;
+      }
+    }
+    debugEvent("emoji-catalog-applied", { registered, resolved }, "info");
+  }
+
   function ensureRendererLayer(instance, canvasRect) {
     let layer = instance.rendererLayer;
     if (!layer) {
@@ -1021,17 +1066,35 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     return pointTouchesRepeatReminder(document, Number(event.clientX), Number(event.clientY));
   }
 
-  function releaseRendererTracksCoveredByRepeatReminder(event) {
-    if (!rendererPointerTouchesRepeatReminder(event)) {
-      return;
-    }
+  function hasHoveredRendererTrack() {
     for (const instance of instances.values()) {
       for (const track of instance.tracks.values()) {
-        if (track.renderer && track.renderer.hovered) {
-          releaseRendererTrack(track);
-        }
+        if (track.renderer && track.renderer.hovered) return true;
       }
     }
+    return false;
+  }
+
+  function releaseRendererTracksCoveredByRepeatReminder(event) {
+    if (!rendererEnabled || !hasHoveredRendererTrack()) return;
+    repeatReminderPointerX = Number(event.clientX);
+    repeatReminderPointerY = Number(event.clientY);
+    if (repeatReminderPointerFrame) return;
+    repeatReminderPointerFrame = requestAnimationFrame(() => {
+      repeatReminderPointerFrame = 0;
+      if (!pointTouchesRepeatReminder(
+        document,
+        repeatReminderPointerX,
+        repeatReminderPointerY
+      )) return;
+      for (const instance of instances.values()) {
+        for (const track of instance.tracks.values()) {
+          if (track.renderer && track.renderer.hovered) {
+            releaseRendererTrack(track);
+          }
+        }
+      }
+    });
   }
 
   function settleRendererActivation(requestId, ok, reason) {
@@ -1759,7 +1822,7 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     // use the same deterministic square fallback in both measurement and DOM.
     const description = describeBarrage(options, instance.config, null);
     const content = serializeBarrage(options);
-    const nativeMessageText = serializedBarrageText(content);
+    const nativeMessageText = nativeBarrageMessageText(options, content);
     const interactionText = barrageInteractionText(
       nativeMessageText || description.text,
       description.imageCount
@@ -1779,19 +1842,27 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     const repeatReminderMessageId = String(
       options.id ?? options.messageId ?? options.msgId ?? options.itemId ?? ""
     ).slice(0, 180);
-    window.postMessage({
-      source: DOUYIN_PAGE_SOURCE,
-      type: "repeat-reminder-message",
-      message: {
-        content,
-        instanceId: instance.id,
-        messageId: repeatReminderMessageId,
-        observedAt,
-        sender: extractSenderFromRecord(options),
-        text: interactionText,
-        trackId: nextTrackId
-      }
-    }, "*");
+    const repeatReminderExclusion = douyinRepeatReminderExclusionReason({
+      messageId: repeatReminderMessageId,
+      record: options,
+      text: interactionText
+    });
+    if (rendererRepeatReminderEnabled) {
+      window.postMessage({
+        source: DOUYIN_PAGE_SOURCE,
+        type: "repeat-reminder-message",
+        message: {
+          content,
+          excludedReason: repeatReminderExclusion,
+          instanceId: instance.id,
+          messageId: repeatReminderMessageId,
+          observedAt,
+          sender: extractSenderFromRecord(options),
+          text: interactionText,
+          trackId: nextTrackId
+        }
+      }, "*");
+    }
     const sourcePadding = boxEdges(options.padding);
     const uniformPadding = Math.min(DOM_BARRAGE_PADDING_MAX, Math.max(
       DOM_BARRAGE_PADDING,
@@ -2197,6 +2268,7 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
 
   function updateRendererSettings(data) {
     const wasEnabled = rendererEnabled;
+    const wasRepeatReminderEnabled = rendererRepeatReminderEnabled;
     const nextActions = normalizeRendererActions(data.actions);
     const nextCapsuleScale = normalizeCapsuleScale(data.capsuleScalePercent);
     const actionsChanged = ["plusOne", "reply", "favorite", "copy"]
@@ -2206,6 +2278,7 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     rendererActions = nextActions;
     rendererCapsuleScale = nextCapsuleScale;
     rendererEnabled = Boolean(data.enabled);
+    rendererRepeatReminderEnabled = rendererEnabled && Boolean(data.repeatReminderEnabled);
     if (actionsChanged || scaleChanged) {
       const actionWidth = rendererActionWidth();
       for (const instance of instances.values()) {
@@ -2235,9 +2308,11 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
         }
       }
     }
-    if (rendererEnabled !== wasEnabled || actionsChanged || scaleChanged) {
+    if (rendererEnabled !== wasEnabled || rendererRepeatReminderEnabled !== wasRepeatReminderEnabled
+        || actionsChanged || scaleChanged) {
       debugEvent("renderer-settings", {
         enabled: rendererEnabled,
+        repeatReminderEnabled: rendererRepeatReminderEnabled,
         actions: rendererActions,
         capsuleScale: rendererCapsuleScale,
         instanceCount: instances.size
@@ -2269,6 +2344,10 @@ import { pointTouchesRepeatReminder } from "../features/repeat-reminder/pointer-
     }
     if (event.data.type === "renderer-settings") {
       updateRendererSettings(event.data);
+      return;
+    }
+    if (event.data.type === "emoji-catalog") {
+      applyDouyinEmojiCatalog(event.data);
       return;
     }
     if (event.data.type === "renderer-message-resolved") {

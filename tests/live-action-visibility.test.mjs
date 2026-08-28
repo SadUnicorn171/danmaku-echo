@@ -322,3 +322,12 @@ test('keeps every capsule divider on the same scalable width variable', () => {
     /rendererSnapToDevicePixel\(DOM_ACTION_DIVIDER_WIDTH\)/,
   )
 })
+
+test('offers automatic and per-platform manual danmaku radar modes', () => {
+  assert.match(popupSource, /v-model="settings\.repeatReminder\.mode"/)
+  assert.match(popupSource, /settings\.repeatReminder\.mode === 'manual'/)
+  assert.match(popupSource, /v-for="platform in platforms"/)
+  assert.match(popupSource, /settings\.repeatReminder\.manual\[manualRepeatReminderPlatform\.value\]/)
+  assert.match(popupSource, /role="tablist"/)
+  assert.match(popupSource, /role="tabpanel"/)
+})

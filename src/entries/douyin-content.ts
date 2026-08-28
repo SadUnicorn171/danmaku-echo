@@ -10,6 +10,14 @@ import {
   serializedEmojiAssets,
 } from '../platforms/douyin/rich-data'
 import {
+  douyinEmojiTokenFromResource,
+  registerDouyinEmojiCatalog,
+} from '../platforms/douyin/emoji-token'
+import {
+  DOUYIN_EMOJI_CATALOG_REQUEST,
+} from '../platforms/douyin/emoji-catalog'
+import { douyinRepeatReminderExclusionReason } from '../platforms/douyin/repeat-reminder-filter'
+import {
   allAssetsMatch,
   assetsMatch,
   normalizeRichPayload as normalizeOwnMessagePayload,
@@ -65,8 +73,9 @@ import { t } from '../core/i18n'
   const CARD_LOCK_TIME = 2500
   const CARD_STICKY_TIME = 8000
   const CARD_HIDE_DELAY = 650
-  const DEBUG_VERSION = 'douyin-content-v15-scoped-editor-selection'
+  const DEBUG_VERSION = 'douyin-content-v16-scoped-repeat-collector'
   const RENDERER_HEARTBEAT_INTERVAL = 5000
+  const REPEAT_REMINDER_SYNTHETIC_TEXT_TTL = 30 * 60_000
   const TRUSTED_ACTION_WINDOW = 1500
   const OWN_CHAT_MESSAGE_TTL = 12_000
   const OWN_CHAT_FRAME_GAP = 3
@@ -79,6 +88,8 @@ import { t } from '../core/i18n'
   const REPLY_RESOLVE_ATTEMPTS = 36
   const REPLY_RESOLVE_INTERVAL = 70
   const REPLY_READY_WINDOW = 2_000
+  let douyinEmojiCatalog = []
+  let douyinEmojiCatalogRequest = null
   const DOM_DANMAKU_SELECTORS = [
     "[data-e2e='danmaku-item']",
     "[class*='webcast-danmaku___item']",
@@ -235,7 +246,7 @@ import { t } from '../core/i18n'
     pendingManualEmojiIntents: [],
     manualInputSnapshots: new Map(),
     ownChatScanTimer: 0,
-    ownChatObserver: null,
+    ownChatObservers: new Map(),
     senderCache: new Map(),
     senderIdCache: new Map(),
     senderHistory: [],
@@ -277,6 +288,8 @@ import { t } from '../core/i18n'
   let debugMarkerTimer = 0
   let heartbeatTimer = 0
   let routePollTimer = 0
+  let pointerMoveFrame = 0
+  let pendingPointerMove = null
   const ownChatFrameObservers = new WeakMap()
   const diagnostics = createDiagnosticsCollector({
     platform: 'douyin',
@@ -294,7 +307,7 @@ import { t } from '../core/i18n'
       senderIdCache: state.senderIdCache.size,
     }),
     observerCounts: () => ({
-      ownChat: state.ownChatObserver ? 1 : 0,
+      ownChat: state.ownChatObservers.size,
       timers: [state.hideTimer, state.expiryTimer, state.ownChatScanTimer, state.senderCacheTimer]
         .filter(Boolean).length,
     }),
@@ -447,6 +460,10 @@ import { t } from '../core/i18n'
 
   function plusOneEnabled() {
     return Boolean(enabled() && state.settings.actions.plusOne)
+  }
+
+  function repeatReminderEnabled() {
+    return Boolean(plusOneEnabled() && state.settings.repeatReminder.enabled)
   }
 
   function isVisible(element) {
@@ -650,7 +667,8 @@ import { t } from '../core/i18n'
     event.stopPropagation()
     cancelHide()
     if (!state.settings.actions.copy || !state.candidate?.message) return
-    const copied = await copyTextToClipboard(state.candidate.message)
+    const action = resolvedDouyinAction(state.candidate.richPayload, state.candidate.message)
+    const copied = await copyTextToClipboard(action.text)
     showToast(t(copied ? 'toastDanmakuCopied' : 'toastDanmakuCopyFailed'), copied ? 'success' : 'error')
     armExpiry()
   }
@@ -662,7 +680,8 @@ import { t } from '../core/i18n'
     if (!state.settings.actions.favorite || !state.candidate || !state.favoritesRuntime) {
       return
     }
-    void state.favoritesRuntime.favoriteText(state.candidate.message, state.candidate.richPayload)
+    const action = resolvedDouyinAction(state.candidate.richPayload, state.candidate.message)
+    void state.favoritesRuntime.favoriteText(action.text, action.richPayload || undefined)
     armExpiry()
   }
 
@@ -828,15 +847,26 @@ import { t } from '../core/i18n'
     ].find((value) => shared.normalizeWhitespace(value))
     const value = shared.normalizeWhitespace(raw)
     if (!value) {
-      return ''
+      return [image.currentSrc, image.getAttribute('src'), image.getAttribute('data-src')]
+        .map(douyinEmojiTokenFromResource)
+        .find(Boolean) || ''
     }
-    if (/^\[[^\]\n]{1,40}\]$/.test(value) || /\p{Extended_Pictographic}/u.test(value)) {
+    if (
+      (/^\[[^\]\n]{1,40}\]$/.test(value) || /\p{Extended_Pictographic}/u.test(value)) &&
+      !/^\[(?:表情|图片表情|表情包|emoji|emote|emoticon|image|sticker)\]$/iu.test(value)
+    ) {
       return value
     }
-    if (/(emoji|emote|sticker|表情)/i.test(marker) && Array.from(value).length <= 40) {
+    if (
+      /(emoji|emote|sticker|表情)/i.test(marker) &&
+      Array.from(value).length <= 40 &&
+      !/^(?:表情|图片表情|表情包|emoji|emote|emoticon|image|sticker)$/iu.test(value)
+    ) {
       return `[${value}]`
     }
-    return ''
+    return [image.currentSrc, image.getAttribute('src'), image.getAttribute('data-src')]
+      .map(douyinEmojiTokenFromResource)
+      .find(Boolean) || ''
   }
 
   function assetDescriptorFromElement(element) {
@@ -1204,11 +1234,54 @@ import { t } from '../core/i18n'
     return parts
   }
 
+  const repeatReminderSuppressedTexts = new Map()
+
+  function repeatReminderSuppressionKey(value) {
+    return comparableText(value)
+  }
+
+  function pruneRepeatReminderSuppressions(now = Date.now()) {
+    for (const [key, entry] of repeatReminderSuppressedTexts) {
+      if (!entry || entry.expiresAt <= now) repeatReminderSuppressedTexts.delete(key)
+    }
+  }
+
+  function rememberRepeatReminderSuppression(text) {
+    const key = repeatReminderSuppressionKey(text)
+    if (!key) return
+    const now = Date.now()
+    pruneRepeatReminderSuppressions(now)
+    repeatReminderSuppressedTexts.set(key, {
+      expiresAt: now + REPEAT_REMINDER_SYNTHETIC_TEXT_TTL,
+      roomKey: currentRoomContext('douyin').roomKey,
+    })
+    state.repeatReminderRuntime?.suppressText(text)
+  }
+
+  function isRepeatReminderTextSuppressed(text) {
+    const key = repeatReminderSuppressionKey(text)
+    if (!key) return false
+    pruneRepeatReminderSuppressions()
+    const entry = repeatReminderSuppressedTexts.get(key)
+    return Boolean(entry && entry.roomKey === currentRoomContext('douyin').roomKey)
+  }
+
   function describeDouyinRepeatReminderRow(row, source) {
     if (source !== 'chat' || !(row instanceof Element)) return null
     const payload = richPayloadFromChatRow(row)
     const parts = repeatReminderPartsFromRichPayload(payload)
     const ids = messageIdsFromRow(row)
+    const message = payload.text || payload.plainText || ''
+    if (
+      isRepeatReminderTextSuppressed(message) ||
+      douyinRepeatReminderExclusionReason({
+        element: row,
+        messageId: ids[0],
+        text: message,
+      })
+    ) {
+      return null
+    }
     const resourceIds = parts
       .filter((part) => part.type !== 'text')
       .map((part) => part.resourceId)
@@ -1220,16 +1293,22 @@ import { t } from '../core/i18n'
       resourceIds,
       senderName: payload.sender || undefined,
       source: 'chat',
-      text: payload.text || payload.plainText || '',
+      text: message,
     }
   }
 
-  async function ingestDouyinRendererRepeatReminderMessage(data) {
+  function ingestDouyinRendererRepeatReminderMessage(data) {
     if (!data || typeof data !== 'object') return
     const raw = data.message
     if (!raw || typeof raw !== 'object') return
-    const payload = await resolveRichPayloadWithRetry(raw.text, raw.content)
-    const resolvedText = douyinAutoRecognizedEmojiText(payload) || payload.text || raw.text || ''
+    if (!repeatReminderEnabled()) return
+    const payload = richPayloadFromRendererContent(raw.text, raw.content)
+    const resolvedEmojiText = douyinAutoRecognizedEmojiText(payload)
+    // Renderer images without a native bracket token are correlated lazily
+    // when the user invokes an action. The side-chat collector will ingest the
+    // same message without forcing every Canvas barrage to rescan the chat list.
+    if (payload.assets.length && !resolvedEmojiText) return
+    const resolvedText = resolvedEmojiText || payload.text || raw.text || ''
     if (shared.isPlausibleMessage(resolvedText, MAX_LENGTH)) {
       window.postMessage(
         {
@@ -1243,6 +1322,17 @@ import { t } from '../core/i18n'
         '*',
       )
     }
+    const excludedReason =
+      raw.excludedReason ||
+      douyinRepeatReminderExclusionReason({
+        messageId: raw.messageId,
+        text: resolvedText,
+      })
+    if (excludedReason === 'synthetic-activity') {
+      rememberRepeatReminderSuppression(resolvedText)
+      return
+    }
+    if (excludedReason || isRepeatReminderTextSuppressed(resolvedText)) return
     if (!state.repeatReminderRuntime) return
     const parts = repeatReminderPartsFromRichPayload(payload)
     const resourceIds = parts
@@ -1321,6 +1411,18 @@ import { t } from '../core/i18n'
       .slice(-SENDER_HISTORY_LIMIT)
   }
 
+  function rememberSenderFromChatRow(row, observedAt) {
+    if (!(row instanceof Element) || isOwned(row) || row.dataset.bcpDouyinOwnChat === 'true') {
+      return
+    }
+    const payload = richPayloadFromChatRow(row)
+    const ids = messageIdsFromRow(row)
+    rememberMessageSender(payload.plainText || payload.text, payload.sender, observedAt, ids, row)
+    if (payload.text && payload.text !== payload.plainText) {
+      rememberMessageSender(payload.text, payload.sender, observedAt, ids)
+    }
+  }
+
   function scanSenderCache() {
     if (state.senderCacheTimer) {
       clearTimeout(state.senderCacheTimer)
@@ -1330,15 +1432,7 @@ import { t } from '../core/i18n'
     pruneSenderCache(now)
     const rows = queryAll(CHAT_MESSAGE_SELECTORS).slice(-160)
     for (const row of rows) {
-      if (isOwned(row) || row.dataset.bcpDouyinOwnChat === 'true') {
-        continue
-      }
-      const payload = richPayloadFromChatRow(row)
-      const ids = messageIdsFromRow(row)
-      rememberMessageSender(payload.plainText || payload.text, payload.sender, now, ids, row)
-      if (payload.text && payload.text !== payload.plainText) {
-        rememberMessageSender(payload.text, payload.sender, now, ids)
-      }
+      rememberSenderFromChatRow(row, now)
     }
   }
 
@@ -1453,7 +1547,16 @@ import { t } from '../core/i18n'
         appendText(raw.text)
       } else if (raw.type === 'image') {
         const asset = serializedEmojiAssets([raw], location.href)[0]
-        if (asset) parts.push({ type: 'emoji', asset })
+        if (asset) {
+          const token = asset.token || douyinEmojiTokenFromResource(asset.src)
+          if (token) {
+            asset.token = token
+            normalizedAssetKeys(token, location.href).forEach((key) => {
+              if (!asset.keys.includes(key) && asset.keys.length < 64) asset.keys.push(key)
+            })
+          }
+          parts.push({ type: 'emoji', asset })
+        }
       }
       if (Array.isArray(raw.content)) raw.content.forEach(visit)
     }
@@ -1581,6 +1684,9 @@ import { t } from '../core/i18n'
     if (douyinAutoRecognizedEmojiText(payload) || !rendererHasImages) {
       return payload
     }
+    await ensureDouyinEmojiCatalog()
+    payload = resolveRichPayload(canvasText, rendererContent)
+    if (douyinAutoRecognizedEmojiText(payload)) return payload
     for (let attempt = 0; attempt < 6; attempt += 1) {
       await new Promise((resolve) => setTimeout(resolve, 50))
       payload = resolveRichPayload(canvasText, rendererContent)
@@ -1589,6 +1695,39 @@ import { t } from '../core/i18n'
       }
     }
     return payload
+  }
+
+  function postDouyinEmojiCatalog() {
+    if (!douyinEmojiCatalog.length) return
+    window.postMessage(
+      {
+        source: DOUYIN_CONTENT_SOURCE,
+        type: 'emoji-catalog',
+        entries: douyinEmojiCatalog,
+      },
+      '*',
+    )
+  }
+
+  function ensureDouyinEmojiCatalog() {
+    if (douyinEmojiCatalog.length) return Promise.resolve(douyinEmojiCatalog.length)
+    if (douyinEmojiCatalogRequest) return douyinEmojiCatalogRequest
+    const request = chrome.runtime.sendMessage({ type: DOUYIN_EMOJI_CATALOG_REQUEST })
+      .then((response) => {
+        if (!response?.ok || !Array.isArray(response.entries)) return 0
+        const count = registerDouyinEmojiCatalog(response.entries)
+        if (count) {
+          douyinEmojiCatalog = response.entries.slice(0, 2_000)
+          postDouyinEmojiCatalog()
+        }
+        return count
+      })
+      .catch(() => 0)
+      .finally(() => {
+        if (douyinEmojiCatalogRequest === request) douyinEmojiCatalogRequest = null
+      })
+    douyinEmojiCatalogRequest = request
+    return request
   }
 
   function pointInside(rect, x, y, padding) {
@@ -1736,16 +1875,12 @@ import { t } from '../core/i18n'
     )
   }
 
-  function onPointerMove(event) {
-    if (!enabled() || event.pointerType === 'touch') {
-      return
-    }
-    state.pointerX = event.clientX
-    state.pointerY = event.clientY
-    const path = typeof event.composedPath === 'function' ? event.composedPath() : [event.target]
+  function processPointerMove(sample) {
+    if (!sample || !enabled()) return
+    const { clientX, clientY, path, target, touchesRepeatReminder } = sample
     if (
-      eventTouchesRepeatReminder(event) ||
-      pointTouchesRepeatReminder(document, event.clientX, event.clientY)
+      touchesRepeatReminder ||
+      pointTouchesRepeatReminder(document, clientX, clientY)
     ) {
       if (state.candidate) hideCard('entered-repeat-reminder')
       return
@@ -1765,7 +1900,7 @@ import { t } from '../core/i18n'
     ) {
       return
     }
-    if (isOwned(event.target)) {
+    if (isOwned(target)) {
       cancelHide()
       if (!state.expiryTimer) {
         armExpiry()
@@ -1776,8 +1911,8 @@ import { t } from '../core/i18n'
       const cardRect = state.card.getBoundingClientRect()
       if (
         performance.now() < state.lockedUntil ||
-        pointInside(cardRect, event.clientX, event.clientY, 12) ||
-        pointInside(state.candidate.rect, event.clientX, event.clientY, 10)
+        pointInside(cardRect, clientX, clientY, 12) ||
+        pointInside(state.candidate.rect, clientX, clientY, 10)
       ) {
         cancelHide()
       } else {
@@ -1785,12 +1920,32 @@ import { t } from '../core/i18n'
       }
       return
     }
-    const domCandidate = findDomCandidate(event)
+    const domCandidate = findDomCandidate({ composedPath: () => path, target })
     if (domCandidate) {
-      domCandidate.pointerX = event.clientX
-      domCandidate.pointerY = event.clientY
+      domCandidate.pointerX = clientX
+      domCandidate.pointerY = clientY
       showCard(domCandidate)
     }
+  }
+
+  function onPointerMove(event) {
+    if (!enabled() || event.pointerType === 'touch') return
+    state.pointerX = event.clientX
+    state.pointerY = event.clientY
+    pendingPointerMove = {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      path: typeof event.composedPath === 'function' ? event.composedPath() : [event.target],
+      target: event.target,
+      touchesRepeatReminder: eventTouchesRepeatReminder(event),
+    }
+    if (pointerMoveFrame) return
+    pointerMoveFrame = requestAnimationFrame(() => {
+      pointerMoveFrame = 0
+      const sample = pendingPointerMove
+      pendingPointerMove = null
+      processPointerMove(sample)
+    })
   }
 
   function richPayloadFromInput(input) {
@@ -2224,6 +2379,21 @@ import { t } from '../core/i18n'
       (text) => shared.parseMessageText(text, MAX_LENGTH),
       MAX_LENGTH,
     )
+  }
+
+  function resolvedDouyinAction(value, fallbackText) {
+    const richPayload = normalizeRichPayload(value || fallbackText || '')
+    const emojiText = douyinAutoRecognizedEmojiText(richPayload)
+    if (emojiText) {
+      // Douyin recognizes native `[name]` tokens in its editor. Keeping the
+      // action text-only also makes copy/favorites portable and avoids storing
+      // expiring image URLs or the generic renderer label "表情".
+      return { text: emojiText, richPayload: null }
+    }
+    return {
+      text: richPayload.text || shared.parseMessageText(fallbackText, MAX_LENGTH),
+      richPayload,
+    }
   }
 
   function payloadSignature(payload) {
@@ -2786,7 +2956,8 @@ import { t } from '../core/i18n'
       state.candidate.message,
       state.candidate.content,
     )
-    const success = await repeatMessage(richPayload.text, richPayload)
+    const action = resolvedDouyinAction(richPayload, state.candidate.message)
+    const success = await repeatMessage(action.text, action.richPayload || action.text)
     if (success) {
       hideCard('send-succeeded')
     } else if (state.ui) {
@@ -2829,6 +3000,7 @@ import { t } from '../core/i18n'
         enabled: rendererEnabled,
         actions: state.settings.actions,
         capsuleScalePercent: state.settings.interfaceScale.capsulePercent,
+        repeatReminderEnabled: rendererEnabled && repeatReminderEnabled(),
         reason: String(reason || 'sync').slice(0, 80),
         version: DEBUG_VERSION,
         sentAt: Date.now(),
@@ -2947,7 +3119,8 @@ import { t } from '../core/i18n'
     state.activationRequests.add(requestId)
     debugState.counters.rendererActivations += 1
     const richPayload = await resolveRichPayloadWithRetry(message, data.content)
-    const richMessage = richPayload.text
+    const action = resolvedDouyinAction(richPayload, message)
+    const richMessage = action.text
     debugEvent(
       'renderer-activation',
       {
@@ -2959,7 +3132,7 @@ import { t } from '../core/i18n'
       'info',
     )
     try {
-      const success = await repeatMessage(richMessage, richPayload)
+      const success = await repeatMessage(richMessage, action.richPayload || richMessage)
       postRendererResult(data, success, success ? 'sent' : 'send-failed')
     } catch (error) {
       debugEvent(
@@ -3049,7 +3222,11 @@ import { t } from '../core/i18n'
       return
     }
     const richPayload = await resolveRichPayloadWithRetry(message, data.content)
-    const ok = await state.favoritesRuntime.favoriteText(richPayload.text, richPayload)
+    const action = resolvedDouyinAction(richPayload, message)
+    const ok = await state.favoritesRuntime.favoriteText(
+      action.text,
+      action.richPayload || undefined,
+    )
     if (ok === null) return
     window.postMessage(
       {
@@ -3084,6 +3261,7 @@ import { t } from '../core/i18n'
         clearOwnChatMark(row)
       })
     }
+    startOwnChatObserver()
     postRendererSettings('settings-applied')
   }
 
@@ -3092,7 +3270,7 @@ import { t } from '../core/i18n'
       return
     }
     if (event.data.type === 'repeat-reminder-message') {
-      void ingestDouyinRendererRepeatReminderMessage(event.data)
+      ingestDouyinRendererRepeatReminderMessage(event.data)
       return
     }
     if (event.data.type === 'renderer-activate') {
@@ -3132,6 +3310,7 @@ import { t } from '../core/i18n'
         'info',
       )
       postRendererSettings('page-ready')
+      postDouyinEmojiCatalog()
       return
     }
     if (event.data.type === 'debug-snapshot') {
@@ -3166,6 +3345,7 @@ import { t } from '../core/i18n'
     plusOne: (message) => plusOneEnabled()
       ? repeatMessage(message)
       : false,
+    rootSelectors: CHAT_ROOT_SELECTORS,
     roomKey: () => currentRoomContext('douyin').roomKey,
   })
   document.addEventListener('pointermove', onPointerMove, true)
@@ -3310,7 +3490,12 @@ import { t } from '../core/i18n'
         RENDERER_HEARTBEAT_INTERVAL,
       )
     }
-    if (!routePollTimer) routePollTimer = setInterval(checkSpaRoute, 1_000)
+    if (!routePollTimer) {
+      routePollTimer = setInterval(() => {
+        checkSpaRoute()
+        startOwnChatObserver()
+      }, 1_000)
+    }
   }
 
   function releaseTransientResources() {
@@ -3321,13 +3506,16 @@ import { t } from '../core/i18n'
     if (state.ownChatScanTimer) clearTimeout(state.ownChatScanTimer)
     if (state.senderCacheTimer) clearTimeout(state.senderCacheTimer)
     if (state.cooldownTimer) clearInterval(state.cooldownTimer)
+    if (pointerMoveFrame) cancelAnimationFrame(pointerMoveFrame)
     state.hideTimer = 0
     state.expiryTimer = 0
     state.ownChatScanTimer = 0
     state.senderCacheTimer = 0
     state.cooldownTimer = 0
-    state.ownChatObserver?.disconnect()
-    state.ownChatObserver = null
+    pointerMoveFrame = 0
+    pendingPointerMove = null
+    state.ownChatObservers.forEach((observer) => observer.disconnect())
+    state.ownChatObservers.clear()
     state.activationRequests.clear()
     state.replyRequests.clear()
     state.senderCache.clear()
@@ -3399,52 +3587,69 @@ import { t } from '../core/i18n'
     }
   }
 
+  function handleOwnChatMutations(mutations) {
+    const rows = new Set()
+    const removedSenders = []
+    for (const mutation of mutations) {
+      const target =
+        mutation.target instanceof Element
+          ? mutation.target
+          : mutation.target && mutation.target.parentElement
+      const targetRow = target && closestAny(target, CHAT_MESSAGE_SELECTORS)
+      if (targetRow) rows.add(targetRow)
+      for (const node of mutation.addedNodes || []) {
+        if (!(node instanceof Element)) continue
+        if (matchesAny(node, CHAT_MESSAGE_SELECTORS)) rows.add(node)
+        node.querySelectorAll(CHAT_MESSAGE_SELECTORS.join(',')).forEach((row) => rows.add(row))
+      }
+      removedSenders.push(...Array.from(mutation.removedNodes || []))
+    }
+    if (removedSenders.length) rememberRemovedChatSenders(removedSenders)
+    const now = Date.now()
+    rows.forEach((row) => rememberSenderFromChatRow(row, now))
+    if (
+      rows.size &&
+      (state.ownChatIntents.length || document.querySelector("[data-bcp-douyin-own-chat='true']"))
+    ) {
+      scheduleOwnChatScan(40)
+    }
+  }
+
+  function ownChatRoots() {
+    const candidates = queryAll(CHAT_ROOT_SELECTORS).filter((root) => !isOwned(root))
+    return candidates.filter(
+      (candidate) => !candidates.some(
+        (other) => other !== candidate && other.contains(candidate),
+      ),
+    )
+  }
+
   function startOwnChatObserver() {
-    if (state.ownChatObserver || !document.documentElement) {
+    if (!document.documentElement) return
+    if (!enabled()) {
+      state.ownChatObservers.forEach((observer) => observer.disconnect())
+      state.ownChatObservers.clear()
       return
     }
-    state.ownChatObserver = new MutationObserver((mutations) => {
-      const relevant = mutations.some((mutation) => {
-        const target =
-          mutation.target instanceof Element
-            ? mutation.target
-            : mutation.target && mutation.target.parentElement
-        if (
-          target &&
-          (closestAny(target, CHAT_ROOT_SELECTORS) || closestAny(target, CHAT_MESSAGE_SELECTORS))
-        ) {
-          return true
-        }
-        return Array.from(mutation.addedNodes || []).some(
-          (node) =>
-            node instanceof Element &&
-            (matchesAny(node, CHAT_ROOT_SELECTORS) ||
-              matchesAny(node, CHAT_MESSAGE_SELECTORS) ||
-              Boolean(node.querySelector(CHAT_MESSAGE_SELECTORS.join(',')))),
-        )
+    const roots = new Set(ownChatRoots())
+    for (const [root, observer] of state.ownChatObservers) {
+      if (root.isConnected && roots.has(root)) continue
+      observer.disconnect()
+      state.ownChatObservers.delete(root)
+    }
+    let attached = false
+    for (const root of roots) {
+      if (state.ownChatObservers.has(root)) continue
+      const observer = new MutationObserver(handleOwnChatMutations)
+      observer.observe(root, {
+        childList: true,
+        subtree: true,
+        characterData: true,
       })
-      const removedSenders = mutations.flatMap(
-        (mutation) => Array.from(mutation.removedNodes || []),
-      )
-      if (removedSenders.length) {
-        rememberRemovedChatSenders(removedSenders)
-      }
-      if (relevant) {
-        scheduleSenderCacheScan(40)
-        if (
-          state.ownChatIntents.length ||
-          document.querySelector("[data-bcp-douyin-own-chat='true']")
-        ) {
-          scheduleOwnChatScan(40)
-        }
-      }
-    })
-    state.ownChatObserver.observe(document.documentElement, {
-      childList: true,
-      subtree: true,
-      characterData: true,
-    })
-    scheduleSenderCacheScan(0)
+      state.ownChatObservers.set(root, observer)
+      attached = true
+    }
+    if (attached) scheduleSenderCacheScan(0)
   }
   if (document.documentElement) {
     startOwnChatObserver()
@@ -3470,6 +3675,7 @@ import { t } from '../core/i18n'
     )
   }
   ping()
+  void ensureDouyinEmojiCatalog()
   ;[1000, 3000, 7000].forEach((delay) =>
     setTimeout(() => {
       if (!state.pageReady) {

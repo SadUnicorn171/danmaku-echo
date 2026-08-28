@@ -1,11 +1,17 @@
 export type PlatformId = 'bilibili' | 'douyin' | 'douyu' | 'huya'
 
-export interface RepeatReminderSettings {
-  enabled: boolean
+export interface RepeatReminderPlatformSettings {
   promptDurationSeconds: number
   promptScalePercent: number
   queueLimit: number
   threshold: number
+}
+
+export interface RepeatReminderSettings extends RepeatReminderPlatformSettings {
+  enabled: boolean
+  manual: Record<PlatformId, RepeatReminderPlatformSettings>
+  mode: 'auto' | 'manual'
+  thresholdVersion: 2
 }
 
 export interface InterfaceScaleSettings {

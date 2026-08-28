@@ -25,5 +25,6 @@ describe('repeat reminder pointer guard', () => {
     const querySelectorAll = vi.fn<(selectors: string) => Element[]>(() => [portal])
     expect(pointTouchesRepeatReminder({ elementsFromPoint, querySelectorAll }, 180, 90)).toBe(true)
     expect(pointTouchesRepeatReminder({ elementsFromPoint, querySelectorAll }, 280, 90)).toBe(false)
+    expect(elementsFromPoint).not.toHaveBeenCalled()
   })
 })

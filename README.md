@@ -39,9 +39,9 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 轻量弹幕雷达
 
-启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到自定义门槛后加入“暂不 / +1”提示队列。雷达首次生成有效队列时会显示一次性说明框，明确该功能只提醒、不自动发送，并介绍可调整的开关、触发次数、停留时间、队列上限和提示大小；点击“知道了”或“进入设置”后只保存一个本地确认标记，后续不再显示。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
+启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前档位、触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到门槛后加入“暂不 / +1”提示队列。雷达首次生成有效队列时会显示一次性说明卡片，并用动态箭头直接指向雷达图标；卡片会根据图标所在位置自动显示在左、右、上或下方。说明内容明确该功能只提醒、不自动发送，并列出自动 / 手动档位、四平台触发次数、提示停留时间、队列上限和提示大小；点击“知道了”或“进入设置”后只保存一个本地确认标记，后续不再显示。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
 
-每条提示默认保留 6 秒，`+1` 后方会独立逐秒倒数，到时自动隐藏并在本轮窗口内保持忽略。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。扩展主页可将触发次数设置为 2–99 次、提示时间设置为 1–60 秒、队列上限设置为 1–10 条，并将整个提示队列和弹幕操作胶囊分别缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端请求或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
+每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数，到时自动隐藏并在本轮窗口内保持忽略。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。切换到“手动”档后，虎牙、B站、抖音和斗鱼分别使用各自保存的固定触发次数、提示时间、队列上限和提示大小，不再根据人数或弹幕量改变触发次数。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
 
 ### 抖音 DOM 接管说明
 
@@ -187,10 +187,10 @@ tests/                     清单校验、单元测试和浏览器测试夹具
 
 - 申请 `storage` 权限保存扩展设置及本地弹幕收藏；设置使用 `chrome.storage.sync`，收藏使用 `chrome.storage.local` 且不会上传。
 - 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时、执行 B 站房间图片表情一次性后备发送，以及在用户主动发送时短暂观察当前平台的原生发送结果。
-- 主机权限仅覆盖四个受支持直播站点。一次性发送观察器最多运行 8 秒，只输出请求方法、去除查询参数后的接口路径、HTTP 状态、平台业务码和官方错误文案；不会输出请求体、Cookie、CSRF、签名或请求头。
+- 主机权限仅覆盖四个受支持直播站点。虎牙、斗鱼的雷达规模信号直接读取当前页面已经显示的贵宾数，不请求房间热度接口。一次性发送观察器最多运行 8 秒，只输出请求方法、去除查询参数后的接口路径、HTTP 状态、平台业务码和官方错误文案；不会输出请求体、Cookie、CSRF、签名或请求头。
 - 完整功能脚本仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面启用。
 - 不读取密码，也不存储或传出 Cookie/登录令牌。B 站房间图片表情后备发送只在当前页面内临时读取 CSRF Cookie，并调用与官方网页相同的直播弹幕接口；其他发送仍走平台官方编辑器。
-- 高频 +1 提醒仅在当前直播页内存中计数，不持久化弹幕内容，也不发送任何分析数据。
+- 高频 +1 提醒仅在当前直播页内存中计数，不持久化弹幕内容，也不发送任何弹幕或分析数据；观众或贵宾规模信号只读取直播页现有公开节点。
 - 不收集、出售或用于广告、画像的数据。
 
 ### 兼容性说明
@@ -240,9 +240,9 @@ Short-press `Alt + Q` in a live room to open the fixed panel, where search, send
 
 ### Lightweight danmaku radar
 
-When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the current trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the custom threshold. The first valid queue opens a one-time introduction explaining that the radar never sends automatically and listing its configurable controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the introduction does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
+When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. The first valid queue opens a one-time guide anchored to the radar icon; its directional arrow and card placement follow the icon on any side of the viewport. The guide explains that the radar never sends automatically and lists the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
 
-Prompts remain visible for six seconds by default, with an independent live countdown beside +1, then hide and stay dismissed for the current window. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. New prompts fade in, existing cards move smoothly to their next queue position, and handled or expired prompts fade out; reduced-motion preferences disable these transitions. Extension settings allow a 2–99 occurrence threshold, a 1–60 second prompt duration, a 1–10 entry queue, and independent 50%–200% prompt and capsule scaling. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud requests, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
+Prompts remain visible for ten seconds by default, with an independent live countdown beside +1, then hide and stay dismissed for the current window. The default **Automatic** mode adapts its trigger count from recent danmaku volume and a public room-size signal when available. Bilibili and Douyin start from 6; Huya and Douyu start from 8 and use their displayed guest counts without estimating from popularity. When room size is unavailable, Automatic mode falls back to stable recent danmaku-volume bands after enough samples. **Manual** mode stores an independent fixed trigger count, prompt duration, queue limit, and prompt scale for each of the four platforms and does not adapt the trigger count. Trigger counts support 2–99, prompt duration 1–60 seconds, queue limits 1–10, and prompt scaling 50%–200%. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud analysis, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
 
 ### Douyin DOM takeover
 
@@ -381,7 +381,7 @@ tests/                     Manifest checks, unit tests, and browser fixtures
 
 - Requests `storage` for synchronized settings and local favorites. Favorites use `chrome.storage.local` and are never uploaded.
 - Requests `scripting` to recover the Douyin runtime, run the one-shot Bilibili room-image fallback, and briefly observe a native send result after a user-initiated send.
-- Host access is limited to the four supported live sites. The one-shot send observer runs for at most eight seconds and exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text. It never exposes request bodies, headers, cookies, CSRF values, or signatures.
+- Host access is limited to the four supported live sites. Huya and Douyu radar scaling reads the guest count already displayed on the current page and does not call a popularity endpoint. The one-shot send observer runs for at most eight seconds and exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text. It never exposes request bodies, headers, cookies, CSRF values, or signatures.
 - Activates complete feature scripts only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages.
 - Does not read cookies, passwords, or login tokens and does not call private live APIs.
 - The frequent +1 reminder counts only in page memory, does not persist danmaku content, and sends no analysis data.

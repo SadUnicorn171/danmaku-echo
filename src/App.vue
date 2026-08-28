@@ -110,78 +110,128 @@
                 :aria-label="t('settingsRepeatReminderEnabled')"
                 @change="save"
               />
-              <label class="repeat-reminder-number-setting" for="repeat-reminder-threshold">
-                <span>
-                  <strong>{{ t('settingsRepeatReminderThreshold') }}</strong>
-                  <small>{{ t('settingsRepeatReminderThresholdDescription') }}</small>
-                </span>
-                <span class="repeat-reminder-number-input">
-                  <input
-                    id="repeat-reminder-threshold"
-                    v-model.number="settings.repeatReminder.threshold"
-                    type="number"
-                    :min="MIN_REPEAT_REMINDER_THRESHOLD"
-                    :max="MAX_REPEAT_REMINDER_THRESHOLD"
-                    step="1"
-                    @change="saveRepeatReminderThreshold"
+              <fieldset class="repeat-reminder-mode-setting">
+                <legend>{{ t('settingsRepeatReminderMode') }}</legend>
+                <div class="repeat-reminder-mode-options">
+                  <label
+                    v-for="mode in repeatReminderModes"
+                    :key="mode.id"
+                    :class="{ 'is-active': settings.repeatReminder.mode === mode.id }"
                   >
-                  <em>{{ t('settingsRepeatReminderThresholdUnit') }}</em>
-                </span>
-              </label>
-              <label class="repeat-reminder-number-setting" for="repeat-reminder-prompt-duration">
-                <span>
-                  <strong>{{ t('settingsRepeatReminderPromptDuration') }}</strong>
-                  <small>{{ t('settingsRepeatReminderPromptDurationDescription') }}</small>
-                </span>
-                <span class="repeat-reminder-number-input">
-                  <input
-                    id="repeat-reminder-prompt-duration"
-                    v-model.number="settings.repeatReminder.promptDurationSeconds"
-                    type="number"
-                    :min="MIN_REPEAT_REMINDER_PROMPT_SECONDS"
-                    :max="MAX_REPEAT_REMINDER_PROMPT_SECONDS"
-                    step="1"
-                    @change="saveRepeatReminderPromptDuration"
+                    <input
+                      v-model="settings.repeatReminder.mode"
+                      type="radio"
+                      name="repeat-reminder-mode"
+                      :value="mode.id"
+                      @change="save"
+                    >
+                    <span>{{ mode.label }}</span>
+                  </label>
+                </div>
+                <p>{{ settings.repeatReminder.mode === 'auto'
+                  ? t('settingsRepeatReminderAutoDescription')
+                  : t('settingsRepeatReminderManualDescription') }}</p>
+              </fieldset>
+
+              <div
+                v-if="settings.repeatReminder.mode === 'manual'"
+                class="repeat-reminder-manual-settings"
+              >
+                <div class="repeat-reminder-platform-tabs" role="tablist" :aria-label="t('settingsRepeatReminderManualPlatform')">
+                  <button
+                    v-for="platform in platforms"
+                    :id="`repeat-reminder-tab-${platform.id}`"
+                    :key="platform.id"
+                    type="button"
+                    role="tab"
+                    :aria-controls="`repeat-reminder-panel-${platform.id}`"
+                    :aria-selected="manualRepeatReminderPlatform === platform.id"
+                    :class="{ 'is-active': manualRepeatReminderPlatform === platform.id }"
+                    @click="manualRepeatReminderPlatform = platform.id"
                   >
-                  <em>{{ t('settingsRepeatReminderPromptDurationUnit') }}</em>
-                </span>
-              </label>
-              <label class="repeat-reminder-number-setting" for="repeat-reminder-queue-limit">
-                <span>
-                  <strong>{{ t('settingsRepeatReminderQueueLimit') }}</strong>
-                  <small>{{ t('settingsRepeatReminderQueueLimitDescription') }}</small>
-                </span>
-                <span class="repeat-reminder-number-input">
-                  <input
-                    id="repeat-reminder-queue-limit"
-                    v-model.number="settings.repeatReminder.queueLimit"
-                    type="number"
-                    :min="MIN_REPEAT_REMINDER_QUEUE_LIMIT"
-                    :max="MAX_REPEAT_REMINDER_QUEUE_LIMIT"
-                    step="1"
-                    @change="saveRepeatReminderQueueLimit"
-                  >
-                  <em>{{ t('settingsRepeatReminderQueueLimitUnit') }}</em>
-                </span>
-              </label>
-              <label class="repeat-reminder-number-setting" for="repeat-reminder-prompt-scale">
-                <span>
-                  <strong>{{ t('settingsRepeatReminderPromptScale') }}</strong>
-                  <small>{{ t('settingsRepeatReminderPromptScaleDescription') }}</small>
-                </span>
-                <span class="repeat-reminder-number-input">
-                  <input
-                    id="repeat-reminder-prompt-scale"
-                    v-model.number="settings.repeatReminder.promptScalePercent"
-                    type="number"
-                    :min="MIN_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
-                    :max="MAX_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
-                    step="5"
-                    @change="saveRepeatReminderPromptScale"
-                  >
-                  <em>%</em>
-                </span>
-              </label>
+                    {{ platform.label }}
+                  </button>
+                </div>
+                <div
+                  :id="`repeat-reminder-panel-${manualRepeatReminderPlatform}`"
+                  class="repeat-reminder-platform-panel"
+                  role="tabpanel"
+                  :aria-labelledby="`repeat-reminder-tab-${manualRepeatReminderPlatform}`"
+                >
+                  <label class="repeat-reminder-number-setting" :for="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`">
+                    <span>
+                      <strong>{{ t('settingsRepeatReminderThreshold') }}</strong>
+                      <small>{{ t('settingsRepeatReminderManualThresholdDescription') }}</small>
+                    </span>
+                    <span class="repeat-reminder-number-input">
+                      <input
+                        :id="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`"
+                        v-model.number="manualRepeatReminderSettings.threshold"
+                        type="number"
+                        :min="MIN_REPEAT_REMINDER_THRESHOLD"
+                        :max="MAX_REPEAT_REMINDER_THRESHOLD"
+                        step="1"
+                        @change="saveManualRepeatReminderThreshold"
+                      >
+                      <em>{{ t('settingsRepeatReminderThresholdUnit') }}</em>
+                    </span>
+                  </label>
+                  <label class="repeat-reminder-number-setting" :for="`repeat-reminder-prompt-duration-${manualRepeatReminderPlatform}`">
+                    <span>
+                      <strong>{{ t('settingsRepeatReminderPromptDuration') }}</strong>
+                      <small>{{ t('settingsRepeatReminderPromptDurationDescription') }}</small>
+                    </span>
+                    <span class="repeat-reminder-number-input">
+                      <input
+                        :id="`repeat-reminder-prompt-duration-${manualRepeatReminderPlatform}`"
+                        v-model.number="manualRepeatReminderSettings.promptDurationSeconds"
+                        type="number"
+                        :min="MIN_REPEAT_REMINDER_PROMPT_SECONDS"
+                        :max="MAX_REPEAT_REMINDER_PROMPT_SECONDS"
+                        step="1"
+                        @change="saveManualRepeatReminderPromptDuration"
+                      >
+                      <em>{{ t('settingsRepeatReminderPromptDurationUnit') }}</em>
+                    </span>
+                  </label>
+                  <label class="repeat-reminder-number-setting" :for="`repeat-reminder-queue-limit-${manualRepeatReminderPlatform}`">
+                    <span>
+                      <strong>{{ t('settingsRepeatReminderQueueLimit') }}</strong>
+                      <small>{{ t('settingsRepeatReminderQueueLimitDescription') }}</small>
+                    </span>
+                    <span class="repeat-reminder-number-input">
+                      <input
+                        :id="`repeat-reminder-queue-limit-${manualRepeatReminderPlatform}`"
+                        v-model.number="manualRepeatReminderSettings.queueLimit"
+                        type="number"
+                        :min="MIN_REPEAT_REMINDER_QUEUE_LIMIT"
+                        :max="MAX_REPEAT_REMINDER_QUEUE_LIMIT"
+                        step="1"
+                        @change="saveManualRepeatReminderQueueLimit"
+                      >
+                      <em>{{ t('settingsRepeatReminderQueueLimitUnit') }}</em>
+                    </span>
+                  </label>
+                  <label class="repeat-reminder-number-setting" :for="`repeat-reminder-prompt-scale-${manualRepeatReminderPlatform}`">
+                    <span>
+                      <strong>{{ t('settingsRepeatReminderPromptScale') }}</strong>
+                      <small>{{ t('settingsRepeatReminderPromptScaleDescription') }}</small>
+                    </span>
+                    <span class="repeat-reminder-number-input">
+                      <input
+                        :id="`repeat-reminder-prompt-scale-${manualRepeatReminderPlatform}`"
+                        v-model.number="manualRepeatReminderSettings.promptScalePercent"
+                        type="number"
+                        :min="MIN_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
+                        :max="MAX_REPEAT_REMINDER_PROMPT_SCALE_PERCENT"
+                        step="5"
+                        @change="saveManualRepeatReminderPromptScale"
+                      >
+                      <em>%</em>
+                    </span>
+                  </label>
+                </div>
+              </div>
             </div>
           </section>
 
@@ -360,8 +410,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
-import type { ActionSettings, ColorSettingKey, PlatformId } from "./core/types";
+import { computed, ref } from "vue";
+import type {
+  ActionSettings,
+  ColorSettingKey,
+  PlatformId,
+  RepeatReminderSettings
+} from "./core/types";
 import ColorPlatform from "./components/ColorPlatform.vue";
 import FavoritesDataTools from "./components/FavoritesDataTools.vue";
 import SettingSwitch from "./components/SettingSwitch.vue";
@@ -396,6 +451,14 @@ const platforms: ReadonlyArray<{ id: PlatformId; label: string }> = [
   { id: "douyu", label: t("platformDouyu") },
   { id: "huya", label: t("platformHuya") }
 ];
+const repeatReminderModes: ReadonlyArray<{
+  id: RepeatReminderSettings["mode"];
+  label: string;
+}> = [
+  { id: "auto", label: t("settingsRepeatReminderAuto") },
+  { id: "manual", label: t("settingsRepeatReminderManual") }
+];
+const manualRepeatReminderPlatform = ref<PlatformId>("bilibili");
 const colorFields: ReadonlyArray<{
   defaultValue: string;
   key: ColorSettingKey;
@@ -427,6 +490,9 @@ const { activeSection, contentCanvas, scrollToSection } = useSectionNavigation(S
 const customColorCount = computed(() => platforms.reduce((total, platform) => (
   total + Object.values(settings.colors[platform.id]).filter(Boolean).length
 ), 0));
+const manualRepeatReminderSettings = computed(() => (
+  settings.repeatReminder.manual[manualRepeatReminderPlatform.value]
+));
 const activeSectionTitle = computed(() => ({
   "favorites-guide": t("settingsFavorites"),
   "general-settings": t("settingsGeneral"),
@@ -437,28 +503,30 @@ const activeSectionTitle = computed(() => ({
   "side-chat-capsule": t("settingsSideCapsule")
 }[activeSection.value]));
 
-function saveRepeatReminderThreshold(): void {
-  settings.repeatReminder.threshold = normalizeRepeatReminderThreshold(settings.repeatReminder.threshold);
-  save();
-}
-
-function saveRepeatReminderPromptDuration(): void {
-  settings.repeatReminder.promptDurationSeconds = normalizeRepeatReminderPromptSeconds(
-    settings.repeatReminder.promptDurationSeconds
+function saveManualRepeatReminderThreshold(): void {
+  manualRepeatReminderSettings.value.threshold = normalizeRepeatReminderThreshold(
+    manualRepeatReminderSettings.value.threshold
   );
   save();
 }
 
-function saveRepeatReminderQueueLimit(): void {
-  settings.repeatReminder.queueLimit = normalizeRepeatReminderQueueLimit(
-    settings.repeatReminder.queueLimit
+function saveManualRepeatReminderPromptDuration(): void {
+  manualRepeatReminderSettings.value.promptDurationSeconds = normalizeRepeatReminderPromptSeconds(
+    manualRepeatReminderSettings.value.promptDurationSeconds
   );
   save();
 }
 
-function saveRepeatReminderPromptScale(): void {
-  settings.repeatReminder.promptScalePercent = normalizeRepeatReminderPromptScalePercent(
-    settings.repeatReminder.promptScalePercent
+function saveManualRepeatReminderQueueLimit(): void {
+  manualRepeatReminderSettings.value.queueLimit = normalizeRepeatReminderQueueLimit(
+    manualRepeatReminderSettings.value.queueLimit
+  );
+  save();
+}
+
+function saveManualRepeatReminderPromptScale(): void {
+  manualRepeatReminderSettings.value.promptScalePercent = normalizeRepeatReminderPromptScalePercent(
+    manualRepeatReminderSettings.value.promptScalePercent
   );
   save();
 }
@@ -639,6 +707,115 @@ a {
   border-radius: 4px;
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.repeat-reminder-mode-setting {
+  border: 0;
+  border-top: 1px solid var(--border);
+  margin: 0;
+  padding: 14px 16px 16px;
+}
+
+.repeat-reminder-mode-setting legend {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  padding: 0;
+}
+
+.repeat-reminder-mode-options {
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  gap: 3px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 10px;
+  padding: 3px;
+}
+
+.repeat-reminder-mode-options label {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  font-size: 12px;
+  font-weight: 600;
+  justify-content: center;
+  min-height: 44px;
+  position: relative;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.repeat-reminder-mode-options label.is-active {
+  background: var(--surface);
+  border-color: rgb(253 129 1 / 44%);
+  color: #9a4d00;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 7%);
+}
+
+.repeat-reminder-mode-options input {
+  height: 1px;
+  opacity: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.repeat-reminder-mode-options label:focus-within {
+  outline: 2px solid rgb(253 129 1 / 42%);
+  outline-offset: 1px;
+}
+
+.repeat-reminder-mode-setting p {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 18px;
+  margin: 10px 0 0;
+}
+
+.repeat-reminder-manual-settings {
+  border-top: 1px solid var(--border);
+}
+
+.repeat-reminder-platform-tabs {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 12px 16px;
+}
+
+.repeat-reminder-platform-tabs button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  min-height: 44px;
+  padding: 6px 8px;
+}
+
+.repeat-reminder-platform-tabs button.is-active {
+  background: rgb(253 129 1 / 9%);
+  border-color: rgb(253 129 1 / 52%);
+  color: #9a4d00;
+}
+
+.repeat-reminder-platform-tabs button:focus-visible {
+  outline: 2px solid rgb(253 129 1 / 42%);
+  outline-offset: 2px;
+}
+
+.repeat-reminder-platform-panel {
+  border-top: 1px solid var(--border);
+}
+
+.repeat-reminder-platform-panel .repeat-reminder-number-setting:first-child {
+  border-top: 0;
 }
 
 .repeat-reminder-number-setting {

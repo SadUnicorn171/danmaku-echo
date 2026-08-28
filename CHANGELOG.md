@@ -4,6 +4,23 @@ All notable changes to Danmaku Echo are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Added **Automatic** and **Manual** danmaku-radar modes. Automatic mode adjusts the trigger count from public room-size signals and recent danmaku volume, while Manual mode stores independent trigger count, prompt duration, queue limit, and prompt scale settings for Huya, Bilibili, Douyin, and Douyu.
+- Added public audience and guest-count readers for the four supported platforms, with a recent-traffic fallback after enough samples when a reliable room-size value is unavailable. Huya and Douyu use the guest count already displayed on the page and never estimate from popularity.
+
+### Changed
+
+- Redesigned the one-time radar introduction as a compact, theme-colored guide anchored to the draggable radar launcher. Its directional arrow follows the launcher placement, the card summarizes reminder behavior and all adjustable controls, and its responsive layout keeps the actions usable on narrow screens.
+- Changed the default +1 reminder duration from 6 to 10 seconds. The radar launcher panel now also shows the current mode and the audience or traffic signal used by Automatic mode.
+- Strengthened floating-radar ownership so duplicate content runtimes cannot leave multiple launchers, onboarding guides, or prompt queues on the same page.
+
+### Fixed
+
+- Fixed Douyin native image Emoji in image-only and mixed messages from other viewers being reduced to generic text or rejected by +1, Copy, and Favorite. Trusted Emoji resources are restored to ordered bracket text such as `[杀马特][杀马特][杀马特]`, which Douyin resolves through its native editor.
+- Removed the themed background fill from self-sent Douyin danmaku and merged the self-message and hover states into one selection frame, preventing a double outline while keeping the sent-message marker visible.
+- Filtered platform notices and non-message rows more strictly before they enter the frequent-message radar, while preserving legitimate repeated messages from the same source.
+
 ## [2.3.1] - 2026-08-24
 
 ### Added

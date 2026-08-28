@@ -177,6 +177,39 @@ test("rebuilds ordered native bracket Emoji text from Canvas content", () => {
   assert.equal(model.serializedBarrageText(serialized), "[杀马特][杀马特]cyh[杀马特]cyh");
 });
 
+test("restores repeated Shamate Emoji text from the live CDN resource", () => {
+  const src = "https://p3-pc-sign.douyinpic.com/obj/tos-cn-i-tsj2vxp0zn/ed5fb68598cf4741b3e7f2affd825650?lk3s=343af0a2&x-expires=2103001200&x-signature=temporary";
+  const serialized = model.serializeBarrage({
+    content: Array.from({ length: 3 }, () => ({
+      type: "image",
+      src,
+      alt: ""
+    }))
+  });
+
+  assert.equal(serialized.length, 3);
+  assert.deepEqual(
+    Array.from(serialized, (item) => item.emojiToken),
+    ["[杀马特]", "[杀马特]", "[杀马特]"]
+  );
+  assert.equal(model.serializedBarrageText(serialized), "[杀马特][杀马特][杀马特]");
+});
+
+test("restores another viewer's mixed text and native Douyin Emoji", () => {
+  const serialized = model.serializeBarrage({
+    content: [
+      { type: "text", text: "皮特偷偷上号不开播" },
+      {
+        type: "image",
+        src: "https://p3-pc-sign.douyinpic.com/obj/tos-cn-i-tsj2vxp0zn/87c2ae45679c4cc4a35bd7182fd76935?x-signature=temporary",
+        alt: ""
+      }
+    ]
+  });
+
+  assert.equal(model.serializedBarrageText(serialized), "皮特偷偷上号不开播[看]");
+});
+
 test("converts renderer paints and boxes to bounded CSS values", () => {
   assert.equal(model.rendererPaint({
     type: "linear",

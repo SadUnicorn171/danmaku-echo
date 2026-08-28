@@ -37,6 +37,10 @@ const douyinStyles = readFileSync(
   resolve(root, "src", "assets", "styles", "douyin-content.css"),
   "utf8"
 );
+const douyinOverlayComponent = readFileSync(
+  resolve(root, "src", "components", "live", "DouyinOverlay.vue"),
+  "utf8"
+);
 
 const asset = (...keys) => ({ src: "", token: "", keys });
 
@@ -78,6 +82,9 @@ test("matches a manually typed bracket Emoji message to Canvas text that omits i
 
 test("keeps both Douyin own-message frames larger than their content", () => {
   const videoFrame = douyinStyles.match(
+    /\.bcp-douyin-dom-barrage\[data-own='true'\]\s*\{[\s\S]*?\}/
+  );
+  const videoContent = douyinStyles.match(
     /\.bcp-douyin-dom-barrage\[data-own='true'\] \.bcp-douyin-dom-content\s*\{[\s\S]*?\}/
   );
   const sideChatFrame = douyinStyles.match(
@@ -86,15 +93,55 @@ test("keeps both Douyin own-message frames larger than their content", () => {
   const sideChatContent = douyinStyles.match(
     /\[data-bcp-douyin-own-chat-content='true'\]\s*\{[\s\S]*?\}/
   );
+  const sideChatRow = douyinStyles.match(
+    /\[data-bcp-douyin-own-chat='true'\]\s*\{[\s\S]*?\}/
+  );
   assert.ok(videoFrame);
+  assert.ok(videoContent);
   assert.ok(sideChatFrame);
   assert.ok(sideChatContent);
-  assert.match(videoFrame[0], /outline:\s*3px solid/);
-  assert.match(videoFrame[0], /outline-offset:\s*3px/);
+  assert.ok(sideChatRow);
+  assert.match(videoFrame[0], /box-shadow:\s*0 0 0 3px/);
+  assert.match(videoFrame[0], /background:\s*transparent\s*!important/);
+  assert.doesNotMatch(videoFrame[0], /background:\s*color-mix/);
   assert.doesNotMatch(videoFrame[0], /inset/);
+  assert.match(videoContent[0], /background:\s*transparent\s*!important/);
+  assert.match(videoContent[0], /box-shadow:\s*none\s*!important/);
+  assert.match(videoContent[0], /outline:\s*none\s*!important/);
   assert.match(sideChatFrame[0], /border:\s*3px solid/);
   assert.match(sideChatFrame[0], /position:\s*absolute/);
   assert.match(sideChatFrame[0], /pointer-events:\s*none/);
   assert.match(sideChatContent[0], /outline:\s*none/);
   assert.doesNotMatch(sideChatContent[0], /outline-offset/);
+  assert.match(sideChatRow[0], /background:\s*transparent\s*!important/);
+  assert.match(sideChatRow[0], /box-shadow:\s*none\s*!important/);
+});
+
+test("keeps a single selection frame when hovering an own Douyin barrage", () => {
+  for (const source of [douyinStyles, douyinOverlayComponent]) {
+    const hoverFrame = source.match(
+      /\.bcp-douyin-dom-track\[data-hovered='true'\][\s\S]*?\{[\s\S]*?box-shadow:\s*0 0 0 3px[\s\S]*?\}/
+    );
+    const ownFrame = source.match(
+      /\.bcp-douyin-dom-barrage\[data-own='true'\]\s*\{[\s\S]*?\}/
+    );
+    const ownContent = source.match(
+      /\.bcp-douyin-dom-barrage\[data-own='true'\] \.bcp-douyin-dom-content\s*\{[\s\S]*?\}/
+    );
+    const sideChatContent = source.match(
+      /\[data-bcp-douyin-own-chat-content='true'\]\s*\{[\s\S]*?\}/
+    );
+    assert.ok(hoverFrame);
+    assert.ok(ownFrame);
+    assert.ok(ownContent);
+    assert.ok(sideChatContent);
+    assert.match(hoverFrame[0], /\.bcp-douyin-dom-barrage:not\(\[data-own='true'\]\)/);
+    assert.match(ownFrame[0], /box-shadow:\s*0 0 0 3px/);
+    assert.match(ownFrame[0], /background:\s*transparent\s*!important/);
+    assert.doesNotMatch(ownFrame[0], /background:\s*color-mix/);
+    assert.match(ownContent[0], /box-shadow:\s*none\s*!important/);
+    assert.match(ownContent[0], /outline:\s*none\s*!important/);
+    assert.match(sideChatContent[0], /background:\s*transparent\s*!important/);
+    assert.match(sideChatContent[0], /outline:\s*none\s*!important/);
+  }
 });

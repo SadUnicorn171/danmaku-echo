@@ -162,8 +162,8 @@ function hasRenderableContent(content: unknown[]): boolean {
   white-space: nowrap;
 }
 
-.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage,
-.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage {
+.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage:not([data-own='true']),
+.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage:not([data-own='true']) {
   background: transparent;
   box-shadow: 0 0 0 3px var(--bcp-selection, #fd8101);
 }
@@ -187,26 +187,44 @@ function hasRenderableContent(content: unknown[]): boolean {
   white-space: nowrap;
 }
 
-/*
- * Keep the user's frame outside the rendered content. The gap prevents the
- * frame from covering text or image Emoji without changing barrage geometry.
- */
-.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
-  background: color-mix(in srgb,
-    var(--bcp-selection, #fd8101) 18%, transparent);
-  border-radius: 7px;
-  outline: 3px solid color-mix(in srgb,
+/* Own and hovered barrages use one outer frame owner, so hover cannot double it. */
+.bcp-douyin-dom-barrage[data-own='true'] {
+  background: transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb,
     var(--bcp-selection, #fd8101) 96%, transparent);
-  outline-offset: 3px;
 }
 
-/* The side chat keeps native interactions, but sent messages get a layout-neutral frame. */
-[data-bcp-douyin-own-chat-content='true'] {
-  background: rgb(255 91 52 / 14%) !important;
-  border-radius: 7px !important;
+.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
+  background: transparent !important;
   box-shadow: none !important;
-  outline: 3px solid rgb(255 116 76 / 92%) !important;
-  outline-offset: 3px !important;
+  outline: none !important;
+}
+
+/* The side chat keeps native interactions; an inert rectangle owns its only frame. */
+[data-bcp-douyin-own-chat-content='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+[data-bcp-douyin-own-chat='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-bcp-douyin-own-chat-frame='true'] {
+  background: transparent !important;
+  border: 3px solid rgb(255 116 76 / 92%) !important;
+  border-radius: 10px !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  left: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: 0 !important;
+  z-index: 2 !important;
 }
 
 /*

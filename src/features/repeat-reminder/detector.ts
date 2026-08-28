@@ -26,6 +26,7 @@ interface FingerprintRecord {
 interface RepeatGroup {
   count: number
   latestAt: number
+  recognizedSenderCount: number
   senders: Set<string>
   text: string
 }
@@ -89,6 +90,37 @@ export class RepeatReminderDetector {
 
   setThreshold(threshold: number): void {
     this.threshold = normalizeRepeatReminderThreshold(threshold)
+  }
+
+  forgetText(value: unknown): string[] {
+    const key = normalizeRepeatReminderText(value)
+    if (!key) return []
+    this.entries = this.entries.filter((entry) => entry.key !== key)
+    this.fingerprints.delete(key)
+    const clusterId = this.keyClusters.get(key)
+    if (!clusterId) return []
+    this.keyClusters.delete(key)
+    const cluster = this.clusters.get(clusterId)
+    if (!cluster) return [clusterId]
+    cluster.keys.delete(key)
+    this.lastSuggestedRepresentative.delete(clusterId)
+    for (const bucket of cluster.buckets) {
+      const ids = this.clusterIndex.get(bucket)
+      ids?.delete(clusterId)
+      if (!ids?.size) this.clusterIndex.delete(bucket)
+    }
+    if (!cluster.keys.size) {
+      this.clusters.delete(clusterId)
+      return [clusterId]
+    }
+    cluster.anchor = cluster.keys.values().next().value || ''
+    cluster.buckets = repeatReminderSimilarityBuckets(cluster.anchor)
+    for (const bucket of cluster.buckets) {
+      const ids = this.clusterIndex.get(bucket) || new Set<string>()
+      ids.add(clusterId)
+      this.clusterIndex.set(bucket, ids)
+    }
+    return [clusterId]
   }
 
   ingest(observation: RepeatReminderObservation, now = Date.now()): boolean {
@@ -156,6 +188,7 @@ export class RepeatReminderDetector {
       const group = groups.get(entry.key) || {
         count: 0,
         latestAt: 0,
+        recognizedSenderCount: 0,
         senders: new Set<string>(),
         text: entry.text,
       }
@@ -164,7 +197,10 @@ export class RepeatReminderDetector {
         group.latestAt = entry.at
         group.text = entry.text
       }
-      if (entry.sender) group.senders.add(entry.sender)
+      if (entry.sender) {
+        group.recognizedSenderCount += 1
+        group.senders.add(entry.sender)
+      }
       groups.set(entry.key, group)
     })
     return groups
@@ -209,7 +245,13 @@ export class RepeatReminderDetector {
   }
 
   private clusterQualified(cluster: SimilarityCluster, groups: Map<string, RepeatGroup>): boolean {
-    return Array.from(cluster.keys).some((key) => (groups.get(key)?.count || 0) >= this.threshold)
+    return Array.from(cluster.keys).some((key) => {
+      const group = groups.get(key)
+      if (!group || group.count < this.threshold) return false
+      if (group.recognizedSenderCount / group.count < 0.6) return true
+      const requiredSenders = Math.min(5, Math.max(2, Math.ceil(this.threshold * 0.2)))
+      return group.senders.size >= requiredSenders
+    })
   }
 
   private clusterRepresentative(

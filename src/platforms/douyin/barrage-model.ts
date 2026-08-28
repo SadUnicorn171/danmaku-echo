@@ -1,3 +1,5 @@
+import { douyinEmojiTokenFromMetadata } from "./emoji-token";
+
 interface BoxEdges {
   bottom: number;
   left: number;
@@ -112,6 +114,8 @@ function imageAssetHints(value: Record<string, unknown>): string[] {
   const keys = [
     "id", "key", "name", "text", "alt", "title", "uri", "url",
     "emojiId", "emoji_id", "emojiName", "emoji_name",
+    "alternativeText", "alternative_text", "defaultContent", "default_content",
+    "displayName", "display_name", "showName", "show_name",
     "resourceId", "resource_id", "webUri", "web_uri"
   ];
   const hints = new Set<string>();
@@ -130,28 +134,7 @@ function imageAssetHints(value: Record<string, unknown>): string[] {
 }
 
 function nativeEmojiToken(value: Record<string, unknown>): string {
-  const semanticKeys = [
-    "emojiName", "emoji_name", "text", "alt", "title", "name"
-  ];
-  const candidates: unknown[] = [];
-  semanticKeys.forEach((key) => candidates.push(value[key]));
-  ["emoji", "image", "resource"].forEach((key) => {
-    const nested = value[key];
-    if (!isRecord(nested)) return;
-    semanticKeys.forEach((nestedKey) => candidates.push(nested[nestedKey]));
-  });
-  for (const candidate of candidates) {
-    const text = normalizeText(candidate);
-    if (!text || Array.from(text).length > 40 || /[\\/\r\n]/u.test(text)
-        || /^(?:https?|data|blob):/iu.test(text)) {
-      continue;
-    }
-    if (/^\[[^\]\r\n]{1,40}\]$/u.test(text) || /\p{Extended_Pictographic}/u.test(text)) {
-      return text;
-    }
-    return `[${text}]`;
-  }
-  return "";
+  return douyinEmojiTokenFromMetadata(value);
 }
 
 export function serializedBarrageText(content: unknown): string {

@@ -18,11 +18,98 @@ import {
   type FavoriteWriteRequest,
   type FavoriteWriteResponse
 } from "../features/favorites/types";
+import {
+  LIVE_AUDIENCE_FRAME_STALE_MS,
+  isLiveAudienceFrameReadRequest,
+  isLiveAudienceFrameReportRequest,
+  type LiveAudienceFrameResponse,
+} from "../features/repeat-reminder/audience-api";
+import type { LiveAudienceMetric } from "../features/repeat-reminder/live-audience";
+import {
+  DOUYIN_EMOJI_CATALOG_ENDPOINT,
+  douyinEmojiCatalogEntries,
+  douyinEmojiCatalogVersion,
+  isDouyinEmojiCatalogRequest,
+  type DouyinEmojiCatalogEntry,
+  type DouyinEmojiCatalogResponse,
+} from "../platforms/douyin/emoji-catalog";
 
 const DOUYIN_LIVE_PATTERN = /^https:\/\/(?:live\.douyin\.com\/|www\.douyin\.com\/follow\/live(?:\/|[?#]|$))/i;
 const recentRouteInjections = new Map<number, { at: number; url: string }>();
+const pendingDouyinRuntimeEnsures = new Map<string, Promise<{ contentInjected: boolean }>>();
 const favoritesRepository = createFavoritesRepository(chrome.storage.local);
 let favoriteWriteQueue: Promise<void> = Promise.resolve();
+const frameAudienceCache = new Map<number, { expiresAt: number; metric: LiveAudienceMetric }>();
+const DOUYIN_EMOJI_CATALOG_CACHE_KEY = "danmakuEchoDouyinEmojiCatalogV1";
+const DOUYIN_EMOJI_CATALOG_MAX_AGE_MS = 24 * 60 * 60 * 1_000;
+let pendingDouyinEmojiCatalog: Promise<DouyinEmojiCatalogResponse> | null = null;
+
+interface DouyinEmojiCatalogCache {
+  entries: DouyinEmojiCatalogEntry[];
+  updatedAt: number;
+  version: string;
+}
+
+function validDouyinEmojiCatalogCache(value: unknown): value is DouyinEmojiCatalogCache {
+  if (!value || typeof value !== "object") return false;
+  const cache = value as Partial<DouyinEmojiCatalogCache>;
+  return Number.isFinite(cache.updatedAt)
+    && typeof cache.version === "string"
+    && Array.isArray(cache.entries)
+    && cache.entries.length > 0
+    && cache.entries.length <= 2_000;
+}
+
+async function readDouyinEmojiCatalogCache(): Promise<DouyinEmojiCatalogCache | null> {
+  const stored = await chrome.storage.local.get(DOUYIN_EMOJI_CATALOG_CACHE_KEY);
+  const cache = stored[DOUYIN_EMOJI_CATALOG_CACHE_KEY];
+  return validDouyinEmojiCatalogCache(cache) ? cache : null;
+}
+
+async function fetchDouyinEmojiCatalog(): Promise<DouyinEmojiCatalogResponse> {
+  const cached = await readDouyinEmojiCatalogCache();
+  if (cached && Date.now() - cached.updatedAt < DOUYIN_EMOJI_CATALOG_MAX_AGE_MS) {
+    return { entries: cached.entries, ok: true, version: cached.version };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(DOUYIN_EMOJI_CATALOG_ENDPOINT, {
+      cache: "no-store",
+      credentials: "omit",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`emoji-catalog-http-${response.status}`);
+    const payload: unknown = await response.json();
+    const entries = douyinEmojiCatalogEntries(payload);
+    if (entries.length < 20) throw new Error("emoji-catalog-empty");
+    const catalog: DouyinEmojiCatalogCache = {
+      entries,
+      updatedAt: Date.now(),
+      version: douyinEmojiCatalogVersion(payload),
+    };
+    await chrome.storage.local.set({ [DOUYIN_EMOJI_CATALOG_CACHE_KEY]: catalog });
+    return { entries, ok: true, version: catalog.version };
+  } catch (error: unknown) {
+    if (cached) return { entries: cached.entries, ok: true, version: cached.version };
+    return {
+      error: String(error instanceof Error ? error.message : error).slice(0, 160),
+      ok: false,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function loadDouyinEmojiCatalog(): Promise<DouyinEmojiCatalogResponse> {
+  if (pendingDouyinEmojiCatalog) return pendingDouyinEmojiCatalog;
+  const request = fetchDouyinEmojiCatalog().finally(() => {
+    if (pendingDouyinEmojiCatalog === request) pendingDouyinEmojiCatalog = null;
+  });
+  pendingDouyinEmojiCatalog = request;
+  return request;
+}
 
 function isDouyinLiveUrl(value: unknown): boolean {
   return DOUYIN_LIVE_PATTERN.test(String(value || ""));
@@ -150,7 +237,7 @@ async function ensureDouyinContentRuntime(tabId: number, frameId: number): Promi
   return true;
 }
 
-async function ensureDouyinRuntime(options: {
+async function runDouyinRuntimeEnsure(options: {
   attempt?: number;
   frameId: number;
   reason: string;
@@ -179,6 +266,25 @@ async function ensureDouyinRuntime(options: {
   return { contentInjected };
 }
 
+function ensureDouyinRuntime(options: {
+  attempt?: number;
+  frameId: number;
+  reason: string;
+  tabId: number;
+}): Promise<{ contentInjected: boolean }> {
+  const key = `${options.tabId}:${options.frameId}`;
+  const pending = pendingDouyinRuntimeEnsures.get(key);
+  if (pending) return pending;
+
+  const request = runDouyinRuntimeEnsure(options).finally(() => {
+    if (pendingDouyinRuntimeEnsures.get(key) === request) {
+      pendingDouyinRuntimeEnsures.delete(key);
+    }
+  });
+  pendingDouyinRuntimeEnsures.set(key, request);
+  return request;
+}
+
 function isDouyinRuntimeRequest(value: unknown): value is DouyinRuntimeRequest {
   if (!value || typeof value !== "object") {
     return false;
@@ -189,6 +295,53 @@ function isDouyinRuntimeRequest(value: unknown): value is DouyinRuntimeRequest {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (isDouyinEmojiCatalogRequest(message)) {
+    const senderUrl = sender.url || sender.tab?.url;
+    if (!senderMatchesPlatform(senderUrl, "douyin")) {
+      sendResponse({ error: "invalid-douyin-sender", ok: false } satisfies DouyinEmojiCatalogResponse);
+      return false;
+    }
+    loadDouyinEmojiCatalog().then(sendResponse).catch((error: unknown) => {
+      sendResponse({
+        error: String(error instanceof Error ? error.message : error).slice(0, 160),
+        ok: false,
+      } satisfies DouyinEmojiCatalogResponse);
+    });
+    return true;
+  }
+  if (isLiveAudienceFrameReportRequest(message)) {
+    const tabId = sender.tab?.id;
+    const senderUrl = sender.url || sender.tab?.url;
+    if (typeof tabId !== "number" || !Number.isInteger(tabId)
+      || !senderMatchesPlatform(senderUrl, "bilibili")) {
+      sendResponse({ ok: false } satisfies LiveAudienceFrameResponse);
+      return false;
+    }
+    const sampledAt = Date.now();
+    frameAudienceCache.set(tabId, {
+      expiresAt: sampledAt + LIVE_AUDIENCE_FRAME_STALE_MS,
+      metric: { ...message.metric, sampledAt, source: "frame" }
+    });
+    sendResponse({ ok: true } satisfies LiveAudienceFrameResponse);
+    return false;
+  }
+  if (isLiveAudienceFrameReadRequest(message)) {
+    const tabId = sender.tab?.id;
+    const senderUrl = sender.url || sender.tab?.url;
+    if (typeof tabId !== "number" || !Number.isInteger(tabId)
+      || !senderMatchesPlatform(senderUrl, "bilibili")) {
+      sendResponse({ ok: false } satisfies LiveAudienceFrameResponse);
+      return false;
+    }
+    const cached = frameAudienceCache.get(tabId);
+    if (!cached || cached.expiresAt <= Date.now()) {
+      frameAudienceCache.delete(tabId);
+      sendResponse({ ok: true } satisfies LiveAudienceFrameResponse);
+      return false;
+    }
+    sendResponse({ metric: cached.metric, ok: true } satisfies LiveAudienceFrameResponse);
+    return false;
+  }
   if (isFavoriteWriteRequest(message)) {
     const senderUrl = sender.url || sender.tab?.url;
     const roomUrl = message.room.url;
@@ -350,6 +503,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url) frameAudienceCache.delete(tabId);
   const url = String(changeInfo.url || tab.url || "");
   if (!changeInfo.url || !isDouyinLiveUrl(url)) {
     return;
@@ -376,4 +530,8 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   recentRouteInjections.delete(tabId);
+  frameAudienceCache.delete(tabId);
+  for (const key of pendingDouyinRuntimeEnsures.keys()) {
+    if (key.startsWith(`${tabId}:`)) pendingDouyinRuntimeEnsures.delete(key);
+  }
 });

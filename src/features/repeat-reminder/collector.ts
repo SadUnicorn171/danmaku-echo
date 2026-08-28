@@ -13,6 +13,7 @@ interface CollectorOptions {
   messageSelectors: readonly string[]
   observation(observation: RepeatReminderObservation): void
   overlaySelectors: readonly string[]
+  rootSelectors?: readonly string[]
 }
 
 const MAX_QUEUE = 1_000
@@ -35,7 +36,9 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
   const observers = new Map<Node, MutationObserver>()
   const queued = new Map<Element, DanmakuDescriptor['source']>()
   const signatures = new WeakMap<Element, string>()
+  const rootSelectors = (options.rootSelectors || []).filter(Boolean)
   let flushTimer: ReturnType<typeof setTimeout> | undefined
+  let rootTimer: ReturnType<typeof setInterval> | undefined
   let enabled = options.enabled()
   let destroyed = false
 
@@ -89,7 +92,10 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
     if (!(node instanceof Element)) return
     candidateElements(node, options.messageSelectors).forEach((element) => queue(element, 'chat'))
     candidateElements(node, options.overlaySelectors).forEach((element) => queue(element, 'video'))
-    discoverRoots(node)
+    if (!rootSelectors.length && node.shadowRoot && observers.size < 40) {
+      observe(node.shadowRoot)
+      scanRoot(node.shadowRoot)
+    }
   }
 
   function nearestCandidate(node: Node): void {
@@ -126,6 +132,7 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
       { selectors: options.messageSelectors, source: 'chat' as const },
       { selectors: options.overlaySelectors, source: 'video' as const },
     ]) {
+      if (!group.selectors.length) continue
       let elements: Element[] = []
       try { elements = Array.from(root.querySelectorAll(group.selectors.join(','))) } catch {
         group.selectors.forEach((selector) => { try { elements.push(...Array.from(root.querySelectorAll(selector))) } catch { /* Defensive selector. */ } })
@@ -134,8 +141,50 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
     }
   }
 
+  function scopedRoots(): Element[] {
+    if (!document.documentElement || !rootSelectors.length) return []
+    const candidates = candidateElements(document.documentElement, rootSelectors)
+    return candidates.filter(
+      (candidate) => !candidates.some(
+        (other) => other !== candidate && other.contains(candidate),
+      ),
+    )
+  }
+
+  function syncScopedRoots(): void {
+    if (!enabled || destroyed || !rootSelectors.length) return
+    const nextRoots = new Set(scopedRoots())
+    for (const [root, observer] of observers) {
+      if (!(root instanceof Element) || nextRoots.has(root)) continue
+      observer.disconnect()
+      observers.delete(root)
+    }
+    for (const root of nextRoots) {
+      if (observers.has(root)) continue
+      observe(root)
+      scanRoot(root)
+    }
+  }
+
+  function startRootTimer(): void {
+    if (!rootSelectors.length || rootTimer) return
+    rootTimer = setInterval(syncScopedRoots, 1_000)
+  }
+
+  function stopRootTimer(): void {
+    if (rootTimer) clearInterval(rootTimer)
+    rootTimer = undefined
+  }
+
   function scan(): void {
     if (!enabled || destroyed || !document.documentElement) return
+    if (rootSelectors.length) {
+      syncScopedRoots()
+      observers.forEach((_observer, root) => {
+        if (root instanceof Element) scanRoot(root)
+      })
+      return
+    }
     scanRoot(document)
     discoverRoots(document)
     observers.forEach((_observer, root) => { if (root instanceof ShadowRoot) scanRoot(root) })
@@ -143,14 +192,20 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
 
   function start(): void {
     if (!document.documentElement || destroyed) return
-    observe(document.documentElement)
-    scan()
+    if (rootSelectors.length) {
+      syncScopedRoots()
+      startRootTimer()
+    } else {
+      observe(document.documentElement)
+      scan()
+    }
   }
 
   const runtime: RepeatReminderCollector = {
     destroy(): void {
       destroyed = true
       if (flushTimer) clearTimeout(flushTimer)
+      stopRootTimer()
       queued.clear()
       observers.forEach((observer) => observer.disconnect())
       observers.clear()
@@ -160,6 +215,9 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
       enabled = value
       if (enabled) start()
       else {
+        if (flushTimer) clearTimeout(flushTimer)
+        flushTimer = undefined
+        stopRootTimer()
         queued.clear()
         observers.forEach((observer) => observer.disconnect())
         observers.clear()
