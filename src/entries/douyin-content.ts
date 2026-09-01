@@ -463,7 +463,10 @@ import { t } from '../core/i18n'
   }
 
   function repeatReminderEnabled() {
-    return Boolean(plusOneEnabled() && state.settings.repeatReminder.enabled)
+    return Boolean(
+      (plusOneEnabled() || state.settings.repeatReminder.autoPlusOne) &&
+      state.settings.repeatReminder.enabled,
+    )
   }
 
   function isVisible(element) {
@@ -3342,9 +3345,7 @@ import { t } from '../core/i18n'
     messageSelectors: CHAT_MESSAGE_SELECTORS,
     overlaySelectors: [],
     platform: 'douyin',
-    plusOne: (message) => plusOneEnabled()
-      ? repeatMessage(message)
-      : false,
+    plusOne: (message) => repeatMessage(message),
     rootSelectors: CHAT_ROOT_SELECTORS,
     roomKey: () => currentRoomContext('douyin').roomKey,
   })

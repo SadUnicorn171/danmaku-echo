@@ -115,6 +115,7 @@ test("migrates the removed radar setting to the lightweight repeat reminder", ()
     radar: { enabled: false, sensitivity: "high" }
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    autoPlusOne: false,
     enabled: false,
     manual: {
       bilibili: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 3 },
@@ -143,6 +144,7 @@ test("normalizes custom radar queue, trigger, duration, and scale settings", () 
     }
   });
   assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    autoPlusOne: false,
     enabled: true,
     manual: {
       bilibili: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 2 },
@@ -160,6 +162,13 @@ test("normalizes custom radar queue, trigger, duration, and scale settings", () 
   assert.deepEqual(JSON.parse(JSON.stringify(settings.interfaceScale)), {
     capsulePercent: 200
   });
+});
+
+test("keeps radar auto +1 off by default and preserves an explicit opt-in", () => {
+  assert.equal(shared.mergeSettings().repeatReminder.autoPlusOne, false);
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { autoPlusOne: true }
+  }).repeatReminder.autoPlusOne, true);
 });
 
 test("migrates the old default threshold once while preserving later custom values", () => {

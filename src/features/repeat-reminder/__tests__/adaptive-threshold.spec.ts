@@ -27,8 +27,14 @@ describe('adaptive repeat-reminder threshold', () => {
   })
 
   it('raises Bilibili and Douyin thresholds by verified viewer bands', () => {
-    expect(adaptiveRepeatReminderThreshold('douyin', 6, viewers(20_000))).toBe(8)
+    expect(adaptiveRepeatReminderThreshold('douyin', 6, viewers(20_000))).toBe(9)
     expect(adaptiveRepeatReminderThreshold('bilibili', 6, viewers(100_001, 'bilibili'))).toBe(13)
+  })
+
+  it('keeps 3k, 10k, and 20k Bilibili rooms in distinct bands', () => {
+    expect([3_000, 3_001, 10_000, 10_001, 20_000, 20_001].map((value) =>
+      adaptiveRepeatReminderThreshold('bilibili', 6, viewers(value, 'bilibili')),
+    )).toEqual([6, 7, 8, 9, 9, 10])
   })
 
   it('uses separate guest bands for Huya and Douyu and rejects viewer metrics there', () => {

@@ -55,7 +55,7 @@ describe('repeat reminder UI', () => {
     }
   })
 
-  it('shows onboarding on the first triggered queue and persists acknowledgement', async () => {
+  it('shows onboarding as soon as the enabled radar loads and persists acknowledgement', async () => {
     let acknowledged = false
     const onboardingStorage = {
       acknowledge: vi.fn<() => Promise<void>>(async () => {
@@ -68,15 +68,27 @@ describe('repeat reminder UI', () => {
       onboardingStorage,
       openSettings: vi.fn<() => void>(),
       plusOne: vi.fn<() => void>(),
+      setAutoPlusOne: vi.fn<(enabled: boolean) => void>(),
     }
     let ui = createRepeatReminderUi(options)
     try {
       ui.applySettings(ENABLED_SETTINGS)
-      ui.setSuggestions([suggestion()])
       let shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
       await vi.waitFor(() => {
         expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(true)
       })
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+
+      const portal = document.querySelector('[data-bcp-repeat-reminder-owned]')
+      const mountMarker = document.createElement('div')
+      document.documentElement.append(mountMarker)
+      expect(portal?.nextSibling).toBe(mountMarker)
+      ui.setSuggestions([suggestion()])
+      expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(true)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+      expect(shadow?.querySelector('.prompt-list')?.classList.contains('is-visible')).toBe(false)
+      expect(portal?.nextSibling).toBe(mountMarker)
+      mountMarker.remove()
       expect(shadow?.querySelector('.onboarding-card')?.getAttribute('aria-modal')).toBe('true')
       expect(shadow?.querySelector('.onboarding-card')?.getAttribute('data-placement')).toBe('left')
       expect(shadow?.querySelector<HTMLElement>('.onboarding-card')?.style.left).not.toBe('')
@@ -84,12 +96,18 @@ describe('repeat reminder UI', () => {
       expect(shadow?.querySelector('.launcher')?.classList.contains('is-onboarding')).toBe(true)
       expect(shadow?.querySelector('.onboarding-accent')).not.toBeNull()
       expect(shadow?.querySelectorAll('.onboarding-feature')).toHaveLength(2)
-      expect(shadow?.querySelectorAll('.onboarding-setting-list li')).toHaveLength(6)
+      expect(shadow?.querySelectorAll('.onboarding-setting-list li')).toHaveLength(7)
       expect(shadow?.querySelector('.onboarding-note')).not.toBeNull()
-      expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('只提醒，不自动发送')
+      expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('默认只提醒')
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('箭头指向的按钮')
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('触发次数')
       expect(shadow?.querySelector('.onboarding-card')?.textContent).toContain('提示停留时间')
+      const autoPlusOne = shadow?.querySelector<HTMLInputElement>(
+        '.onboarding-auto-plus-one input',
+      )
+      expect(autoPlusOne?.checked).toBe(false)
+      autoPlusOne?.click()
+      expect(options.setAutoPlusOne).toHaveBeenCalledExactlyOnceWith(true)
       expect(shadow?.querySelector('.prompt-list')?.classList.contains('is-visible')).toBe(false)
 
       shadow?.querySelector<HTMLButtonElement>('.onboarding-acknowledge')?.click()
@@ -97,6 +115,7 @@ describe('repeat reminder UI', () => {
       expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(false)
       expect(shadow?.querySelector('.launcher')?.classList.contains('is-onboarding')).toBe(false)
       expect(shadow?.querySelector('.prompt-list')?.classList.contains('is-visible')).toBe(true)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(1)
 
       ui.destroy()
       ui = createRepeatReminderUi(options)
@@ -394,6 +413,73 @@ describe('repeat reminder UI', () => {
     expect(dismiss).toHaveBeenCalledWith(expect.objectContaining({ id: 'first' }))
     expect(shadow?.querySelectorAll('.prompt')).toHaveLength(1)
     expect(shadow?.querySelector('.prompt')?.getAttribute('data-suggestion-id')).toBe('second')
+    ui.destroy()
+  })
+
+  it('never reawakens manually dismissed or +1 prompts during their 40-second snooze', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-23T00:00:00Z'))
+    const refresh = vi.fn<() => void>()
+    const ui = createRepeatReminderUi({
+      dismiss: vi.fn<() => void>(),
+      openSettings: vi.fn<() => void>(),
+      plusOne: vi.fn<() => void>(),
+      refresh,
+    })
+    ui.applySettings(ENABLED_SETTINGS)
+    ui.setSuggestions([suggestion('dismissed'), suggestion('sent')])
+    const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+    shadow
+      ?.querySelector<HTMLElement>('[data-suggestion-id="dismissed"]')
+      ?.querySelector<HTMLButtonElement>('button:not(.is-primary)')
+      ?.click()
+    shadow
+      ?.querySelector<HTMLElement>('[data-suggestion-id="sent"]')
+      ?.querySelector<HTMLButtonElement>('button.is-primary')
+      ?.click()
+
+    const increased = [
+      { ...suggestion('dismissed'), count: 99 },
+      { ...suggestion('sent'), count: 99 },
+    ]
+    ui.setSuggestions(increased)
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+    vi.advanceTimersByTime(39_999)
+    ui.setSuggestions(increased)
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+    vi.advanceTimersByTime(1)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    ui.setSuggestions(increased)
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(2)
+    ui.destroy()
+  })
+
+  it('reawakens an automatically timed-out prompt after 30 seconds and half its threshold', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-08-23T00:00:00Z'))
+    const refresh = vi.fn<() => void>()
+    const ui = createRepeatReminderUi({
+      dismiss: vi.fn<() => void>(),
+      openSettings: vi.fn<() => void>(),
+      plusOne: vi.fn<() => void>(),
+      refresh,
+    })
+    ui.applySettings({ ...ENABLED_SETTINGS, promptDurationSeconds: 1 })
+    ui.setSuggestions([suggestion()])
+    const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+    vi.advanceTimersByTime(1_000)
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+
+    ui.setSuggestions([{ ...suggestion(), count: 7 }])
+    vi.advanceTimersByTime(29_999)
+    ui.setSuggestions([{ ...suggestion(), count: 8 }])
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+    expect(refresh).not.toHaveBeenCalled()
+    vi.advanceTimersByTime(1)
+    expect(refresh).toHaveBeenCalledOnce()
+    ui.setSuggestions([{ ...suggestion(), count: 8 }])
+    expect(shadow?.querySelectorAll('.prompt')).toHaveLength(1)
+    expect(shadow?.querySelector('.prompt-meta')?.textContent).toContain('8 次')
     ui.destroy()
   })
 })

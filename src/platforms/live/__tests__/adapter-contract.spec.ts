@@ -71,6 +71,28 @@ describe('live platform adapter contract', () => {
     expect(adapter.nativeCapsuleVisible(settings)).toBe(true)
   })
 
+  it('joins every sibling text segment in one Douyu overlay danmaku', () => {
+    const row = document.createElement('div')
+    row.className = 'danmuItem-a8616a undefined'
+    row.dataset.commentUuid = '77db5a1e-9a6e-421f-bf6b-16f7eefbcf0d'
+    const first = row.appendChild(document.createElement('div'))
+    first.className = 'text-c3935e'
+    first.textContent = '保卫鱼娘'
+    const second = row.appendChild(document.createElement('div'))
+    second.className = 'text-c3935e'
+    second.textContent = '查看活动>'
+    document.body.append(row)
+
+    const descriptor = createLivePlatformAdapter('douyu').describe(row, 'video')
+
+    expect(descriptor).toMatchObject({
+      messageId: '77db5a1e-9a6e-421f-bf6b-16f7eefbcf0d',
+      text: '保卫鱼娘查看活动>',
+    })
+    expect(descriptor?.parts).toEqual([{ text: '保卫鱼娘查看活动>', type: 'text' }])
+    row.remove()
+  })
+
   it('finds video and chat candidates while ignoring unsupported selectors', () => {
     const adapter = createSelectorPlatformAdapter({ config: TEST_CONFIG, platform: 'huya' })
     const video = document.createElement('div')

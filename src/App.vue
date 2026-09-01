@@ -110,6 +110,14 @@
                 :aria-label="t('settingsRepeatReminderEnabled')"
                 @change="save"
               />
+              <SettingSwitch
+                id="repeat-reminder-auto-plus-one"
+                v-model="settings.repeatReminder.autoPlusOne"
+                :title="t('settingsRepeatReminderAutoPlusOne')"
+                :description="t('settingsRepeatReminderAutoPlusOneDescription')"
+                :aria-label="t('settingsRepeatReminderAutoPlusOne')"
+                @change="save"
+              />
               <fieldset class="repeat-reminder-mode-setting">
                 <legend>{{ t('settingsRepeatReminderMode') }}</legend>
                 <div class="repeat-reminder-mode-options">

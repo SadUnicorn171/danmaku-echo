@@ -25,6 +25,7 @@ import {
 } from '../platforms/douyu/native-capsule'
 import { DouyuNativeHoverController } from '../platforms/douyu/native-hover'
 import { DouyuNativeMotionFallback } from '../platforms/douyu/native-motion-fallback'
+import { douyuOverlayTextElements } from '../platforms/douyu/message-content'
 import {
   BILIBILI_CHAT_ACTION_SURFACES,
   BILIBILI_CHAT_ACTION_TEXT,
@@ -1098,6 +1099,17 @@ import { t } from '../core/i18n'
   }
 
   function textFromSpecificElement(candidate) {
+    if (platformId === 'douyu' && candidate instanceof Element) {
+      const segments = douyuOverlayTextElements(candidate)
+      if (segments.length > 1) {
+        const text = shared.parseMessageText(
+          segments.map((element) => element.innerText || element.textContent || '').join(''),
+          config.maxLength,
+        )
+        if (shared.isPlausibleMessage(text, config.maxLength)) return text
+      }
+    }
+
     for (const selector of config.messageText) {
       let element = null
 
@@ -1455,6 +1467,50 @@ import { t } from '../core/i18n'
       )
       if (shared.isPlausibleMessage(text, config.maxLength)) {
         return { text, plainText: text, assets: [], parts: [{ type: 'text', text }] }
+      }
+    }
+
+    if (platformId === 'douyu' && candidate instanceof Element) {
+      const segments = douyuOverlayTextElements(candidate)
+      if (segments.length > 1) {
+        const parts = []
+        segments.forEach((segment) => {
+          richPartsFromElement(segment).forEach((part) => {
+            const previous = parts[parts.length - 1]
+            if (part.type === 'text' && previous?.type === 'text') previous.text += part.text
+            else parts.push(part)
+          })
+        })
+        const assets = parts
+          .filter((part) => part?.type === 'emoji' && part.asset)
+          .map((part) => part.asset)
+          .slice(0, 8)
+        const plainText = shared.parseMessageText(
+          segments
+            .map((segment) =>
+              serializedTextFromElement(segment, {
+                imageTokens: false,
+                rejectRoot: false,
+                removals: ['img', 'button', 'svg', "[aria-hidden='true']", '[data-bcp-one-owned]'],
+              }),
+            )
+            .join(''),
+          config.maxLength,
+        )
+        let text = shared.parseMessageText(
+          parts
+            .map((part) => (part.type === 'text' ? part.text : part.asset?.token || ''))
+            .join(''),
+          config.maxLength,
+        )
+        if (!shared.isPlausibleMessage(text, config.maxLength) && assets.length) {
+          text =
+            assets
+              .map((asset) => asset.token)
+              .filter(Boolean)
+              .join(' ') || '图片表情'
+        }
+        return { text, plainText, assets, parts }
       }
     }
 
@@ -5782,9 +5838,7 @@ import { t } from '../core/i18n'
     messageSelectors: config.messages,
     overlaySelectors: config.overlayMessages,
     platform: platformId,
-    plusOne: (message) => state.settings.actions.plusOne
-      ? repeatMessage(message)
-      : false,
+    plusOne: (message) => repeatMessage(message),
     roomKey: () => currentRoomContext(platformId).roomKey,
   })
   syncDouyuNativeCapsuleRootAttribute()

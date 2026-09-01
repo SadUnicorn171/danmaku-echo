@@ -16,6 +16,7 @@ describe('live audience recognition', () => {
     expect(parseLiveAudienceValue('1,246.9万')).toBe(12_469_000)
     expect(parseLiveAudienceValue('2.1亿+')).toBe(210_000_000)
     expect(parseLiveAudienceValue('1w+')).toBe(10_000)
+    expect(parseLiveAudienceValue('2万+')).toBe(20_000)
     expect(parseLiveAudienceValue('10W+')).toBe(100_000)
     expect(parseLiveAudienceValue('2.5k')).toBe(2_500)
     expect(parseLiveAudienceValue('暂未开播')).toBeNull()

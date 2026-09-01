@@ -9,7 +9,7 @@
 
 [中文](#中文) · [English](#english) · [隐私权政策](PRIVACY.md)
 
-![Version](https://img.shields.io/badge/version-2.3.1-orange)
+![Version](https://img.shields.io/badge/version-2.3.2-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
@@ -39,9 +39,9 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 轻量弹幕雷达
 
-启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前档位、触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到门槛后加入“暂不 / +1”提示队列。雷达首次生成有效队列时会显示一次性说明卡片，并用动态箭头直接指向雷达图标；卡片会根据图标所在位置自动显示在左、右、上或下方。说明内容明确该功能只提醒、不自动发送，并列出自动 / 手动档位、四平台触发次数、提示停留时间、队列上限和提示大小；点击“知道了”或“进入设置”后只保存一个本地确认标记，后续不再显示。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
+启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前档位、触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到门槛后加入“暂不 / +1”提示队列。首次使用时，雷达完成加载便会显示一次性说明卡片，无需等待高频弹幕触发；动态箭头会直接指向雷达图标，卡片会根据图标所在位置自动显示在左、右、上或下方。引导打开期间，新产生的高频内容只在内存中等待，不创建或播放队列动画，确认引导后才显示并重新获得完整倒计时。引导页提供“自动 +1 雷达弹幕”开关并明确标注默认关闭；用户也可以在扩展主页的弹幕雷达设置中随时开关。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
 
-每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数，到时自动隐藏并在本轮窗口内保持忽略。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。切换到“手动”档后，虎牙、B站、抖音和斗鱼分别使用各自保存的固定触发次数、提示时间、队列上限和提示大小，不再根据人数或弹幕量改变触发次数。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
+每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数。用户点击“暂不”或 `+1` 后，该弹幕会强制静默 40 秒，期间即使频率继续增加也绝不会重新提示；40 秒结束后才恢复正常判断。提示未被操作并自动超时时会强制静默 30 秒，静默结束后还必须比隐藏时新增“当前雷达触发次数的一半（向上取整）”才可重新唤醒，例如触发次数为 5 时需再出现 3 次、为 8 时需再出现 4 次。开启自动 +1 后，新达到门槛的队列数据会直接进入受保护的发送流程而不显示待操作卡片；多条自动发送会串行执行，并继续遵守平台反馈、发送冷却以及同一弹幕 40 秒静默规则。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。观众数分档已细分：默认基础值下，3000 人为 6 次、1 万人为 8 次、2 万人为 9 次，超过 2 万后继续逐档提高。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+`、`2万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。切换到“手动”档后，虎牙、B站、抖音和斗鱼分别使用各自保存的固定触发次数、提示时间、队列上限和提示大小，不再根据人数或弹幕量改变触发次数。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。斗鱼同一条画面弹幕如果由多个并列正文片段组成，`+1`、复制、收藏和雷达会按页面顺序合并完整内容，不再只取第一段。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
 
 ### 抖音 DOM 接管说明
 
@@ -175,6 +175,7 @@ src/assets/                图标、平台 SVG 及直播间收藏 Shadow DOM 样
 src/components/            设置页组件及 components/live 直播浮层组件
 src/composables/           设置读取、同步保存和页面状态
 docs/DESIGN_SYSTEM.md      当前界面的设计规范
+docs/ENTRY_REFACTOR_CHECKLIST.md 内容脚本入口拆分与类型化的分步实施清单
 .github/workflows/ci.yml   Windows 与 Fedora 持续集成工作流
 scripts/package.cjs        跨 Windows、Linux 的确定性 Node.js 发布打包器
 vite.config.ts             官方 Vite CLI 的多入口扩展构建配置
@@ -240,7 +241,7 @@ Short-press `Alt + Q` in a live room to open the fixed panel, where search, send
 
 ### Lightweight danmaku radar
 
-When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. The first valid queue opens a one-time guide anchored to the radar icon; its directional arrow and card placement follow the icon on any side of the viewport. The guide explains that the radar never sends automatically and lists the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
+When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. On first use, a one-time guide opens as soon as the enabled radar finishes loading instead of waiting for a frequent-message queue. Its directional arrow and card placement follow the icon on any side of the viewport. Queue content that arrives while the guide is open waits in memory without creating or animating prompt cards, then receives a full countdown after acknowledgement. The guide explains that the radar never sends automatically and lists the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
 
 Prompts remain visible for ten seconds by default, with an independent live countdown beside +1, then hide and stay dismissed for the current window. The default **Automatic** mode adapts its trigger count from recent danmaku volume and a public room-size signal when available. Bilibili and Douyin start from 6; Huya and Douyu start from 8 and use their displayed guest counts without estimating from popularity. When room size is unavailable, Automatic mode falls back to stable recent danmaku-volume bands after enough samples. **Manual** mode stores an independent fixed trigger count, prompt duration, queue limit, and prompt scale for each of the four platforms and does not adapt the trigger count. Trigger counts support 2–99, prompt duration 1–60 seconds, queue limits 1–10, and prompt scaling 50%–200%. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud analysis, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
 
@@ -369,6 +370,7 @@ src/assets/                Icons, platform SVGs, and live-room favorites Shadow 
 src/components/            Settings components and components/live overlays
 src/composables/           Settings loading, sync persistence, and page state
 docs/DESIGN_SYSTEM.md      Current interface design specification
+docs/ENTRY_REFACTOR_CHECKLIST.md Step-by-step content-entry refactoring and typing checklist
 .github/workflows/ci.yml   Windows and Fedora continuous-integration workflow
 scripts/package.cjs        Deterministic Node.js packaging across Windows and Linux
 vite.config.ts             Multi-entry extension config driven by the official Vite CLI

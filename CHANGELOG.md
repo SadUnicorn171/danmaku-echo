@@ -4,22 +4,33 @@ All notable changes to Danmaku Echo are documented here.
 
 ## [Unreleased]
 
+## [2.3.2] - 2026-09-01
+
 ### Added
 
+- Added an opt-in **Automatic +1** switch for the danmaku radar. It is off by default, can be enabled directly from the first-use radar guide, and remains available in the radar settings page. Newly triggered queue items are sent through the existing protected platform send flow and are serialized to avoid concurrent automatic sends.
 - Added **Automatic** and **Manual** danmaku-radar modes. Automatic mode adjusts the trigger count from public room-size signals and recent danmaku volume, while Manual mode stores independent trigger count, prompt duration, queue limit, and prompt scale settings for Huya, Bilibili, Douyin, and Douyu.
 - Added public audience and guest-count readers for the four supported platforms, with a recent-traffic fallback after enough samples when a reliable room-size value is unavailable. Huya and Douyu use the guest count already displayed on the page and never estimate from popularity.
 
 ### Changed
 
-- Redesigned the one-time radar introduction as a compact, theme-colored guide anchored to the draggable radar launcher. Its directional arrow follows the launcher placement, the card summarizes reminder behavior and all adjustable controls, and its responsive layout keeps the actions usable on narrow screens.
+- Redesigned the one-time radar introduction as a compact, theme-colored guide anchored to the draggable radar launcher. It now appears as soon as an enabled radar finishes loading instead of waiting for the first frequent-message queue; queue DOM and animations remain suspended until the guide is acknowledged, preventing the guide from flashing when a message reaches its threshold.
 - Changed the default +1 reminder duration from 6 to 10 seconds. The radar launcher panel now also shows the current mode and the audience or traffic signal used by Automatic mode.
+- Split radar prompt suppression by close reason. Clicking **Not now** or **+1** now enforces a 40-second hard suppression that cannot be interrupted by new occurrences. An untouched prompt that times out is suppressed for 30 seconds and can return afterward only after gaining an additional `ceil(current trigger count / 2)` occurrences.
+- Split the viewer-based automatic threshold into finer bands. With the default base of 6, 3,000 viewers uses 6 occurrences, 10,000 uses 8, 20,000 uses 9, and values above 20,000 continue rising instead of sharing one broad 8-occurrence band.
 - Strengthened floating-radar ownership so duplicate content runtimes cannot leave multiple launchers, onboarding guides, or prompt queues on the same page.
 
 ### Fixed
 
+- Fixed Douyu overlay danmaku composed of multiple sibling text segments being truncated to the first segment in +1, Copy, Favorite, and radar extraction. Segments such as `保卫鱼娘` and `查看活动>` are now retained in their displayed order as one message.
 - Fixed Douyin native image Emoji in image-only and mixed messages from other viewers being reduced to generic text or rejected by +1, Copy, and Favorite. Trusted Emoji resources are restored to ordered bracket text such as `[杀马特][杀马特][杀马特]`, which Douyin resolves through its native editor.
 - Removed the themed background fill from self-sent Douyin danmaku and merged the self-message and hover states into one selection frame, preventing a double outline while keeping the sent-message marker visible.
 - Filtered platform notices and non-message rows more strictly before they enter the frequent-message radar, while preserving legitimate repeated messages from the same source.
+
+### Maintenance
+
+- Added a numbered, dependency-aware checklist for incrementally splitting and typing the shared content script and the two large Douyin runtime entries without changing platform behavior.
+- Removed obsolete complex-radar HTML prototypes and unused Telegram SVG assets, and standardized the favorites room icon on the shared kebab-case asset path.
 
 ## [2.3.1] - 2026-08-24
 
@@ -191,6 +202,7 @@ All notable changes to Danmaku Echo are documented here.
 - Favorites remain on schema v2; existing favorites are retained without destructive migration.
 - Permissions remain limited to the existing `storage`, `scripting`, and current host scope.
 
+[2.3.2]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.3.2
 [2.3.1]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.3.1
 [2.3.0]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.3.0
 [2.2.2]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.2.2

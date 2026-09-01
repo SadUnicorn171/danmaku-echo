@@ -88,7 +88,7 @@ describe('repeat reminder runtime audience refresh', () => {
     try {
       const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
       expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('4,974 人')
-      expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('8 次')
+      expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('7 次')
 
       const audience = document.querySelector('[data-e2e="live-room-audience"]')
       if (audience) audience.textContent = '5,125'
@@ -96,6 +96,30 @@ describe('repeat reminder runtime audience refresh', () => {
 
       expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('5,125 人')
       expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('8 次')
+    } finally {
+      runtime.destroy()
+    }
+  })
+
+  it('continues converging toward a stable audience sample after the displayed value changes', () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = '<div data-e2e="live-room-audience">3,000</div>'
+    const runtime = createRepeatReminderRuntime({
+      initialSettings: DEFAULT_SETTINGS,
+      platform: 'douyin',
+      plusOne: vi.fn<() => void>(),
+      roomKey: () => 'douyin:room-one',
+    })
+    try {
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('6 次')
+
+      const audience = document.querySelector('[data-e2e="live-room-audience"]')
+      if (audience) audience.textContent = '20,000'
+      vi.advanceTimersByTime(3_000)
+
+      expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toBe('20,000 人')
+      expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('9 次')
     } finally {
       runtime.destroy()
     }
@@ -129,6 +153,169 @@ describe('repeat reminder runtime audience refresh', () => {
       runtime.suppressText(text)
 
       expect(shadow?.querySelector('[data-suggestion-id]')).toBeNull()
+    } finally {
+      runtime.destroy()
+    }
+  })
+
+  it('reawakens a timed-out prompt after 30 seconds and half the radar threshold', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_800_000_000_000)
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: {
+          get: vi.fn<() => Promise<Record<string, boolean>>>().mockResolvedValue({
+            danmakuEchoRepeatReminderOnboardingV1: true,
+          }),
+          set: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        },
+      },
+    })
+    const settings = mergeSettings({
+      repeatReminder: {
+        manual: {
+          douyin: {
+            promptDurationSeconds: 1,
+            promptScalePercent: 100,
+            queueLimit: 3,
+            threshold: 4,
+          },
+        },
+        mode: 'manual',
+      },
+    })
+    const runtime = createRepeatReminderRuntime({
+      initialSettings: settings,
+      platform: 'douyin',
+      plusOne: vi.fn<() => void>(),
+      roomKey: () => 'douyin:room-one',
+    })
+    const ingest = (index: number): void =>
+      runtime.ingest({
+        messageId: `wake-${index}`,
+        observedAt: Date.now(),
+        parts: [{ text: '主播这波太帅了', type: 'text' }],
+        resourceIds: [],
+        senderId: `u${index}`,
+        source: 'chat',
+        text: '主播这波太帅了',
+      })
+    try {
+      await Promise.resolve()
+      await Promise.resolve()
+      ingest(1)
+      ingest(2)
+      ingest(3)
+      ingest(4)
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(1)
+      vi.advanceTimersByTime(1_000)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+
+      ingest(5)
+      ingest(6)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+      vi.advanceTimersByTime(30_000)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(1)
+      expect(shadow?.querySelector('.prompt-meta')?.textContent).toContain('6 次')
+    } finally {
+      runtime.destroy()
+    }
+  })
+
+  it('automatically +1s a newly triggered radar item and hard-suppresses it for 40 seconds', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_800_000_000_000)
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: {
+          get: vi.fn<() => Promise<Record<string, boolean>>>().mockResolvedValue({
+            danmakuEchoRepeatReminderOnboardingV1: true,
+          }),
+          set: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        },
+      },
+    })
+    const plusOne = vi.fn<() => Promise<boolean>>().mockResolvedValue(true)
+    const settings = mergeSettings({
+      repeatReminder: {
+        autoPlusOne: true,
+        manual: {
+          douyin: {
+            promptDurationSeconds: 10,
+            promptScalePercent: 100,
+            queueLimit: 3,
+            threshold: 2,
+          },
+        },
+        mode: 'manual',
+      },
+    })
+    const runtime = createRepeatReminderRuntime({
+      initialSettings: settings,
+      platform: 'douyin',
+      plusOne,
+      roomKey: () => 'douyin:auto-plus-one',
+    })
+    const ingest = (index: number): void => runtime.ingest({
+      messageId: `auto-${index}`,
+      observedAt: Date.now(),
+      parts: [{ text: '自动跟一条', type: 'text' }],
+      resourceIds: [],
+      senderId: `u${index}`,
+      source: 'chat',
+      text: '自动跟一条',
+    })
+    try {
+      await Promise.resolve()
+      await Promise.resolve()
+      ingest(1)
+      ingest(2)
+      await Promise.resolve()
+      await Promise.resolve()
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      expect(plusOne).toHaveBeenCalledExactlyOnceWith('自动跟一条')
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+
+      ingest(3)
+      await Promise.resolve()
+      expect(plusOne).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(40_000)
+      ingest(4)
+      for (let index = 0; index < 6; index += 1) await Promise.resolve()
+      expect(plusOne).toHaveBeenCalledTimes(2)
+      expect(shadow?.querySelectorAll('.prompt')).toHaveLength(0)
+    } finally {
+      runtime.destroy()
+    }
+  })
+
+  it('persists an Automatic +1 opt-in made directly from the first-use guide', async () => {
+    const syncSet = vi.fn<(value: unknown) => Promise<void>>().mockResolvedValue(undefined)
+    vi.stubGlobal('chrome', {
+      storage: {
+        local: {
+          get: vi.fn<() => Promise<Record<string, boolean>>>().mockResolvedValue({}),
+          set: vi.fn<() => Promise<void>>().mockResolvedValue(undefined),
+        },
+        sync: { set: syncSet },
+      },
+    })
+    const runtime = createRepeatReminderRuntime({
+      initialSettings: DEFAULT_SETTINGS,
+      platform: 'douyin',
+      plusOne: vi.fn<() => void>(),
+      roomKey: () => 'douyin:onboarding-opt-in',
+    })
+    try {
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      await vi.waitFor(() => {
+        expect(shadow?.querySelector('.onboarding')?.classList.contains('is-visible')).toBe(true)
+      })
+      shadow?.querySelector<HTMLInputElement>('.onboarding-auto-plus-one input')?.click()
+      expect(syncSet).toHaveBeenCalledExactlyOnceWith({
+        repeatReminder: expect.objectContaining({ autoPlusOne: true }),
+      })
     } finally {
       runtime.destroy()
     }

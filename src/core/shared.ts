@@ -116,6 +116,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
     douyu: true,
   }),
   repeatReminder: Object.freeze({
+    autoPlusOne: false,
     enabled: true,
     manual: Object.freeze({
       bilibili: Object.freeze(defaultManualRepeatReminderSettings('bilibili')),
@@ -375,6 +376,10 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
       douyu: typeof savedPlatforms.douyu === 'boolean' ? savedPlatforms.douyu : true,
     },
     repeatReminder: {
+      autoPlusOne:
+        typeof savedRepeatReminder.autoPlusOne === 'boolean'
+          ? savedRepeatReminder.autoPlusOne
+          : DEFAULT_SETTINGS.repeatReminder.autoPlusOne,
       enabled: typeof savedRepeatReminder.enabled === 'boolean' ? savedRepeatReminder.enabled : true,
       manual: {
         bilibili: normalizedManualRepeatReminderSettings(

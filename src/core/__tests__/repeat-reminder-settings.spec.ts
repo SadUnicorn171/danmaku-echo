@@ -7,6 +7,7 @@ describe('repeat reminder mode settings', () => {
   it('uses automatic defaults with a ten-second prompt', () => {
     const settings = mergeSettings()
     expect(settings.repeatReminder.mode).toBe('auto')
+    expect(settings.repeatReminder.autoPlusOne).toBe(false)
     expect(repeatReminderPlatformSettings(settings.repeatReminder, 'douyin')).toEqual({
       promptDurationSeconds: 10,
       promptScalePercent: 100,

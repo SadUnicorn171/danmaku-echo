@@ -23,13 +23,14 @@ import {
 } from './onboarding'
 import { RepeatReminderSelection } from './selection'
 import { DanmakuTrafficMeter, type DanmakuTrafficSnapshot } from './traffic-flow'
-import type { RepeatReminderObservation } from './types'
+import type { RepeatReminderObservation, RepeatReminderSuggestion } from './types'
 import { createRepeatReminderUi } from './ui'
 
 const AUDIENCE_THRESHOLD_GRACE_MS = 30_000
 const TRAFFIC_THRESHOLD_EVALUATION_MS = 5_000
 const TRAFFIC_THRESHOLD_RISE_CONFIRMATIONS = 2
 const TRAFFIC_THRESHOLD_FALL_CONFIRMATIONS = 6
+const AUTOMATIC_PLUS_ONE_GAP_MS = 1_100
 
 interface RepeatReminderRuntimeOptions {
   describe?(element: Element, source: DanmakuDescriptor['source']): DanmakuDescriptor | null
@@ -63,7 +64,7 @@ export function createRepeatReminderRuntime(
   let reportedFrameAudienceAt = 0
   let reportedFrameAudienceSignature = ''
   let smoothedAudience: number | null = null
-  let smoothedAudienceSignature = ''
+  let smoothedAudienceSampleKey = ''
   let lastAudienceSeenAt = 0
   let nextTrafficThresholdEvaluationAt = 0
   let trafficRiseConfirmations = 0
@@ -71,11 +72,23 @@ export function createRepeatReminderRuntime(
   let trafficFallConfirmations = 0
   let trafficFallTarget = 0
   let destroyed = false
+  let automaticPlusOneChain = Promise.resolve()
+  let lastAutomaticPlusOneAt = Number.NEGATIVE_INFINITY
   let effectiveThreshold = initialEffectiveThreshold()
   const detector = new RepeatReminderDetector(effectiveThreshold)
   const trafficMeter = new DanmakuTrafficMeter()
   const selection = new RepeatReminderSelection(platformSettings().queueLimit)
+
+  function forgetSuggestionText(text: string): void {
+    trafficMeter.forgetText(text)
+    const removedIds = new Set(detector.forgetText(text))
+    for (const suggestion of selection.current()) {
+      if (removedIds.has(suggestion.id)) selection.dismiss(suggestion)
+    }
+  }
+
   const ui = createRepeatReminderUi({
+    automaticPlusOne: queueAutomaticPlusOne,
     onboardingStorage: {
       acknowledge: acknowledgeRepeatReminderOnboarding,
       isAcknowledged: hasAcknowledgedRepeatReminderOnboarding,
@@ -92,13 +105,53 @@ export function createRepeatReminderRuntime(
       selection.dismiss(suggestion)
       void options.plusOne(suggestion.text)
     },
+    refresh: refreshSuggestions,
+    setAutoPlusOne: updateAutoPlusOne,
   })
+
+  function queueAutomaticPlusOne(suggestion: RepeatReminderSuggestion): void {
+    selection.dismiss(suggestion)
+    const text = suggestion.text
+    automaticPlusOneChain = automaticPlusOneChain
+      .catch(() => undefined)
+      .then(async () => {
+        if (destroyed || !enabled() || !settings.repeatReminder.autoPlusOne) return
+        const wait = Math.max(0, lastAutomaticPlusOneAt + AUTOMATIC_PLUS_ONE_GAP_MS - Date.now())
+        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
+        if (destroyed || !enabled() || !settings.repeatReminder.autoPlusOne) return
+        try {
+          await options.plusOne(text)
+        } catch {
+          // Platform senders already surface their own failure feedback.
+        } finally {
+          lastAutomaticPlusOneAt = Date.now()
+        }
+      })
+  }
+
+  function updateAutoPlusOne(next: boolean): void {
+    if (settings.repeatReminder.autoPlusOne === next) return
+    settings = {
+      ...settings,
+      repeatReminder: { ...settings.repeatReminder, autoPlusOne: next },
+    }
+    syncUi()
+    try {
+      void globalThis.chrome?.storage?.sync?.set({ repeatReminder: settings.repeatReminder })
+    } catch {
+      /* Keep the in-page choice active when sync storage is unavailable. */
+    }
+  }
+
+  function refreshSuggestions(): void {
+    ui.setSuggestions(ownsPrompt() ? selection.current() : [])
+  }
 
   function enabled(): boolean {
     return Boolean(
       settings.enabled &&
       settings.platforms[options.platform] &&
-      settings.actions.plusOne &&
+      (settings.actions.plusOne || settings.repeatReminder.autoPlusOne) &&
       settings.repeatReminder.enabled,
     )
   }
@@ -133,7 +186,7 @@ export function createRepeatReminderRuntime(
       trafficMeter.reset()
       lastAudienceSeenAt = 0
       smoothedAudience = null
-      smoothedAudienceSignature = ''
+      smoothedAudienceSampleKey = ''
       resetTrafficThresholdHysteresis()
       setEffectiveThreshold(initialEffectiveThreshold())
       selection.reset()
@@ -143,6 +196,7 @@ export function createRepeatReminderRuntime(
     const visible = nextEnabled && ownsPrompt()
     const selected = platformSettings()
     ui.applySettings({
+      autoPlusOne: settings.repeatReminder.autoPlusOne,
       enabled: visible,
       mode: settings.repeatReminder.mode,
       promptDurationSeconds: selected.promptDurationSeconds,
@@ -191,7 +245,7 @@ export function createRepeatReminderRuntime(
     if (metric) {
       lastAudienceSeenAt = now
       resetTrafficThresholdHysteresis()
-      const thresholdMetric = smoothedThresholdMetric(metric, signature)
+      const thresholdMetric = smoothedThresholdMetric(metric)
       setEffectiveThreshold(adaptiveRepeatReminderThreshold(
         options.platform,
         platformSettings().threshold,
@@ -258,13 +312,11 @@ export function createRepeatReminderRuntime(
     setEffectiveThreshold(Math.max(target, effectiveThreshold - 1))
   }
 
-  function smoothedThresholdMetric(
-    metric: LiveAudienceMetric | null,
-    signature: string,
-  ): LiveAudienceMetric | null {
+  function smoothedThresholdMetric(metric: LiveAudienceMetric | null): LiveAudienceMetric | null {
     if (!isAdaptiveAudienceMetric(metric)) return null
-    if (signature !== smoothedAudienceSignature) {
-      smoothedAudienceSignature = signature
+    const sampleKey = `${metric.platform}:${metric.kind}:${metric.value}:${metric.sampledAt || Date.now()}`
+    if (sampleKey !== smoothedAudienceSampleKey) {
+      smoothedAudienceSampleKey = sampleKey
       smoothedAudience = smoothedAudience === null
         ? metric.value
         : Math.round(smoothedAudience * 0.8 + metric.value * 0.2)
@@ -325,7 +377,7 @@ export function createRepeatReminderRuntime(
     reportedFrameAudienceAt = 0
     reportedFrameAudienceSignature = ''
     smoothedAudience = null
-    smoothedAudienceSignature = ''
+    smoothedAudienceSampleKey = ''
     lastAudienceSeenAt = 0
     trafficMeter.reset(now)
     resetTrafficThresholdHysteresis()
@@ -347,6 +399,10 @@ export function createRepeatReminderRuntime(
     if (!triggered) return
     const selected = selection.replace(triggered)
     if (!selected) return
+    if (settings.repeatReminder.autoPlusOne) {
+      ui.plusOneAutomatically(selected)
+      return
+    }
     ui.setSuggestions(ownsPrompt() ? selection.current() : [])
   }
 
@@ -399,11 +455,7 @@ export function createRepeatReminderRuntime(
       collector?.scan()
     },
     suppressText(text): void {
-      trafficMeter.forgetText(text)
-      const removedIds = new Set(detector.forgetText(text))
-      for (const suggestion of selection.current()) {
-        if (removedIds.has(suggestion.id)) selection.dismiss(suggestion)
-      }
+      forgetSuggestionText(text)
       ui.setSuggestions(ownsPrompt() ? selection.current() : [])
     },
   }

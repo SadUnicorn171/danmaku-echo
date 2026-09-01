@@ -19,8 +19,11 @@ export function platformRepeatReminderBaseThreshold(
 export function audienceThresholdMultiplier(viewers: number): number {
   if (viewers <= 500) return 0.8
   if (viewers <= 3_000) return 1
-  if (viewers <= 20_000) return 1.4
-  if (viewers <= 100_000) return 1.8
+  if (viewers <= 5_000) return 1.2
+  if (viewers <= 10_000) return 1.35
+  if (viewers <= 20_000) return 1.5
+  if (viewers <= 50_000) return 1.7
+  if (viewers <= 100_000) return 1.9
   return 2.2
 }
 

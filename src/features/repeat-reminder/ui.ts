@@ -7,6 +7,7 @@ import type { DanmakuTrafficLevel, DanmakuTrafficSnapshot } from './traffic-flow
 import type { RepeatReminderSuggestion } from './types'
 
 interface RepeatReminderUiOptions {
+  automaticPlusOne?(suggestion: RepeatReminderSuggestion): void
   dismiss(suggestion: RepeatReminderSuggestion): void
   onboardingStorage?: {
     acknowledge(): Promise<void>
@@ -14,9 +15,12 @@ interface RepeatReminderUiOptions {
   }
   openSettings(): void
   plusOne(suggestion: RepeatReminderSuggestion): void
+  refresh?(): void
+  setAutoPlusOne?(enabled: boolean): void
 }
 
 interface RepeatReminderUiSettings {
+  autoPlusOne?: boolean
   enabled: boolean
   mode?: 'auto' | 'manual'
   promptDurationSeconds: number
@@ -72,12 +76,23 @@ const PROMPT_ENTER_DURATION_MS = 220
 const PROMPT_EXIT_DURATION_MS = 160
 const PROMPT_MOVE_DURATION_MS = 260
 const PROMPT_MOTION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+const PROMPT_AUTOMATIC_SNOOZE_DURATION_MS = 30_000
+const PROMPT_MANUAL_SNOOZE_DURATION_MS = 40_000
 const VIEWPORT_GAP = 12
 const ONBOARDING_GAP = 18
 const ONBOARDING_MAX_WIDTH = 460
 const REPEAT_REMINDER_OWNER_ATTRIBUTE = 'data-bcp-repeat-reminder-owner'
 const REPEAT_REMINDER_OWNER_TOKEN_ATTRIBUTE = 'data-bcp-repeat-reminder-owner-token'
 const REPEAT_REMINDER_PORTAL_SELECTOR = '[data-bcp-repeat-reminder-owned]'
+
+interface SnoozedSuggestion {
+  blockedUntil: number
+  suggestion: RepeatReminderSuggestion
+  timer?: ReturnType<typeof setTimeout>
+  wakeCount: number | null
+}
+
+type PromptRemovalAction = 'auto-plus-one' | 'dismiss' | 'plus-one' | 'timeout'
 const NUMBER_FORMATTER = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 0 })
 
 const TRAFFIC_LEVEL_LABELS: Record<DanmakuTrafficLevel, string> = {
@@ -174,6 +189,17 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     .onboarding-setting-list { display: grid; gap: 10px 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
     .onboarding-setting-list li { align-items: center; color: #6b7280; display: flex; font-size: 12px; gap: 6px; line-height: 18px; min-width: 0; }
     .onboarding-setting-list svg { color: var(--bcp-selection, #f97316); flex: 0 0 14px; height: 14px; stroke-width: 1.8; width: 14px; }
+    .onboarding-auto-plus-one { align-items: center; background: #fff8f1; border: 1px solid rgb(249 115 22 / 24%); border-radius: 12px; cursor: pointer; display: flex; gap: 14px; padding: 12px; }
+    .onboarding-auto-plus-one-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+    .onboarding-auto-plus-one-title { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
+    .onboarding-auto-plus-one-title strong { color: #1f2937; font-size: 13px; font-weight: 650; line-height: 19px; }
+    .onboarding-auto-plus-one-title em { background: #fff; border: 1px solid rgb(249 115 22 / 28%); border-radius: 999px; color: #b45309; font-size: 9px; font-style: normal; font-weight: 650; line-height: 15px; padding: 0 6px; }
+    .onboarding-auto-plus-one-copy small { color: #6b7280; font-size: 11px; line-height: 17px; }
+    .onboarding-auto-plus-one input { appearance: none; background: #e5e7eb; border: 1px solid #d1d5db; border-radius: 999px; cursor: pointer; flex: 0 0 38px; height: 22px; margin: 0; position: relative; transition: background-color 140ms ease, border-color 140ms ease; width: 38px; }
+    .onboarding-auto-plus-one input::after { background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgb(31 41 55 / 24%); content: ''; height: 16px; left: 2px; position: absolute; top: 2px; transition: transform 140ms ease; width: 16px; }
+    .onboarding-auto-plus-one input:checked { background: var(--bcp-selection, #f97316); border-color: var(--bcp-selection, #f97316); }
+    .onboarding-auto-plus-one input:checked::after { transform: translateX(16px); }
+    .onboarding-auto-plus-one input:focus-visible { outline: 3px solid rgb(249 115 22 / 28%); outline-offset: 3px; }
     .onboarding-note { align-items: flex-start; background: #fff1e6; border-radius: 10px; color: #6b7280; display: flex; font-size: 12px; gap: 10px; line-height: 18px; padding: 12px; }
     .onboarding-note svg { color: var(--bcp-selection, #f97316); flex: 0 0 16px; height: 16px; margin-top: 1px; stroke-width: 1.8; width: 16px; }
     .onboarding-actions { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 20px 20px; }
@@ -208,6 +234,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     @media (prefers-reduced-motion: reduce) {
       .launcher { transition-duration: 0.01ms; }
       .onboarding-card { animation: none; }
+      .onboarding-auto-plus-one input, .onboarding-auto-plus-one input::after { transition-duration: 0.01ms; }
     }
   `
 
@@ -272,8 +299,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
             <div class="onboarding-feature">
               <span class="onboarding-feature-icon">${ONBOARDING_BELL_ICON}</span>
               <span class="onboarding-feature-copy">
-                <strong>只提醒，不自动发送</strong>
-                <span>只有用户点击 +1 后，插件才会发送对应弹幕。</span>
+                <strong>默认只提醒</strong>
+                <span>默认只有用户点击 +1 才发送，也可以在下方主动开启自动 +1。</span>
               </span>
             </div>
             <div class="onboarding-feature">
@@ -296,8 +323,19 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
               <li>${ONBOARDING_CHECK_ICON}<span>提示停留时间</span></li>
               <li>${ONBOARDING_CHECK_ICON}<span>队列上限</span></li>
               <li>${ONBOARDING_CHECK_ICON}<span>提示框大小</span></li>
+              <li>${ONBOARDING_CHECK_ICON}<span>自动 +1 开关</span></li>
             </ul>
           </section>
+          <label class="onboarding-auto-plus-one">
+            <span class="onboarding-auto-plus-one-copy">
+              <span class="onboarding-auto-plus-one-title">
+                <strong>自动 +1 雷达弹幕</strong>
+                <em>默认关闭</em>
+              </span>
+              <small>高频弹幕达到门槛后直接发送，仍会遵守发送冷却和平台限制。</small>
+            </span>
+            <input type="checkbox" role="switch" aria-label="开启自动 +1 雷达弹幕">
+          </label>
           <div class="onboarding-note">
             ${ONBOARDING_MOVE_ICON}
             <span>以后可以点击雷达按钮查看当前设置，也可以拖动它调整位置。</span>
@@ -317,6 +355,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   )!
   const onboardingAcknowledge =
     onboarding.querySelector<HTMLButtonElement>('.onboarding-acknowledge')!
+  const onboardingAutoPlusOne =
+    onboarding.querySelector<HTMLInputElement>('.onboarding-auto-plus-one input')!
 
   const promptList = document.createElement('aside')
   promptList.dataset.bcpRepeatReminderInteractive = 'true'
@@ -329,6 +369,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   let enabled = false
   let settingsOpen = false
   let audience: LiveAudienceMetric | null = null
+  let autoPlusOne = false
   let traffic: DanmakuTrafficSnapshot | null = null
   let mode: 'auto' | 'manual' = 'auto'
   let promptDurationSeconds = 10
@@ -347,7 +388,43 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   let onboardingOpen = false
   const deadlines = new Map<string, number>()
   const leavingIds = new Set<string>()
-  const snoozed = new Map<string, number>()
+  const snoozed = new Map<string, SnoozedSuggestion>()
+
+  function clearSnooze(id: string): void {
+    const state = snoozed.get(id)
+    if (!state) return
+    if (state.timer !== undefined) clearTimeout(state.timer)
+    snoozed.delete(id)
+  }
+
+  function clearAllSnoozes(): void {
+    for (const id of snoozed.keys()) clearSnooze(id)
+  }
+
+  function snoozeSuggestion(
+    suggestion: RepeatReminderSuggestion,
+    action: PromptRemovalAction,
+  ): void {
+    clearSnooze(suggestion.id)
+    const automatic = action === 'timeout'
+    const duration = automatic
+      ? PROMPT_AUTOMATIC_SNOOZE_DURATION_MS
+      : PROMPT_MANUAL_SNOOZE_DURATION_MS
+    const state: SnoozedSuggestion = {
+      blockedUntil: Date.now() + duration,
+      suggestion,
+      wakeCount: automatic
+        ? suggestion.count + Math.ceil(suggestion.threshold / 2)
+        : null,
+    }
+    state.timer = setTimeout(() => {
+      if (destroyed || snoozed.get(suggestion.id) !== state) return
+      state.timer = undefined
+      if (state.wakeCount === null) snoozed.delete(suggestion.id)
+      options.refresh?.()
+    }, duration)
+    snoozed.set(suggestion.id, state)
+  }
 
   function clamp(value: number, minimum: number, maximum: number): number {
     return Math.min(Math.max(value, minimum), Math.max(minimum, maximum))
@@ -484,6 +561,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     if (ownershipLost) return
     ownershipLost = true
     stopCountdown()
+    clearAllSnoozes()
     ownershipObserver?.disconnect()
     ownershipObserver = undefined
     portal.remove()
@@ -515,7 +593,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   function ensureHost(): void {
     if (!claimOwnership()) return
     const host = document.fullscreenElement || document.documentElement
-    if (host) host.appendChild(portal)
+    if (host && portal.parentNode !== host) host.appendChild(portal)
     positionFloatingUi()
   }
 
@@ -558,7 +636,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     onboardingLoaded = true
     onboardingOpen = false
     resetCurrentDeadlines()
-    updateVisibility()
+    renderPrompts()
     ensureCountdown()
     void options.onboardingStorage?.acknowledge()
     if (openSettings) options.openSettings()
@@ -566,19 +644,15 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   }
 
   function maybeShowOnboarding(): void {
-    if (
-      destroyed ||
-      !enabled ||
-      !current.length ||
-      !onboardingLoaded ||
-      onboardingAcknowledged ||
-      onboardingOpen
-    )
+    if (destroyed || !enabled || !onboardingLoaded || onboardingAcknowledged || onboardingOpen)
       return
     onboardingOpen = true
-    setSettingsOpen(false)
     stopCountdown()
-    updateVisibility()
+    for (const prompt of promptList.querySelectorAll<HTMLElement>('.prompt')) {
+      prompt.getAnimations?.().forEach((animation) => animation.cancel())
+    }
+    promptList.replaceChildren()
+    setSettingsOpen(false)
     queueMicrotask(() => {
       if (!destroyed && onboardingOpen) onboardingAcknowledge.focus({ preventScroll: true })
     })
@@ -665,7 +739,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       const deadline = deadlines.get(button.dataset.plusOneId || '') || now
       button.textContent = `+1 · ${Math.max(0, Math.ceil((deadline - now) / 1_000))}s`
     }
-    for (const suggestion of expired) removeSuggestion(suggestion, 'dismiss')
+    for (const suggestion of expired) removeSuggestion(suggestion, 'timeout')
   }
 
   function ensureCountdown(): void {
@@ -676,18 +750,23 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
 
   function removeSuggestion(
     suggestion: RepeatReminderSuggestion,
-    action: 'dismiss' | 'plus-one',
+    action: PromptRemovalAction,
   ): void {
     if (leavingIds.has(suggestion.id)) return
     leavingIds.add(suggestion.id)
-    snoozed.set(suggestion.id, Date.now() + suggestion.windowMs)
+    snoozeSuggestion(suggestion, action)
     deadlines.delete(suggestion.id)
     if (action === 'plus-one') options.plusOne(suggestion)
-    else options.dismiss(suggestion)
+    else if (action === 'auto-plus-one') {
+      if (options.automaticPlusOne) options.automaticPlusOne(suggestion)
+      else options.plusOne(suggestion)
+    } else options.dismiss(suggestion)
 
     const finish = (): void => {
       if (destroyed || !leavingIds.delete(suggestion.id)) return
-      current = current.filter((item) => item.id !== suggestion.id)
+      if (snoozed.has(suggestion.id)) {
+        current = current.filter((item) => item.id !== suggestion.id)
+      }
       renderPrompts()
     }
     const prompt = [...promptList.querySelectorAll<HTMLElement>('.prompt')].find(
@@ -800,6 +879,13 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   }
 
   function renderPrompts(): void {
+    // Keep queue updates in memory while the first-use guide owns the screen.
+    // Rebuilding hidden prompt nodes here can restart their animations and make
+    // the onboarding overlay flash when a message reaches the threshold.
+    if (onboardingOpen) {
+      promptList.classList.remove('is-visible')
+      return
+    }
     const existing = new Map(
       [...promptList.querySelectorAll<HTMLElement>('.prompt')].map(
         (prompt) => [prompt.dataset.suggestionId || '', prompt] as const,
@@ -911,9 +997,13 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     })
   onboardingAcknowledge.addEventListener('click', () => acknowledgeOnboarding(false))
   onboardingOpenSettings.addEventListener('click', () => acknowledgeOnboarding(true))
+  onboardingAutoPlusOne.addEventListener('change', () => {
+    autoPlusOne = onboardingAutoPlusOne.checked
+    options.setAutoPlusOne?.(autoPlusOne)
+  })
   onboardingCard.addEventListener('keydown', (event) => {
     if (event.key !== 'Tab') return
-    const focusable = [onboardingOpenSettings, onboardingAcknowledge]
+    const focusable = [onboardingAutoPlusOne, onboardingOpenSettings, onboardingAcknowledge]
     const first = focusable[0]
     const last = focusable.at(-1)
     if (event.shiftKey && shadow.activeElement === first) {
@@ -943,6 +1033,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     applySettings(next: RepeatReminderUiSettings): void {
       if (destroyed || ownershipLost) return
       const durationChanged = promptDurationSeconds !== next.promptDurationSeconds
+      autoPlusOne = next.autoPlusOne === true
+      onboardingAutoPlusOne.checked = autoPlusOne
       enabled = next.enabled
       mode = next.mode === 'manual' ? 'manual' : 'auto'
       promptDurationSeconds = next.promptDurationSeconds
@@ -956,6 +1048,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
         onboardingOpen = false
         setSettingsOpen(false)
         current = []
+        clearAllSnoozes()
         deadlines.clear()
         leavingIds.clear()
       } else if (durationChanged) {
@@ -964,6 +1057,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       }
       renderSettings()
       renderAudience()
+      maybeShowOnboarding()
       renderPrompts()
       positionFloatingUi()
     },
@@ -971,6 +1065,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       if (destroyed) return
       destroyed = true
       stopCountdown()
+      clearAllSnoozes()
       ownershipObserver?.disconnect()
       ownershipObserver = undefined
       if (ownsDocumentUi()) {
@@ -984,9 +1079,28 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       portal.remove()
     },
     ensureHost,
+    plusOneAutomatically(suggestion: RepeatReminderSuggestion): boolean {
+      if (destroyed || ownershipLost || !enabled) return false
+      const state = snoozed.get(suggestion.id)
+      if (state) {
+        state.suggestion = suggestion
+        const now = Date.now()
+        if (now < state.blockedUntil) {
+          options.dismiss(suggestion)
+          return false
+        }
+        if (state.wakeCount !== null && suggestion.count < state.wakeCount) {
+          options.dismiss(suggestion)
+          return false
+        }
+        clearSnooze(suggestion.id)
+      }
+      removeSuggestion(suggestion, 'auto-plus-one')
+      return true
+    },
     reset(): void {
       if (destroyed || ownershipLost) return
-      snoozed.clear()
+      clearAllSnoozes()
       deadlines.clear()
       leavingIds.clear()
       current = []
@@ -1017,6 +1131,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       if (destroyed || ownershipLost) return
       if (!enabled) {
         current = []
+        clearAllSnoozes()
         deadlines.clear()
         leavingIds.clear()
         renderPrompts()
@@ -1024,7 +1139,16 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       }
       const now = Date.now()
       current = suggestions
-        .filter((suggestion) => (snoozed.get(suggestion.id) || 0) <= now)
+        .filter((suggestion) => {
+          const state = snoozed.get(suggestion.id)
+          if (!state) return true
+          state.suggestion = suggestion
+          if (now < state.blockedUntil) return false
+          if (state.wakeCount !== null && suggestion.count < state.wakeCount) return false
+          clearSnooze(suggestion.id)
+          leavingIds.delete(suggestion.id)
+          return true
+        })
         .slice(0, queueLimit)
       const currentIds = new Set(current.map((suggestion) => suggestion.id))
       for (const id of leavingIds) {

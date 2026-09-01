@@ -8,6 +8,7 @@ export interface RepeatReminderPlatformSettings {
 }
 
 export interface RepeatReminderSettings extends RepeatReminderPlatformSettings {
+  autoPlusOne: boolean
   enabled: boolean
   manual: Record<PlatformId, RepeatReminderPlatformSettings>
   mode: 'auto' | 'manual'

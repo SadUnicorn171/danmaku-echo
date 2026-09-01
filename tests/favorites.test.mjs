@@ -777,6 +777,27 @@ test("renders a theme-colored radial bot that follows the pointer direction", ()
   assert.match(styles, /prefers-reduced-motion:[\s\S]*?\.bcp-favorites-radial-bot-eyes/);
 });
 
+test("uses a themed, keyboard-accessible custom favorites sort menu", () => {
+  const component = readFileSync(
+    resolve(root, "src", "features", "favorites", "FavoritesLauncher.vue"),
+    "utf8"
+  );
+  const styles = readFileSync(
+    resolve(root, "src", "assets", "styles", "favorites.scss"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(component, /<select[\s>]/);
+  assert.match(component, /class="bcp-favorites-sort-trigger"/);
+  assert.match(component, /aria-haspopup="listbox"/);
+  assert.match(component, /class="bcp-favorites-sort-menu"/);
+  assert.match(component, /role="option"/);
+  assert.match(component, /@keydown\.down\.prevent="focusSortOption/);
+  assert.match(component, /@keydown\.esc\.stop\.prevent="closeSortMenu\(true\)"/);
+  assert.match(styles, /\.bcp-favorites-sort-menu\s*\{[\s\S]*?var\(--bcp-favorite-accent/);
+  assert.match(styles, /\.bcp-favorites-sort-menu button\.is-selected/);
+});
+
 test("uses a compact text-only send button in favorite rows", () => {
   const row = readFileSync(
     resolve(root, "src", "features", "favorites", "FavoriteItemRow.vue"),
