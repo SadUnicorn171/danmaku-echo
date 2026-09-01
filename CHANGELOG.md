@@ -1,206 +1,209 @@
-# Changelog
+# 更新日志
 
-All notable changes to Danmaku Echo are documented here.
+本文档记录 Danmaku Echo 的所有重要变更。
 
-## [Unreleased]
+> 维护约定：从 2.3.2 版本开始，新增版本记录、分类标题和变更说明统一使用简体中文；代码标识、协议字段、平台专有名称和必要的技术术语可以保留原文。
+
+## [尚未发布]
 
 ## [2.3.2] - 2026-09-01
 
-### Added
+### 新增
 
-- Added an opt-in **Automatic +1** switch for the danmaku radar. It is off by default, can be enabled directly from the first-use radar guide, and remains available in the radar settings page. Newly triggered queue items are sent through the existing protected platform send flow and are serialized to avoid concurrent automatic sends.
-- Added **Automatic** and **Manual** danmaku-radar modes. Automatic mode adjusts the trigger count from public room-size signals and recent danmaku volume, while Manual mode stores independent trigger count, prompt duration, queue limit, and prompt scale settings for Huya, Bilibili, Douyin, and Douyu.
-- Added public audience and guest-count readers for the four supported platforms, with a recent-traffic fallback after enough samples when a reliable room-size value is unavailable. Huya and Douyu use the guest count already displayed on the page and never estimate from popularity.
+- 为弹幕雷达新增可选的**自动 +1** 开关。该功能默认关闭，可在首次使用引导中直接启用，也可在雷达设置页中随时调整。新触发的队列项会复用现有受保护的平台发送流程，并按顺序执行，避免并发自动发送。
+- 新增弹幕雷达**自动模式**和**手动模式**。自动模式根据公开的直播间规模信号和近期弹幕流量调整触发次数；手动模式为虎牙、哔哩哔哩、抖音和斗鱼分别保存固定触发次数、提示停留时间、队列上限和提示缩放。
+- 新增四个平台的公开观众数或贵宾数读取器；无法获得可靠房间规模且样本充分时，回退到近期弹幕流量。虎牙和斗鱼只使用页面已显示的贵宾数，不再根据热度估算人数。
 
-### Changed
+### 变更
 
-- Redesigned the one-time radar introduction as a compact, theme-colored guide anchored to the draggable radar launcher. It now appears as soon as an enabled radar finishes loading instead of waiting for the first frequent-message queue; queue DOM and animations remain suspended until the guide is acknowledged, preventing the guide from flashing when a message reaches its threshold.
-- Changed the default +1 reminder duration from 6 to 10 seconds. The radar launcher panel now also shows the current mode and the audience or traffic signal used by Automatic mode.
-- Split radar prompt suppression by close reason. Clicking **Not now** or **+1** now enforces a 40-second hard suppression that cannot be interrupted by new occurrences. An untouched prompt that times out is suppressed for 30 seconds and can return afterward only after gaining an additional `ceil(current trigger count / 2)` occurrences.
-- Split the viewer-based automatic threshold into finer bands. With the default base of 6, 3,000 viewers uses 6 occurrences, 10,000 uses 8, 20,000 uses 9, and values above 20,000 continue rising instead of sharing one broad 8-occurrence band.
-- Strengthened floating-radar ownership so duplicate content runtimes cannot leave multiple launchers, onboarding guides, or prompt queues on the same page.
+- 将一次性雷达说明重新设计为紧凑的主题色引导卡，并锚定到可拖动的雷达入口。雷达启用并完成加载后立即显示引导，不再等待第一条高频弹幕；确认引导前暂停队列 DOM 和动画，避免弹幕达到阈值时引导闪烁。
+- 将默认 +1 提示停留时间从 6 秒调整为 10 秒。雷达入口面板同时显示当前模式，以及自动模式正在使用的观众规模或弹幕流量信号。
+- 根据关闭原因拆分雷达提示的抑制规则。点击“暂不”或 `+1` 后强制静默 40 秒，期间新出现的同类弹幕不能打断静默；未操作并自动超时的提示静默 30 秒，之后还需新增 `ceil(当前触发次数 / 2)` 次才可重新出现。
+- 将基于观众数的自动阈值拆分为更细的档位。以默认基础阈值 6 为例：3000 人使用 6 次，1 万人使用 8 次，2 万人使用 9 次；超过 2 万后继续逐档提高，不再全部共用 8 次阈值。
+- 加强浮动雷达的实例所有权控制，避免重复内容运行时在同一页面残留多个入口、引导卡或提示队列。
 
-### Fixed
+### 修复
 
-- Fixed Douyu overlay danmaku composed of multiple sibling text segments being truncated to the first segment in +1, Copy, Favorite, and radar extraction. Segments such as `保卫鱼娘` and `查看活动>` are now retained in their displayed order as one message.
-- Fixed Douyin native image Emoji in image-only and mixed messages from other viewers being reduced to generic text or rejected by +1, Copy, and Favorite. Trusted Emoji resources are restored to ordered bracket text such as `[杀马特][杀马特][杀马特]`, which Douyin resolves through its native editor.
-- Removed the themed background fill from self-sent Douyin danmaku and merged the self-message and hover states into one selection frame, preventing a double outline while keeping the sent-message marker visible.
-- Filtered platform notices and non-message rows more strictly before they enter the frequent-message radar, while preserving legitimate repeated messages from the same source.
+- 修复斗鱼画面弹幕包含多个并列正文片段时，`+1`、复制、收藏和雷达只能读取第一段的问题。类似 `保卫鱼娘` 与 `查看活动>` 的片段现在会按页面顺序合并为一条完整消息。
+- 修复其他用户发送的抖音纯图片表情和图文混排弹幕被降级为通用文字，或被 `+1`、复制、收藏拒绝的问题。可信表情资源会恢复为 `[杀马特][杀马特][杀马特]` 等有序括号文本，并交由抖音官方编辑器识别。
+- 移除抖音本人弹幕的主题背景填充，将本人消息状态和悬停状态合并为一个选择框，保留本人消息标记的同时避免双重边框。
+- 加强高频弹幕进入雷达前的平台通知和非消息行过滤，同时保留同一来源中真实重复发送的普通弹幕。
 
-### Maintenance
+### 维护
 
-- Added a numbered, dependency-aware checklist for incrementally splitting and typing the shared content script and the two large Douyin runtime entries without changing platform behavior.
-- Removed obsolete complex-radar HTML prototypes and unused Telegram SVG assets, and standardized the favorites room icon on the shared kebab-case asset path.
+- 新增带稳定编号和依赖顺序的实施清单，用于在不改变平台行为的前提下，逐步拆分并类型化通用内容脚本和两个大型抖音运行入口。
+- 删除废弃的复杂雷达 HTML 原型和未引用的 Telegram SVG 资源，并将收藏页直播间图标统一到 kebab-case 命名的公共资源路径。
+- 将本更新日志及后续版本记录统一为简体中文。
 
 ## [2.3.1] - 2026-08-24
 
-### Added
+### 新增
 
-- Added a lightweight frequent-message +1 reminder for all four platforms. It counts identical plain text in the latest minute, deduplicates chat/video mirrors, and prompts at a configurable occurrence threshold.
-- Added a one-time introduction when the danmaku radar first produces a valid +1 queue. It explains that the radar never sends automatically, lists the available settings, pauses the active countdown while open, and stores only a local acknowledgement after the user confirms or opens settings.
-- Added a persistent **Wheel order** to the favorites page. Users can drag the dedicated handle to reorder danmaku, with move-up and move-down buttons retained for keyboard and precise operation.
-- The quick favorites wheel now always uses the first six current-room favorites from **Wheel order**, so changes made in the favorites page are reflected the next time the wheel opens.
+- 为四个平台新增轻量高频弹幕 +1 提醒。它统计最近一分钟内相同的纯文字弹幕，合并聊天区与画面中的镜像消息，并在达到可配置次数后提示用户。
+- 新增弹幕雷达首次使用说明。当雷达首次生成有效 +1 队列时，说明卡会解释雷达不会自动发送、列出可配置选项，并在打开期间暂停当前倒计时；用户确认或打开设置后只保存本地确认状态。
+- 收藏页新增持久化的**轮盘顺序**。用户可以拖动专用手柄调整弹幕顺序，同时保留上移和下移按钮，便于键盘和精确操作。
+- 快捷收藏轮盘固定读取当前直播间“轮盘顺序”的前六条收藏，收藏页中的排序调整会在下次打开轮盘时生效。
 
-### Changed
+### 变更
 
-- Removed the topic radar panel, hot words, questions, timelines, summaries, session persistence, semantic models, cloud analysis, offscreen runtime, and optional model/cloud permissions. Douyu reminder collection still observes only structure and text.
-- Kept a lightweight, draggable radar launcher at the top-right of the page. It shows the configured trigger count, prompt duration, queue limit, and prompt scale. Disabling the radar from extension settings stops counting immediately and hides both the launcher and active +1 prompts.
-- Added a configurable 1–60 second auto-hide timer. The remaining time counts down beside +1; the occurrence threshold is now directly configurable from 2–99.
-- Changed frequent-message selection to a newest-first queue with independent countdowns. The queue defaults to 3 entries and can be configured from 1–10.
-- Similar frequent messages now share one queue entry. Repeated phrases and punctuation variants use deterministic canonicalization, while guarded character similarity selects the most frequent original wording without combining its count.
-- Queue overflow permanently retires the oldest message for the rest of the current room session, preventing it from returning after count decay.
-- Added independent 50%–200% scaling controls for the complete +1 prompt queue and live danmaku action capsules.
-- Frequent-message prompts now use keyed enter, queue-move, and exit transitions instead of flashing into place. Existing cards retain their DOM nodes, move with transform-only FLIP animation, and respect the system reduced-motion preference.
-- Browser E2E remains available as a local optional command but has been removed from regular and release CI workflows.
-- Renamed the user-facing “Fixed order”/“Custom order” terminology to **Wheel order** to make the relationship between the favorites list and quick wheel explicit.
-- Replaced the wheel center text with a theme-colored animated bot that follows the pointer and reacts to favorite, other-room, and more selections.
-- Strengthened +1 send protection with a three-second same-message guard. User-triggered sends now run a bounded one-shot observer that merges sanitized endpoint, HTTP status, platform code, and official rejection text into the extension toast without exposing queries, bodies, headers, cookies, CSRF values, or signatures.
+- 删除话题雷达面板、热词、问题、时间线、摘要、会话持久化、语义模型、云端分析、offscreen 运行时以及可选模型/云端权限。斗鱼提醒采集仍然只观察结构和文本。
+- 保留轻量且可拖动的右上角雷达入口，用于显示触发次数、提示时间、队列上限和提示缩放。从扩展设置关闭雷达后会立即停止统计并隐藏入口与活动提示。
+- 新增可配置的 1–60 秒自动隐藏时间，剩余秒数显示在 `+1` 旁；触发次数支持直接设置为 2–99。
+- 高频弹幕提示改为按触发时间倒序排列、分别倒计时的队列。队列默认最多三条，可设置为 1–10 条。
+- 高相似弹幕共用一个队列项。重复短语和标点变体使用确定性规范化；带保护条件的字符相似度只选择出现次数最多的原文，不合并原文计数。
+- 队列溢出时，最旧弹幕在当前直播间会话内永久退役，避免其在计数衰减后再次出现。
+- 新增 50%–200% 的独立缩放设置，分别控制完整 +1 提示队列和直播弹幕操作胶囊。
+- 高频提示使用带 key 的进入、队列位移和退出过渡，替代闪现式布局。已有卡片保留原 DOM 节点并使用仅 transform 的 FLIP 动画，同时遵守系统“减少动态效果”设置。
+- 浏览器 E2E 保留为本地可选命令，但从普通 CI 和发布 CI 中移除。
+- 将面向用户的“固定顺序”和“自定义顺序”统一更名为**轮盘顺序**，明确收藏列表与快捷轮盘之间的关系。
+- 将轮盘中心文字替换为主题色动画机器人，可跟随指针方向，并对收藏、其他直播间和更多选项作出不同反馈。
+- 使用三秒同内容保护加强 +1 发送保护。用户触发发送后运行有界的一次性观察器，将脱敏接口路径、HTTP 状态、平台业务码和官方拒绝文案合并到扩展提示中，不暴露查询参数、请求体、请求头、Cookie、CSRF 或签名。
 
-### Fixed
+### 修复
 
-- Capsule item and divider widths now snap to whole device pixels. All separators retain the same apparent thickness at fractional Windows display scaling, browser zoom, and capsule scale values.
-- Douyin bracket-name Emoji now use the platform's native text-recognition path. Repeated Emoji and mixed sequences such as `[杀马特][杀马特][杀马特]cyh...` are rebuilt in DOM order and sent once as bracket text instead of repeatedly opening and clicking the Emoji picker.
-- Bilibili image-Emoji favorites now keep opaque send identities such as `official_332` separate from their user-facing names, prefer the rendered message body's trusted `alt`/label, and repair previously stored display names when matching metadata is available without changing the working native send path.
-- Douyu image-only Emoji favorites now resolve and click the matching native picker resource instead of submitting their bracketed display name as plain text, preserving Douyu's image-message `pe=3` semantics across built-in and paid/fan-exclusive Emoji packs.
+- 胶囊操作项和分隔线宽度现在对齐到整数设备像素，在 Windows 非整数显示缩放、浏览器缩放和胶囊缩放下保持一致的视觉粗细。
+- 抖音括号表情改用平台原生文本识别路径。重复表情和 `[杀马特][杀马特][杀马特]cyh...` 等混排内容会按 DOM 顺序恢复并作为一条括号文本发送，不再反复打开和点击表情面板。
+- Bilibili 图片表情收藏将 `official_332` 等不透明发送标识与用户可见名称分离，优先使用渲染正文中可信的 `alt` 或标签，并在匹配元数据可用时修复历史收藏名称，同时保持原有可用发送路径不变。
+- 斗鱼纯图片表情收藏会定位并点击匹配的官方表情面板资源，不再把括号显示名称作为普通文字提交，从而为内置、付费和粉丝专属表情保留图片消息 `pe=3` 语义。
 
 ## [2.3.0] - 2026-08-13
 
-### Added
+### 新增
 
-- Added shared send cooldown, accidental-repeat, and concurrent-send protection for +1 and favorite quick sends. Platform feedback probes now surface official rate-limit, duplicate-message, moderation, and account restriction messages instead of reducing every rejection to a generic send failure.
-- Added an optional Copy action to common and Douyin DOM capsules. +1, Reply, Favorite, and Copy can be enabled independently while preserving at least one available action.
-- Added room-aware favorite pinning, searchable tags, persistent wheel ordering, import/export validation, redundant local recovery, and a compact quick-send workflow.
+- 为 `+1` 和收藏快捷发送新增通用发送冷却、误触重复和并发发送保护。平台反馈探针会显示官方频率限制、重复消息、审核或账号限制文案，不再把所有拒绝统一显示为“发送失败”。
+- 为通用胶囊和抖音 DOM 胶囊新增可选“复制”操作。`+1`、回复、收藏和复制可以独立开关，同时始终至少保留一个可用操作。
+- 新增按直播间置顶收藏、可搜索标签、持久化轮盘顺序、导入导出校验、冗余本地恢复和紧凑快捷发送流程。
 
-### Changed
+### 变更
 
-- Bilibili's ordinary bracket Emoji, such as `[大笑]`, now use the official editor's automatic text recognition instead of reopening the Emoji panel. Room, anchor, exclusive, unresolved, and other image Emoji retain the existing native-image send path.
-- Bilibili room image Emoji now use a guarded dual path: the extension still prefers the official Emoji panel, but when no unique panel item can be located it can submit a verified `room_<room>_<resource>` identity through Bilibili's live-page request flow. The fallback requires the identity's real room to match the current room, generates a fresh WBI signature, and never stores or returns authentication material.
-- Unified on-video capsule placement across Huya, Bilibili, Douyin, and Douyu. A capsule stays on the left while its barrage is entering or cannot fit completely on the right, then moves right only after the barrage is fully visible and enough space is available.
-- Unified capsule geometry across platforms: every enabled action uses a 56 px segment and every divider uses 2 px. Douyu's nested native-hover capsule now resists inherited player transforms and high-specificity site flex rules without clipping inner actions.
-- The barrage, the visual gap, and its action capsule now form one continuous hover target. Crossing the gap no longer briefly resumes the barrage before the pointer reaches an action button.
-- Douyu video-danmaku hover now delegates pause and resume to the site's native controller while the extension supplies the selection frame and joined action surface. The native action capsule remains independently configurable and hidden by default.
-- Douyin's safe DOM renderer now supports adaptive left/right capsule ordering without shifting message text or changing lane geometry.
+- Bilibili 的 `[大笑]` 等普通括号表情改用官方编辑器的自动文本识别，不再重新打开表情面板。房间、主播专属、未解析和其他图片表情继续使用原生图片发送路径。
+- Bilibili 房间图片表情改为受保护的双路径：优先使用官方表情面板；无法唯一定位面板项时，可以通过 Bilibili 直播页面请求发送经过验证的 `room_<房间>_<资源>` 标识。后备路径要求资源真实房间与当前直播间一致，每次生成新的 WBI 签名，且不存储或返回认证材料。
+- 统一虎牙、Bilibili、抖音和斗鱼的画面弹幕胶囊位置。弹幕尚未进入完整画面或右侧空间不足时胶囊位于左侧；弹幕完整可见且右侧空间充足后才移动到右侧。
+- 统一四个平台胶囊尺寸：每个启用操作占 56 px，每条分隔线占 2 px。斗鱼嵌套在原生悬停区域中的胶囊能够抵抗播放器继承 transform 和高优先级 flex 规则，不再裁切内部操作。
+- 将弹幕正文、视觉间隙和操作胶囊统一为连续悬停区域，鼠标穿过间隙前往按钮时不再短暂恢复弹幕运动。
+- 斗鱼画面弹幕的暂停和恢复交由网站原生控制器处理，扩展负责选择框和连续操作区域；原生胶囊保留独立设置且默认隐藏。
+- 抖音安全 DOM Renderer 支持自适应左右胶囊顺序，不移动正文，也不改变轨道几何。
 
-### Fixed
+### 修复
 
-- Fixed Douyu danmaku twitching, backward/forward corrections, small release offsets, duplicate hover systems, overlapping text, and transient native capsule decorations caused by competing animation ownership and incomplete native-capsule hiding.
-- Fixed Douyu joined capsules becoming horizontally stretched, excessively wide, or internally clipped after being nested into transformed player elements.
-- Fixed pointer transitions from a Douyu barrage into its capsule or the intervening gap resuming native motion. The complete barrage-gap-capsule subtree now remains one native hover body.
-- Fixed Huya and Bilibili capsule fallback placement covering the selected message when the barrage had not fully entered or the right edge lacked space.
-- Fixed official send-limit responses on Huya and Douyu being reported only as “send failed.”
+- 修复动画所有权竞争和原生胶囊隐藏不完整导致的斗鱼弹幕前后抽搐、位置纠正、松开小幅偏移、双悬停系统、文字重叠和原生胶囊装饰闪现。
+- 修复斗鱼连续胶囊嵌入带 transform 的播放器元素后横向拉伸、宽度过大或内部裁切。
+- 修复鼠标从斗鱼弹幕移动到胶囊或中间间隙时恢复原生运动的问题；完整的弹幕—间隙—胶囊子树现在保持一个原生悬停主体。
+- 修复虎牙和 Bilibili 在弹幕未完全进入画面或右侧空间不足时，后备胶囊覆盖所选弹幕正文的问题。
+- 修复虎牙和斗鱼的官方发送限制只显示“发送失败”的问题。
 
-### Verification
+### 验证
 
-- Added Chrome and Edge browser coverage for normal and fullscreen Douyu hover motion, nested capsule width, site-level flex overrides, adaptive placement, and gap-hover continuity.
-- Added cross-platform browser assertions that the gap remains hovered beyond the previous leave delay, plus unit coverage for left/right capsule placement.
+- 增加 Chrome 和 Edge 下斗鱼普通模式与全屏模式的悬停运动、嵌套胶囊宽度、站点级 flex 覆盖、自适应位置和间隙悬停连续性验证。
+- 增加跨平台浏览器断言，确认鼠标停留在间隙的时间超过旧离开延迟后仍保持悬停，并补充胶囊左右位置的单元测试。
 
 ## [2.2.8] - 2026-08-11
 
-### Fixed
+### 修复
 
-- Huya native image Emoji lookup now treats duplicate normal-player and fullscreen panel nodes with the same `data-id` or material id as one official resource, preventing valid items such as `[傲慢]` (`data-id="29"`) from being rejected as ambiguous.
-- Huya player Emoji that expose only a generic label or an opaque renderer URL now recover their exact bracketed name from the matching recent side-chat resource before resolving and clicking the native Emoji panel item.
+- 虎牙原生图片表情查找将普通播放器和全屏面板中具有相同 `data-id` 或素材 ID 的重复节点视为同一官方资源，避免 `[傲慢]`（`data-id="29"`）等有效表情因“存在多个匹配项”而被拒绝。
+- 虎牙播放器表情只有通用标签或不透明 Renderer URL 时，会先从近期侧聊中的匹配资源恢复准确括号名称，再定位并点击原生表情面板项。
 
 ## [2.2.7] - 2026-08-10
 
-### Fixed
+### 修复
 
-- Fully visible and player-edge-clipped video danmaku now both show exactly one hover selection frame. Fully visible messages use the normal outside outline; clipped messages are explicitly marked and replace that outline with a single inset frame instead of drawing both styles together.
+- 完整可见和被播放器边缘裁切的画面弹幕现在都只显示一个悬停选择框。完整可见弹幕使用普通外描边；被裁切弹幕会被明确标记，并使用单一内描边替代外描边，不再同时绘制两套边框。
 
 ## [2.2.6] - 2026-08-10
 
-### Fixed
+### 修复
 
-- Huya, Bilibili, and Douyu video danmaku once again receive the themed selection frame automatically on hover. Player-edge clipping is now applied only when content actually crosses a player boundary, while clipped frozen messages use a matching inset frame so the selection remains visible without leaking into the side column.
+- 虎牙、Bilibili 和斗鱼的画面弹幕重新在悬停时自动显示主题选择框。只有内容确实越过播放器边界时才进行边缘裁切；被冻结且被裁切的弹幕使用匹配的内描边，保持选择可见且不溢出到侧边栏。
 
 ## [2.2.5] - 2026-08-10
 
-### Fixed
+### 修复
 
-- Huya, Bilibili, and Douyu video-danmaku hover detection is now clipped to the visible player viewport. Invisible portions of a right-to-left danmaku DOM box can no longer be hovered from the adjacent chat or audience column; frozen snapshots are clipped at the player edge, the action capsule stays inside the video, and crossing the hard player boundary clears the overlay selection immediately.
+- 虎牙、Bilibili 和斗鱼的画面弹幕悬停检测限制在可见播放器区域内。右向左滚动弹幕 DOM 盒子的不可见部分无法再从相邻聊天栏或观众栏触发悬停；冻结快照在播放器边缘裁切，操作胶囊保持在视频内，跨过播放器硬边界会立即清除选择。
 
-### Performance
+### 性能
 
-- The active player viewport is cached for the duration of an overlay hover and refreshed only for selection, scrolling, resizing, or fullscreen changes, avoiding repeated layout reads on every pointer event.
+- 活动画面弹幕悬停期间缓存播放器可视区域，仅在选择、滚动、缩放或全屏变化时刷新，避免每次指针事件都重复读取布局。
 
 ## [2.2.4] - 2026-08-10
 
-### Fixed
+### 修复
 
-- Douyu's detached `btnscontainerrect-*` triangle in `#comment-dzjy-container` is now hidden together with the native video-danmaku action panel. The hashed class is covered by both runtime remount detection and force-hidden CSS, preventing the black arrow from returning after Douyu rebuilds the portal.
+- 斗鱼 `#comment-dzjy-container` 中脱离主体的 `btnscontainerrect-*` 三角装饰现在会和原生画面弹幕操作面板一起隐藏。运行时重新挂载检测和强制隐藏 CSS 均覆盖该哈希类名，避免斗鱼重建 portal 后黑色箭头再次出现。
 
 ## [2.2.3] - 2026-08-10
 
-### Added
+### 新增
 
-- Favorites can now be pinned per live room, labeled with up to eight searchable tags, and moved up or down in a persistent custom order. Existing schema-v2 favorites are upgraded in place without clearing local data.
-- The danmaku capsule now has an optional Copy action that copies the complete message, including bracketed image-emoji names. +1, Reply, Favorite, and Copy can be switched independently; Copy defaults off and at least one action always remains enabled.
+- 收藏支持按直播间置顶、最多八个可搜索标签，以及持久化自定义顺序中的上移和下移。现有 schema v2 收藏会原地升级，不会清空本地数据。
+- 弹幕胶囊新增可选“复制”操作，可以复制包含括号图片表情名称的完整消息。`+1`、回复、收藏和复制可以独立开关；复制默认关闭，并始终至少保留一个启用操作。
 
-### Fixed
+### 修复
 
-- Douyu's native video-danmaku action capsule is now removed as one complete surface: both `afterpic-*` and `afterDiv-*` tail decorations, their pseudo-elements, and every action-only wrapper between the buttons and the danmaku item are hidden and excluded from the frozen hover snapshot.
-- Sender lookup now stops at the concrete chat-message row instead of walking into the whole chat list, preventing senderless messages from being incorrectly associated with the first visible user.
+- 将斗鱼原生画面弹幕操作胶囊作为完整界面隐藏：`afterpic-*`、`afterDiv-*` 尾部装饰、对应伪元素，以及按钮与弹幕主体之间仅用于操作的包装节点均会隐藏，并排除在冻结悬停快照之外。
+- 发送者查找在具体聊天消息行处停止，不再继续向上遍历整个聊天列表，避免无发送者消息错误关联到第一个可见用户。
 
 ## [2.2.2] - 2026-08-07
 
-### Fixed
+### 修复
 
-- Huya and Douyu bracketed image Emoji such as `[开心]` can now be hovered in both side chat and the video overlay, resolve to one unique item in the platform's native Emoji panel, and are confirmed by an image echo; input clearing is no longer treated as success, so the extension neither downgrades them to literal text nor submits them twice.
-- Bilibili mixed text/Emoji danmaku (e.g. `可惜可惜[dog][dog]`) now sends the full message instead of only the first Emoji. Mixed content always resolves to an ordered-text send: missing Emoji display names are recovered from the danmaku row's `data-danmaku` attribute, the matching side-chat image, or the native Emoji panel before falling back to the complete ordered text.
-- Bilibili streamer-exclusive image Emoji no longer fail with "未在表情面板中找到对应Emoji": panel matching is restored to the verified unique-match behavior, and when the panel is unavailable a single bracketed-name payload falls back to sending `[表情名]`, which Bilibili's editor renders back into the image Emoji.
-- Non-fullscreen Bilibili Emoji sends now behave like fullscreen: `enrichRichPayloadAssetNames` is applied to mixed content in every mode, so missing display names are resolved consistently.
-- Favorited streamer-exclusive Emoji stay sendable when their panel pack is unavailable via the same bracketed-text fallback.
+- 虎牙和斗鱼的 `[开心]` 等括号图片表情可以在侧聊和画面弹幕中悬停，能够解析为官方表情面板中的唯一资源，并通过图片回显确认发送；输入框清空不再被视为成功，因此扩展不会把它们降级为普通文字或重复提交。
+- Bilibili 图文混排弹幕（例如 `可惜可惜[dog][dog]`）会发送完整内容，不再只发送第一个表情。混排内容始终解析为有序文本：缺失的表情显示名称依次从弹幕行 `data-danmaku`、匹配侧聊图片或官方表情面板恢复，最后才回退到完整有序文本。
+- Bilibili 主播专属图片表情不再报“未在表情面板中找到对应 Emoji”。面板匹配恢复为经过校验的唯一匹配；面板不可用时，单个括号名称会回退发送 `[表情名]`，由 Bilibili 编辑器重新渲染为图片表情。
+- 非全屏 Bilibili 表情发送与全屏保持一致：所有显示模式中的混排内容都会执行 `enrichRichPayloadAssetNames`，统一补全缺失名称。
+- 已收藏的主播专属表情在对应面板表情包不可用时，仍可通过相同的括号文本后备路径发送。
 
-### Changed
+### 变更
 
-- Platform enable rows in the settings page now use the same toggle switch component as the rest of the settings.
-- The platform-color drawers all start closed instead of opening Bilibili by default.
-- "侧边聊天栏弹幕胶囊" and "斗鱼播放器原生胶囊" are now independent settings pages with their own sidebar entries instead of subsections under platform details.
-- The favorites guide preview in the settings page was updated with fresh example data.
-- Favorite collection times now show only month/day for the current year and year/month/day for older favorites.
-- Component styles were moved into their Vue SFCs (SCSS), with the favorites Shadow DOM styles kept as an isolated `favorites.scss`.
-- `.vscode/` is now fully ignored.
+- 设置页的平台启用行改用与其他设置一致的开关组件。
+- 所有平台颜色抽屉默认收起，不再默认展开 Bilibili。
+- “侧边聊天栏弹幕胶囊”和“斗鱼播放器原生胶囊”改为独立设置页面，不再作为平台详情中的子区块。
+- 更新设置页中的收藏功能示例数据。
+- 当前年份的收藏时间只显示月/日，较早收藏显示年/月/日。
+- 组件样式迁入各自 Vue SFC（SCSS），收藏 Shadow DOM 样式继续保留为隔离的 `favorites.scss`。
+- 完整忽略 `.vscode/` 目录。
 
 ## [2.2.1] - 2026-08-05
 
-### Fixed
+### 修复
 
-- Douyin replies no longer fail with "未能识别到这条弹幕的发送者": sender extraction was skipped because real chat rows share the `webcast-chatroom` class with the chat root, and virtual-list recycling could remove a row before the sender scan ever saw it. Senders are now read before the chat-root walk stops and are also extracted from removed rows.
-- Douyin manual sends (typing in the fullscreen quick-send bar or side chat) are framed consistently in both the canvas renderer and side chat, including nested contenteditable editors and sends whose input is cleared before the click handler runs.
-- Danmaku containing colons (e.g. scores like "13:0了") are no longer truncated to "0了" during +1, favorites, or replies: chat rows and canvas barrages now share the same pure text normalization, so sender correlation and text matching stay consistent.
-- Bilibili danmaku freeze on hover now reads the position after pausing animations, so frozen clones no longer jump toward the cursor, and hover detection falls back to an immediate point lookup instead of waiting for the throttled move handler.
-- Douyin favorite writes no longer reject valid senders after SPA navigation or short-link redirects; the background sender check now accepts the reported room URL and any Douyin host that the manifest already restricts content scripts to.
+- 修复抖音回复提示“未能识别到这条弹幕的发送者”的问题：真实聊天行与聊天根共享 `webcast-chatroom` 类名，导致发送者提取提前停止；虚拟列表回收也可能在扫描前移除节点。现在会在聊天根遍历停止前读取发送者，并从被移除的行中补充提取。
+- 抖音手动发送（在全屏快捷输入栏或侧聊中输入）会在 Canvas Renderer 和侧聊中一致框选，包括嵌套 contenteditable 编辑器，以及点击处理器运行前输入框已被清空的发送。
+- 包含冒号的弹幕（例如比分 `13:0了`）在 +1、收藏或回复时不再被截断为 `0了`。聊天行和 Canvas 弹幕共用纯文本规范化逻辑，使发送者关联和文本匹配保持一致。
+- Bilibili 弹幕悬停冻结会在暂停动画后读取位置，冻结克隆不再向鼠标方向跳动；悬停检测在节流移动处理器尚未运行时会回退到立即执行点命中。
+- 抖音在 SPA 跳转或短链接重定向后写入收藏时，不再错误拒绝有效发送者。后台来源检查接受上报的直播间 URL，以及 Manifest 已限制内容脚本访问的任意抖音主机。
 
 ## [2.2.0] - 2026-08-03
 
-### Added
+### 新增
 
-- Real unpacked-extension E2E coverage for stable Chrome and Edge through the DevTools extension protocol.
-- Responsive settings-page E2E coverage in Chinese and English at compact, normal, and wide widths.
-- Privacy-safe, in-memory diagnostics that can be copied from the settings page.
-- Chinese and English Chrome i18n catalogs for the manifest, settings, actions, feedback, and ARIA labels.
-- Platform adapter contracts and ordered rich-danmaku descriptors for incremental entry-point extraction.
-- Shared editor DOM helpers, inert overlay snapshots, and platform Emoji configuration modules.
-- Tag validation, deterministic release archives, SHA256 checksums, and GitHub Pages privacy publishing.
+- 通过 DevTools 扩展协议，为稳定版 Chrome 和 Edge 增加真实未打包扩展 E2E 覆盖。
+- 为中文和英文设置页增加紧凑、标准和宽屏尺寸的响应式 E2E 覆盖。
+- 新增隐私安全、仅保存在内存中的诊断信息，可从设置页复制。
+- 为 Manifest、设置、操作、反馈和 ARIA 标签新增完整的中英文 Chrome i18n 目录。
+- 新增平台适配器契约和有序富弹幕描述，为逐步提取入口逻辑提供边界。
+- 新增共享编辑器 DOM 工具、惰性浮层快照和平台表情配置模块。
+- 新增标签校验、确定性发布压缩包、SHA256 校验和 GitHub Pages 隐私页面发布。
 
-### Changed
+### 变更
 
-- Replaced Douyin's 50 ms route polling with event-driven routing and a visible-page-only 1 second fallback.
-- Bounded and released observers, timers, sender caches, and pending route work when pages are hidden or unloaded.
-- Pinned GitHub Actions to immutable commits and updated CI to Node.js 22.22.2.
-- Split the settings sidebar and top bar into focused Vue components and removed unused legacy CSS.
+- 将抖音每 50 ms 路由轮询替换为事件驱动路由，并保留仅页面可见时运行的 1 秒后备轮询。
+- 页面隐藏或卸载时限制并释放观察器、计时器、发送者缓存和待处理路由任务。
+- GitHub Actions 固定到不可变提交，并将 CI Node.js 更新为 22.22.2。
+- 将设置页侧边栏和顶部栏拆分为独立 Vue 组件，并删除未使用的旧 CSS。
 
-### Fixed
+### 修复
 
-- Sender lookup exceptions no longer abort reply preparation without feedback.
-- Browser packaging is deterministic and works consistently on Windows and Fedora.
-- Settings-page header actions no longer wrap, overlap, or squeeze into vertical text.
-- Every localized message now has a complete Chinese fallback.
+- 发送者查找异常不再无提示地中断回复准备。
+- 浏览器扩展打包具有确定性，并能在 Windows 和 Fedora 上保持一致。
+- 设置页标题栏操作不再换行、重叠或挤压成竖排文字。
+- 每一条本地化消息现在都有完整中文后备文本。
 
-### Compatibility
+### 兼容性
 
-- Favorites remain on schema v2; existing favorites are retained without destructive migration.
-- Permissions remain limited to the existing `storage`, `scripting`, and current host scope.
+- 收藏继续使用 schema v2，现有收藏会保留，不执行破坏性迁移。
+- 权限继续限制在现有 `storage`、`scripting` 和当前主机范围内。
 
 [2.3.2]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.3.2
 [2.3.1]: https://github.com/SadUnicorn171/danmaku-echo/releases/tag/v2.3.1
