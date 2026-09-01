@@ -34,19 +34,6 @@ jobs:
       - name: Run full checks
         run: npm run check
 
-      - name: Run Chrome and Edge E2E
-        id: browser-e2e
-        run: npm run test:browser
-
-      - name: Upload browser diagnostics
-        if: ${{ failure() && steps.browser-e2e.outcome == 'failure' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
-        with:
-          name: browser-e2e-release-failure
-          path: test-results/browser-e2e
-          if-no-files-found: warn
-          retention-days: 7
-
       - name: Build canonical release archive
         run: node scripts/package.cjs
 

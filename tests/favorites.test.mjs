@@ -194,6 +194,59 @@ test("prefers a Bilibili room Emoji name over a neighboring badge description", 
   }), "[发财了]");
 });
 
+test("prefers a Bilibili Emoji alt name over an official resource identity", () => {
+  assert.equal(favorites.favoriteAssetDisplayName({
+    keys: [
+      "native-panel:official_332",
+      "name:冲鸭",
+      "raw:official_332",
+      "file:dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png"
+    ],
+    src: "https://i0.hdslb.com/bfs/live/dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png",
+    token: "[official_332]"
+  }), "[冲鸭]");
+});
+
+test("repairs a stored Bilibili official-id display name while preserving send identity", async () => {
+  const asset = {
+    keys: ["native-panel:official_332", "name:冲鸭", "raw:official_332"],
+    src: "https://i0.hdslb.com/bfs/live/dea7fbbc1c3d3c80f4c7b27263e13460f21874e4.png",
+    token: "[official_332]"
+  };
+  const legacy = {
+    danmakuEchoFavoritesV1: {
+      schemaVersion: 2,
+      updatedAt: 1,
+      items: [{
+        id: "official-id-name",
+        text: "[official_332]",
+        payload: {
+          text: "[official_332]",
+          plainText: "",
+          assets: [asset],
+          parts: [{ type: "emoji", asset }]
+        },
+        normalizedText: "[official_332]",
+        createdAt: 1,
+        updatedAt: 1,
+        lastSentAt: 0,
+        totalSendCount: 0,
+        globalPinned: false,
+        origins: [],
+        roomStats: {}
+      }]
+    }
+  };
+  const repository = favorites.createFavoritesRepository(memoryStorage(legacy));
+  await repository.load();
+
+  assert.equal(repository.database.items[0].text, "[冲鸭]");
+  assert.equal(
+    repository.database.items[0].payload.assets[0].keys.includes("native-panel:official_332"),
+    true
+  );
+});
+
 test("re-favoriting repairs a Bilibili room Emoji previously saved as a badge image", async () => {
   const repository = favorites.createFavoritesRepository(memoryStorage());
   await repository.load();
@@ -722,6 +775,27 @@ test("renders a theme-colored radial bot that follows the pointer direction", ()
   assert.match(styles, /\.bcp-favorites-radial-center\.is-other/);
   assert.doesNotMatch(styles, /\.bcp-favorites-radial-copy/);
   assert.match(styles, /prefers-reduced-motion:[\s\S]*?\.bcp-favorites-radial-bot-eyes/);
+});
+
+test("uses a themed, keyboard-accessible custom favorites sort menu", () => {
+  const component = readFileSync(
+    resolve(root, "src", "features", "favorites", "FavoritesLauncher.vue"),
+    "utf8"
+  );
+  const styles = readFileSync(
+    resolve(root, "src", "assets", "styles", "favorites.scss"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(component, /<select[\s>]/);
+  assert.match(component, /class="bcp-favorites-sort-trigger"/);
+  assert.match(component, /aria-haspopup="listbox"/);
+  assert.match(component, /class="bcp-favorites-sort-menu"/);
+  assert.match(component, /role="option"/);
+  assert.match(component, /@keydown\.down\.prevent="focusSortOption/);
+  assert.match(component, /@keydown\.esc\.stop\.prevent="closeSortMenu\(true\)"/);
+  assert.match(styles, /\.bcp-favorites-sort-menu\s*\{[\s\S]*?var\(--bcp-favorite-accent/);
+  assert.match(styles, /\.bcp-favorites-sort-menu button\.is-selected/);
 });
 
 test("uses a compact text-only send button in favorite rows", () => {

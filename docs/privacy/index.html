@@ -21,16 +21,18 @@
   <body>
     <main>
       <h1>Danmaku Echo</h1>
-      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-08-03</p>
+      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-08-28</p>
       <nav aria-label="Languages"><a href="#zh-cn">中文</a><a href="#english">English</a></nav>
 
       <section id="zh-cn" lang="zh-CN">
         <h2>中文</h2>
-        <p>Danmaku Echo 不收集、传输、出售或与第三方共享个人数据，也不使用远程代码或分析服务。</p>
+        <p>Danmaku Echo 不收集、出售或与第三方共享个人数据。高频 +1 提醒只在当前直播页面内存中统计最近一分钟的相同文字，不持久化或传输分析数据。</p>
         <h3>本地数据</h3>
-        <p>扩展设置由浏览器的 <code>storage.sync</code> 保存，是否跨设备同步由浏览器账户和浏览器设置决定。弹幕收藏及其必要的显示资源信息仅保存在 <code>storage.local</code>，不会由本扩展上传。卸载扩展或清除扩展数据可能删除这些内容。</p>
+        <p>扩展设置由浏览器的 <code>storage.sync</code> 保存，是否跨设备同步由浏览器账户和浏览器设置决定。弹幕收藏和弹幕雷达首次说明的布尔确认标记保存在 <code>storage.local</code>；确认标记不包含弹幕或账号信息。高频 +1 提醒的计数仅存在于当前页面内存中，刷新或关闭页面后清除。卸载扩展或清除扩展数据可能删除设置、收藏和确认标记。</p>
         <h3>页面访问与权限</h3>
-        <p>扩展仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面识别弹幕，并通过网站现有的官方输入框和交互控件执行用户明确发起的 +1 或回复操作。<code>scripting</code> 权限仅用于抖音直播单页路由切换后恢复扩展运行时。扩展不会读取或保存 Cookie、密码、CSRF、登录令牌或请求体。</p>
+        <p>扩展仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面识别弹幕，并通过网站现有的官方输入框和交互控件执行用户明确发起的 +1 或回复操作。<code>scripting</code> 权限用于抖音直播单页路由恢复、受保护的 B 站房间表情后备发送，以及用户主动发送后最多 8 秒的一次性结果观察。虎牙、斗鱼的雷达规模信号只读取当前直播页已显示的贵宾数，不请求、换算或回退到直播热度。提示只保留请求方法、去除查询参数后的路径、HTTP 状态、业务码和官方错误文案；请求体仅在页面上下文内用于识别弹幕请求，不会传出或保存，请求头、Cookie、密码、CSRF、签名和登录令牌也不会传出或保存。</p>
+        <h3>高频 +1 提醒</h3>
+        <p>该功能只对最近一分钟内完全相同的普通文字弹幕进行轻量计数，达到设置门槛后显示“暂不 / +1”提示。B 站和抖音默认基础门槛为 6 次并按页面公开观众数调整；虎牙和斗鱼为 8 次并按页面贵宾数使用独立分档调整。直播热度不再用于估算或回退。它不生成热词、问题、时间线或摘要，不下载模型，也不发送弹幕用于云端分析。</p>
         <h3>诊断信息</h3>
         <p>“复制当前页面诊断”只在内存中生成结构化状态，并在用户点击后复制到剪贴板。诊断不包含弹幕正文、用户名、UID、房间号、完整 URL、Cookie、CSRF、收藏内容或请求体；扩展不会自动上传或持久化诊断。</p>
         <h3>变更与联系</h3>
@@ -39,11 +41,13 @@
 
       <section id="english" lang="en">
         <h2>English</h2>
-        <p>Danmaku Echo does not collect, transmit, sell, or share personal data. It does not use remote code or analytics services.</p>
+        <p>Danmaku Echo does not collect, sell, or share personal data. Frequent-message +1 reminders count identical text only in current-page memory and do not persist or transmit analysis data.</p>
         <h3>Local data</h3>
-        <p>Extension preferences are stored with the browser's <code>storage.sync</code>; browser account settings determine whether they synchronize between devices. Danmaku favorites and the resource metadata needed to display them stay in <code>storage.local</code> and are never uploaded by this extension. Uninstalling the extension or clearing extension data may remove them.</p>
+        <p>Extension preferences use <code>storage.sync</code>. Favorites and one Boolean acknowledging the first radar introduction use <code>storage.local</code>; the acknowledgement contains no danmaku or account data. Frequent-message counts exist only in current-page memory and clear on refresh or close. Uninstalling the extension or clearing its data may remove settings, favorites, and the acknowledgement.</p>
         <h3>Site access and permissions</h3>
-        <p>The extension recognizes danmaku only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages. It uses the sites' existing official editors and controls for user-initiated +1 and reply actions. The <code>scripting</code> permission is used only to restore the extension runtime after Douyin single-page navigation. The extension does not read or store cookies, passwords, CSRF values, login tokens, or request bodies.</p>
+        <p>The extension recognizes danmaku only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages. It uses official editors for user-initiated actions. <code>scripting</code> restores the Douyin runtime, supports the guarded Bilibili room-emote fallback, and runs a one-shot send-result observer for at most eight seconds after a user action. Huya and Douyu radar scaling reads only the guest count already displayed on the current live page; it does not request, convert, or fall back to popularity. Toasts retain only the method, endpoint without query parameters, HTTP status, platform code, and native error text. A request body is inspected only inside the page to identify a danmaku send and is never exported or stored; headers, cookies, passwords, CSRF values, signatures, and login tokens are likewise never exported or stored.</p>
+        <h3>Frequent-message +1 reminder</h3>
+        <p>This feature keeps a lightweight count of identical plain-text messages seen during the last minute and shows a Dismiss / +1 prompt at the configured threshold. Bilibili and Douyin use a default base of 6 and adapt to public viewer values, while Huya and Douyu use 8 and adapt to the displayed guest count with separate bands. Popularity is not used as an estimate or fallback. It does not create hot words, questions, timelines, or summaries, download models, or send danmaku to cloud-analysis services.</p>
         <h3>Diagnostics</h3>
         <p>“Copy current-page diagnostics” generates structural state in memory and copies it only after a user click. It excludes danmaku text, usernames, UIDs, room identifiers, full URLs, cookies, CSRF values, favorites, and request bodies. Diagnostics are neither uploaded nor persisted automatically.</p>
         <h3>Changes and contact</h3>

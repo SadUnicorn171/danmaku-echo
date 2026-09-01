@@ -122,7 +122,6 @@ function hasRenderableContent(content: unknown[]): boolean {
 }
 
 .bcp-douyin-dom-track {
-  --bcp-douyin-action-space: 174px;
   --bcp-douyin-action-gap: 8px;
   --bcp-douyin-hover-trailing-space: 12px;
   align-items: center;
@@ -163,8 +162,8 @@ function hasRenderableContent(content: unknown[]): boolean {
   white-space: nowrap;
 }
 
-.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage,
-.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage {
+.bcp-douyin-dom-track[data-hovered='true'] > .bcp-douyin-dom-barrage:not([data-own='true']),
+.bcp-douyin-dom-track:focus-within > .bcp-douyin-dom-barrage:not([data-own='true']) {
   background: transparent;
   box-shadow: 0 0 0 3px var(--bcp-selection, #fd8101);
 }
@@ -188,26 +187,44 @@ function hasRenderableContent(content: unknown[]): boolean {
   white-space: nowrap;
 }
 
-/*
- * Keep the user's frame outside the rendered content. The gap prevents the
- * frame from covering text or image Emoji without changing barrage geometry.
- */
-.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
-  background: color-mix(in srgb,
-    var(--bcp-selection, #fd8101) 18%, transparent);
-  border-radius: 7px;
-  outline: 3px solid color-mix(in srgb,
+/* Own and hovered barrages use one outer frame owner, so hover cannot double it. */
+.bcp-douyin-dom-barrage[data-own='true'] {
+  background: transparent !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb,
     var(--bcp-selection, #fd8101) 96%, transparent);
-  outline-offset: 3px;
 }
 
-/* The side chat keeps native interactions, but sent messages get a layout-neutral frame. */
-[data-bcp-douyin-own-chat-content='true'] {
-  background: rgb(255 91 52 / 14%) !important;
-  border-radius: 7px !important;
+.bcp-douyin-dom-barrage[data-own='true'] .bcp-douyin-dom-content {
+  background: transparent !important;
   box-shadow: none !important;
-  outline: 3px solid rgb(255 116 76 / 92%) !important;
-  outline-offset: 3px !important;
+  outline: none !important;
+}
+
+/* The side chat keeps native interactions; an inert rectangle owns its only frame. */
+[data-bcp-douyin-own-chat-content='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+[data-bcp-douyin-own-chat='true'] {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+[data-bcp-douyin-own-chat-frame='true'] {
+  background: transparent !important;
+  border: 3px solid rgb(255 116 76 / 92%) !important;
+  border-radius: 10px !important;
+  box-sizing: border-box !important;
+  display: block !important;
+  left: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  pointer-events: none !important;
+  position: absolute !important;
+  top: 0 !important;
+  z-index: 2 !important;
 }
 
 /*
@@ -219,12 +236,12 @@ function hasRenderableContent(content: unknown[]): boolean {
   background: linear-gradient(0deg,
     var(--bcp-action-start, #fd8101),
     var(--bcp-action-end, #fd8101));
-  border-radius: 16px;
+  border-radius: var(--bcp-capsule-radius, 16px);
   box-sizing: border-box;
   display: inline-flex;
-  flex: 0 0 var(--bcp-douyin-action-space);
+  flex: 0 0 var(--bcp-douyin-action-space, 174px);
   flex-shrink: 0;
-  height: 40px;
+  height: var(--bcp-capsule-height, 40px);
   margin: 0;
   opacity: 0;
   overflow: hidden;
@@ -233,7 +250,7 @@ function hasRenderableContent(content: unknown[]): boolean {
   position: relative;
   transition: opacity 90ms ease;
   visibility: hidden;
-  width: var(--bcp-douyin-action-space);
+  width: var(--bcp-douyin-action-space, 174px);
   z-index: 3;
 }
 
@@ -259,20 +276,20 @@ function hasRenderableContent(content: unknown[]): boolean {
   color: var(--bcp-action-text, #fff);
   cursor: pointer;
   display: inline-flex;
-  flex: 0 0 56px;
-  font: 600 16px/22px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  flex: 0 0 var(--bcp-capsule-item-width, 56px);
+  font: 600 var(--bcp-capsule-item-font-size, 16px) / var(--bcp-capsule-item-line-height, 22px) "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "ss01" on, "cv01" on;
   justify-content: center;
-  min-width: 56px;
-  padding: 0 12px;
+  min-width: var(--bcp-capsule-item-width, 56px);
+  padding: 0 var(--bcp-capsule-item-padding, 12px);
   touch-action: manipulation;
   transition: background-color 140ms ease, transform 140ms ease;
   white-space: nowrap;
-  width: 56px;
+  width: var(--bcp-capsule-item-width, 56px);
 }
 
 .bcp-douyin-dom-action-item[data-action="plus-one"] {
-  font-size: 14.4px;
+  font-size: var(--bcp-capsule-plus-font-size, 14.4px);
 }
 
 .bcp-douyin-dom-action-item:hover {
@@ -295,12 +312,12 @@ function hasRenderableContent(content: unknown[]): boolean {
   border-radius: 999px;
   box-sizing: border-box;
   display: block;
-  flex: 0 0 2px;
-  height: 24px;
-  max-width: 2px;
-  min-width: 2px;
+  flex: 0 0 var(--bcp-capsule-divider-width, 2px);
+  height: var(--bcp-capsule-divider-height, 24px);
+  max-width: var(--bcp-capsule-divider-width, 2px);
+  min-width: var(--bcp-capsule-divider-width, 2px);
   pointer-events: none;
-  width: 2px;
+  width: var(--bcp-capsule-divider-width, 2px);
 }
 
 .bcp-douyin-dom-track[data-sending='true']
@@ -407,11 +424,11 @@ function hasRenderableContent(content: unknown[]): boolean {
   background: linear-gradient(0deg,
     var(--bcp-action-start, #fd8101),
     var(--bcp-action-end, #fd8101));
-  border-radius: 16px;
+  border-radius: var(--bcp-capsule-radius, 16px);
   box-sizing: border-box;
   display: inline-flex;
   flex: 0 0 auto;
-  height: 40px;
+  height: var(--bcp-capsule-height, 40px);
   overflow: hidden;
   padding: 0;
   pointer-events: auto !important;
@@ -432,20 +449,20 @@ function hasRenderableContent(content: unknown[]): boolean {
   color: var(--bcp-action-text, #fff);
   cursor: pointer;
   display: inline-flex;
-  flex: 0 0 56px;
-  font: 600 16px/22px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  flex: 0 0 var(--bcp-capsule-item-width, 56px);
+  font: 600 var(--bcp-capsule-item-font-size, 16px) / var(--bcp-capsule-item-line-height, 22px) "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "ss01" on, "cv01" on;
   justify-content: center;
-  min-width: 56px;
-  padding: 0 12px;
+  min-width: var(--bcp-capsule-item-width, 56px);
+  padding: 0 var(--bcp-capsule-item-padding, 12px);
   pointer-events: auto !important;
   transition: background-color 140ms ease, transform 140ms ease;
   white-space: nowrap;
-  width: 56px;
+  width: var(--bcp-capsule-item-width, 56px);
 }
 
 .bcp-douyin-action-item[data-action="plus-one"] {
-  font-size: 14.4px;
+  font-size: var(--bcp-capsule-plus-font-size, 14.4px);
 }
 
 .bcp-douyin-action-item:hover {
@@ -474,12 +491,12 @@ function hasRenderableContent(content: unknown[]): boolean {
   border-radius: 999px;
   box-sizing: border-box;
   display: block;
-  flex: 0 0 2px;
-  height: 24px;
-  max-width: 2px;
-  min-width: 2px;
+  flex: 0 0 var(--bcp-capsule-divider-width, 2px);
+  height: var(--bcp-capsule-divider-height, 24px);
+  max-width: var(--bcp-capsule-divider-width, 2px);
+  min-width: var(--bcp-capsule-divider-width, 2px);
   pointer-events: none;
-  width: 2px;
+  width: var(--bcp-capsule-divider-width, 2px);
 }
 
 .bcp-douyin-toast {
@@ -492,21 +509,23 @@ function hasRenderableContent(content: unknown[]): boolean {
   display: flex;
   font: 600 16px/22px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-feature-settings: "ss01" on, "cv01" on;
-  height: 40px;
+  height: auto;
   justify-content: center;
   left: 50%;
   min-height: 36px;
   min-width: 84px;
-  max-width: min(420px, calc(100vw - 32px));
+  max-width: min(560px, calc(100vw - 32px));
   opacity: 0;
-  overflow: hidden;
-  padding: 0 16px;
+  overflow: visible;
+  overflow-wrap: anywhere;
+  padding: 9px 16px;
   pointer-events: none;
   position: fixed;
   top: 28px;
   transform: translate(-50%, -8px) scale(.96);
   transition: opacity 180ms ease, transform 180ms ease;
-  white-space: nowrap;
+  text-align: center;
+  white-space: normal;
   width: max-content;
   z-index: 2147483647;
 }

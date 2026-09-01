@@ -82,6 +82,21 @@ test("clips the DOM barrage renderer to the native Canvas viewport", () => {
   assert.match(pageHook, /layer\.style\.overflow\s*=\s*"hidden"\s*;/);
 });
 
+test("keeps repeat-reminder prompts out of Douyin renderer hover hit testing", () => {
+  const pageHook = readFileSync(
+    resolve(root, "src", "entries", "douyin-page-hook.ts"),
+    "utf8"
+  );
+  assert.match(
+    pageHook,
+    /node\.addEventListener\("pointerenter", \(event\) => \{[\s\S]*?rendererPointerTouchesRepeatReminder\(event\)/
+  );
+  assert.match(
+    pageHook,
+    /document\.addEventListener\("pointermove", releaseRendererTracksCoveredByRepeatReminder, true\)/
+  );
+});
+
 test("normalizes text and rejects non-message labels", () => {
   assert.equal(model.normalizeText("  你好\u200B\n 世界  "), "你好 世界");
   assert.equal(model.plausibleText("主播加油"), true);
@@ -143,8 +158,56 @@ test("preserves stable native Emoji resource hints from the renderer", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(serialized)), [{
     type: "image",
     src: "https://signed.example.com/emoji.png?signature=temporary",
+    emojiToken: "[wave]",
     assetHints: ["emoji-42", "wave", "resource-9"]
   }]);
+});
+
+test("rebuilds ordered native bracket Emoji text from Canvas content", () => {
+  const serialized = model.serializeBarrage({
+    content: [
+      { type: "image", src: "https://example.test/a.webp", emojiName: "杀马特" },
+      { type: "image", src: "https://example.test/a.webp", emojiName: "杀马特" },
+      { type: "text", text: "cyh" },
+      { type: "image", src: "https://example.test/a.webp", emojiName: "[杀马特]" },
+      { type: "text", text: "cyh" }
+    ]
+  });
+
+  assert.equal(model.serializedBarrageText(serialized), "[杀马特][杀马特]cyh[杀马特]cyh");
+});
+
+test("restores repeated Shamate Emoji text from the live CDN resource", () => {
+  const src = "https://p3-pc-sign.douyinpic.com/obj/tos-cn-i-tsj2vxp0zn/ed5fb68598cf4741b3e7f2affd825650?lk3s=343af0a2&x-expires=2103001200&x-signature=temporary";
+  const serialized = model.serializeBarrage({
+    content: Array.from({ length: 3 }, () => ({
+      type: "image",
+      src,
+      alt: ""
+    }))
+  });
+
+  assert.equal(serialized.length, 3);
+  assert.deepEqual(
+    Array.from(serialized, (item) => item.emojiToken),
+    ["[杀马特]", "[杀马特]", "[杀马特]"]
+  );
+  assert.equal(model.serializedBarrageText(serialized), "[杀马特][杀马特][杀马特]");
+});
+
+test("restores another viewer's mixed text and native Douyin Emoji", () => {
+  const serialized = model.serializeBarrage({
+    content: [
+      { type: "text", text: "皮特偷偷上号不开播" },
+      {
+        type: "image",
+        src: "https://p3-pc-sign.douyinpic.com/obj/tos-cn-i-tsj2vxp0zn/87c2ae45679c4cc4a35bd7182fd76935?x-signature=temporary",
+        alt: ""
+      }
+    ]
+  });
+
+  assert.equal(model.serializedBarrageText(serialized), "皮特偷偷上号不开播[看]");
 });
 
 test("converts renderer paints and boxes to bounded CSS values", () => {

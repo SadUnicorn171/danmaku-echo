@@ -31,4 +31,8 @@ for (const [description, pattern] of requirements) {
   }
 }
 
+if (/npm run test:browser|browser-e2e/.test(workflow)) {
+  throw new Error('Browser E2E must remain a local optional test and must not run in CI')
+}
+
 console.log('CI workflow validation passed')

@@ -92,6 +92,10 @@ test("merges partial settings with safe defaults", () => {
   assert.deepEqual(JSON.parse(JSON.stringify(settings.colors.huya)), Object.fromEntries(
     shared.COLOR_SETTING_KEYS.map((key) => [key, ""])
   ));
+  assert.equal(settings.repeatReminder.mode, "auto");
+  assert.equal(settings.repeatReminder.promptDurationSeconds, 10);
+  assert.equal(settings.repeatReminder.manual.bilibili.threshold, 6);
+  assert.equal(settings.repeatReminder.manual.huya.threshold, 8);
 });
 
 test("merges independent action visibility settings", () => {
@@ -104,6 +108,76 @@ test("merges independent action visibility settings", () => {
     favorite: false,
     copy: false
   });
+});
+
+test("migrates the removed radar setting to the lightweight repeat reminder", () => {
+  const settings = shared.mergeSettings({
+    radar: { enabled: false, sensitivity: "high" }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    autoPlusOne: false,
+    enabled: false,
+    manual: {
+      bilibili: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 3 },
+      douyin: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 3 },
+      douyu: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 5 },
+      huya: { promptDurationSeconds: 10, promptScalePercent: 100, queueLimit: 3, threshold: 5 }
+    },
+    mode: "manual",
+    promptDurationSeconds: 10,
+    promptScalePercent: 100,
+    queueLimit: 3,
+    threshold: 3,
+    thresholdVersion: 2
+  });
+});
+
+test("normalizes custom radar queue, trigger, duration, and scale settings", () => {
+  const settings = shared.mergeSettings({
+    interfaceScale: { capsulePercent: 300 },
+    repeatReminder: {
+      enabled: true,
+      promptDurationSeconds: 500,
+      promptScalePercent: 20,
+      queueLimit: 99,
+      threshold: 1
+    }
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.repeatReminder)), {
+    autoPlusOne: false,
+    enabled: true,
+    manual: {
+      bilibili: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 2 },
+      douyin: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 2 },
+      douyu: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 4 },
+      huya: { promptDurationSeconds: 60, promptScalePercent: 50, queueLimit: 10, threshold: 4 }
+    },
+    mode: "manual",
+    promptDurationSeconds: 60,
+    promptScalePercent: 50,
+    queueLimit: 10,
+    threshold: 2,
+    thresholdVersion: 2
+  });
+  assert.deepEqual(JSON.parse(JSON.stringify(settings.interfaceScale)), {
+    capsulePercent: 200
+  });
+});
+
+test("keeps radar auto +1 off by default and preserves an explicit opt-in", () => {
+  assert.equal(shared.mergeSettings().repeatReminder.autoPlusOne, false);
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { autoPlusOne: true }
+  }).repeatReminder.autoPlusOne, true);
+});
+
+test("migrates the old default threshold once while preserving later custom values", () => {
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { threshold: 5 }
+  }).repeatReminder.threshold, 6);
+  assert.equal(shared.mergeSettings({
+    repeatReminder: { threshold: 5, thresholdVersion: 2 }
+  }).repeatReminder.threshold, 5);
 });
 
 test("keeps at least one capsule action enabled", () => {
@@ -201,6 +275,68 @@ test("applies only validated platform color variables", () => {
   assert.equal(values.has("--bcp-error"), false);
   shared.applyPlatformColors(root, {});
   assert.equal(values.size, 0);
+});
+
+test("scales capsule dimensions without scaling its positioned coordinate system", () => {
+  const values = new Map();
+  shared.applyCapsuleScale({
+    style: {
+      setProperty(name, value) {
+        values.set(name, value);
+      }
+    }
+  }, 125);
+  assert.equal(values.get("--bcp-capsule-height"), "50px");
+  assert.equal(values.get("--bcp-capsule-item-width"), "70px");
+  assert.equal(values.get("--bcp-capsule-item-font-size"), "20px");
+  assert.equal(values.get("--bcp-douyin-action-space"), "217.5px");
+  assert.equal(values.has("--bcp-capsule-scale"), false);
+});
+
+test("snaps the capsule's horizontal rhythm to whole pixels", () => {
+  const previousRatio = Object.getOwnPropertyDescriptor(sharedContext, "devicePixelRatio");
+  try {
+    for (const deviceScale of [1, 1.25, 1.5, 1.75, 2, 2.25]) {
+      Object.defineProperty(sharedContext, "devicePixelRatio", {
+        configurable: true,
+        value: deviceScale
+      });
+      for (let percent = 50; percent <= 200; percent += 1) {
+        const values = new Map();
+        shared.applyCapsuleScale({
+          style: {
+            setProperty(name, value) {
+              values.set(name, value);
+            }
+          }
+        }, percent);
+        const dividerWidth = Number.parseFloat(values.get("--bcp-capsule-divider-width"));
+        const itemWidth = Number.parseFloat(values.get("--bcp-capsule-item-width"));
+        assert.equal(
+          Math.abs(dividerWidth * deviceScale - Math.round(dividerWidth * deviceScale)) < 1e-9,
+          true,
+          `divider width at ${percent}% and ${deviceScale}x DPR`
+        );
+        assert.equal(
+          Math.abs(itemWidth * deviceScale - Math.round(itemWidth * deviceScale)) < 1e-9,
+          true,
+          `item width at ${percent}% and ${deviceScale}x DPR`
+        );
+        assert.equal(
+          Math.abs((itemWidth + dividerWidth) * deviceScale
+            - Math.round((itemWidth + dividerWidth) * deviceScale)) < 1e-9,
+          true,
+          `divider step at ${percent}% and ${deviceScale}x DPR`
+        );
+      }
+    }
+  } finally {
+    if (previousRatio) {
+      Object.defineProperty(sharedContext, "devicePixelRatio", previousRatio);
+    } else {
+      delete sharedContext.devicePixelRatio;
+    }
+  }
 });
 
 test("Douyin bootstrap requests the full runtime after an SPA live-route entry", () => {

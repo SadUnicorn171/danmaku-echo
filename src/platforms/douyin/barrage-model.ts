@@ -1,3 +1,5 @@
+import { douyinEmojiTokenFromMetadata } from "./emoji-token";
+
 interface BoxEdges {
   bottom: number;
   left: number;
@@ -29,6 +31,7 @@ export interface SerializedBarrageItem {
   margin?: number | number[];
   opacity?: number;
   padding?: number | number[];
+  emojiToken?: string;
   src?: string;
   strokeColor?: SafePaint;
   strokeWidth?: number;
@@ -111,6 +114,8 @@ function imageAssetHints(value: Record<string, unknown>): string[] {
   const keys = [
     "id", "key", "name", "text", "alt", "title", "uri", "url",
     "emojiId", "emoji_id", "emojiName", "emoji_name",
+    "alternativeText", "alternative_text", "defaultContent", "default_content",
+    "displayName", "display_name", "showName", "show_name",
     "resourceId", "resource_id", "webUri", "web_uri"
   ];
   const hints = new Set<string>();
@@ -126,6 +131,25 @@ function imageAssetHints(value: Record<string, unknown>): string[] {
     keys.forEach((nestedKey) => add(nested[nestedKey]));
   });
   return [...hints].slice(0, 20);
+}
+
+function nativeEmojiToken(value: Record<string, unknown>): string {
+  return douyinEmojiTokenFromMetadata(value);
+}
+
+export function serializedBarrageText(content: unknown): string {
+  let text = "";
+  const visit = (item: unknown): void => {
+    if (!isRecord(item) || Array.from(text).length >= 1000) return;
+    if (item.type === "text") {
+      text += String(item.text == null ? "" : item.text);
+    } else if (item.type === "image") {
+      text += typeof item.emojiToken === "string" ? item.emojiToken : "";
+    }
+    if (Array.isArray(item.content)) item.content.forEach(visit);
+  };
+  (Array.isArray(content) ? content : []).forEach(visit);
+  return normalizeText(text).slice(0, 1000);
 }
 
 export function rendererPaint(value: unknown, background: boolean): string {
@@ -176,6 +200,8 @@ export function serializeContent(
     result.text = String(value.text == null ? "" : value.text).slice(0, 1000);
   } else if (type === "image" && typeof value.src === "string") {
     result.src = value.src.slice(0, 4096);
+    const emojiToken = nativeEmojiToken(value);
+    if (emojiToken) result.emojiToken = emojiToken;
     const hints = imageAssetHints(value);
     if (hints.length) result.assetHints = hints;
   }

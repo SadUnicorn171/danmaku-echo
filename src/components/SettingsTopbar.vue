@@ -10,7 +10,7 @@
           :title="t('settingsHelp')"
           :aria-label="t('settingsHelp')"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.25"/><path d="M9.9 9.45a2.25 2.25 0 1 1 3.55 1.83c-.9.63-1.45 1.1-1.45 2.22"/><circle cx="12" cy="16.25" r=".6" class="filled"/></svg>
+          <img class="resource-links__icon" src="/assets/icons/about.svg" alt="" aria-hidden="true">
           <span>{{ t('settingsHelp') }}</span>
         </a>
         <button
@@ -21,7 +21,7 @@
           :aria-label="t('settingsCopyFeedbackAria', feedbackEmail)"
           @click="emit('copy-feedback', feedbackEmail)"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h14v9.25H9.25L5 19z"/></svg>
+          <img class="resource-links__icon" src="/assets/icons/chat.svg" alt="" aria-hidden="true">
           <span>{{ t('settingsFeedback') }}</span>
           <code>{{ feedbackEmail }}</code>
         </button>
@@ -33,7 +33,7 @@
           :aria-label="t('settingsCopyDiagnostics')"
           @click="emit('copy-diagnostics')"
         >
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.75h8.5L19 8.25v11H7z"/><path d="M15.5 4.75v3.5H19M4.5 8H7M4.5 12H7M4.5 16H7"/></svg>
+          <img class="resource-links__icon" src="/assets/icons/more-all.svg" alt="" aria-hidden="true">
           <span>{{ t('settingsCopyDiagnostics') }}</span>
         </button>
       </div>
@@ -149,20 +149,18 @@ const emit = defineEmits<{
   user-select: text;
 }
 
-.resource-links svg {
-  fill: none;
+.resource-links__icon {
+  display: block;
   flex: 0 0 14px;
   height: 14px;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.7;
+  object-fit: contain;
+  opacity: 0.72;
   width: 14px;
 }
 
-.resource-links svg .filled {
-  fill: currentColor;
-  stroke: none;
+.resource-links a:hover .resource-links__icon,
+.resource-links button:hover .resource-links__icon {
+  opacity: 1;
 }
 
 .master-control {

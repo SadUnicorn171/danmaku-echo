@@ -12,10 +12,12 @@ export interface BilibiliInstallNativeSendObserverRequest {
 export interface BilibiliNativeSendObservation {
   code?: number
   dmType?: string
+  endpoint: string
   hasEmoticonOptions?: boolean
   httpStatus?: number
   identity?: string
   message?: string
+  method: 'POST'
   nonce: string
   source: typeof BILIBILI_NATIVE_SEND_RESULT_SOURCE
   transport: 'fetch' | 'xhr'
@@ -133,7 +135,9 @@ export function installBilibiliNativeSendObserverInPage(options: {
     publish({
       ...formSummary(body),
       ...envelopeSummary(envelope),
+      endpoint: 'api.live.bilibili.com/msg/send',
       httpStatus: response.status,
+      method: 'POST',
       transport: 'fetch',
     })
   }
@@ -148,7 +152,9 @@ export function installBilibiliNativeSendObserverInPage(options: {
         (result) => void publishFetchResponse(result, body),
         (error) => publish({
           ...formSummary(body),
+          endpoint: 'api.live.bilibili.com/msg/send',
           message: String(error instanceof Error ? error.message : error).slice(0, 180),
+          method: 'POST',
           transport: 'fetch',
         }),
       )
@@ -173,7 +179,9 @@ export function installBilibiliNativeSendObserverInPage(options: {
         publish({
           ...summary,
           ...envelopeSummary(envelope),
+          endpoint: 'api.live.bilibili.com/msg/send',
           httpStatus: this.status,
+          method: 'POST',
           transport: 'xhr',
         })
       }, { once: true })

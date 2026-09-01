@@ -21,6 +21,8 @@ function runtime(): LiveRichMessageSenderRuntime {
     reportEmojiNameUnavailable: vi.fn<() => void>(),
     sendBilibiliNative: vi.fn<(payload: LiveRichMessagePayload) => Promise<boolean>>()
       .mockResolvedValue(true),
+    sendDouyuNative: vi.fn<(payload: LiveRichMessagePayload) => Promise<boolean>>()
+      .mockResolvedValue(true),
     sendText: vi.fn<(message: string) => Promise<boolean>>().mockResolvedValue(true),
   }
 }

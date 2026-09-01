@@ -246,9 +246,9 @@ test('gives every enabled action an equal width on every capsule', () => {
     const escapedSelector = selector.replaceAll('.', '\\.')
     const block = styles.match(new RegExp(`${escapedSelector}\\s*\\{[\\s\\S]*?\\}`))
     assert.ok(block, `${selector} styles should exist`)
-    assert.match(block[0], /flex:\s*0 0 56px/)
-    assert.match(block[0], /min-width:\s*56px/)
-    assert.match(block[0], /width:\s*56px/)
+    assert.match(block[0], /flex:\s*0 0 var\(--bcp-capsule-item-width,\s*56px\)/)
+    assert.match(block[0], /min-width:\s*var\(--bcp-capsule-item-width,\s*56px\)/)
+    assert.match(block[0], /width:\s*var\(--bcp-capsule-item-width,\s*56px\)/)
   }
   assert.match(
     douyinPageHook,
@@ -298,7 +298,7 @@ test('confines moving overlay hover and controls to the visible player viewport'
   assert.match(sharedContentSource, /!event\.isTrusted && x === 0 && y === 0/)
 })
 
-test('keeps every capsule divider at the same pixel-stable width', () => {
+test('keeps every capsule divider on the same scalable width variable', () => {
   for (const [styles, selector] of [
     [sharedContentStyles, '.bcp-one-action-divider'],
     [douyinContentStyles, '.bcp-douyin-dom-action-divider'],
@@ -307,10 +307,27 @@ test('keeps every capsule divider at the same pixel-stable width', () => {
     const escapedSelector = selector.replaceAll('.', '\\.')
     const block = styles.match(new RegExp(`${escapedSelector}\\s*\\{[\\s\\S]*?\\}`))
     assert.ok(block, `${selector} styles should exist`)
-    assert.match(block[0], /flex:\s*0 0 2px/)
-    assert.match(block[0], /min-width:\s*2px/)
-    assert.match(block[0], /max-width:\s*2px/)
-    assert.match(block[0], /width:\s*2px/)
+    assert.match(block[0], /flex:\s*0 0 var\(--bcp-capsule-divider-width,\s*2px\)/)
+    assert.match(block[0], /min-width:\s*var\(--bcp-capsule-divider-width,\s*2px\)/)
+    assert.match(block[0], /max-width:\s*var\(--bcp-capsule-divider-width,\s*2px\)/)
+    assert.match(block[0], /width:\s*var\(--bcp-capsule-divider-width,\s*2px\)/)
   }
   assert.match(douyinPageHook, /DOM_ACTION_DIVIDER_WIDTH\s*=\s*2/)
+  assert.match(
+    douyinPageHook,
+    /rendererSnapToDevicePixel\(DOM_ACTION_ITEM_WIDTHS\[key\]\)/,
+  )
+  assert.match(
+    douyinPageHook,
+    /rendererSnapToDevicePixel\(DOM_ACTION_DIVIDER_WIDTH\)/,
+  )
+})
+
+test('offers automatic and per-platform manual danmaku radar modes', () => {
+  assert.match(popupSource, /v-model="settings\.repeatReminder\.mode"/)
+  assert.match(popupSource, /settings\.repeatReminder\.mode === 'manual'/)
+  assert.match(popupSource, /v-for="platform in platforms"/)
+  assert.match(popupSource, /settings\.repeatReminder\.manual\[manualRepeatReminderPlatform\.value\]/)
+  assert.match(popupSource, /role="tablist"/)
+  assert.match(popupSource, /role="tabpanel"/)
 })

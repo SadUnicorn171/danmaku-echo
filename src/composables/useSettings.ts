@@ -17,10 +17,12 @@ export function useSettings() {
   function replaceSettings(value: unknown): void {
     const next = mergeSettings(value);
     settings.enabled = next.enabled;
+    settings.interfaceScale = next.interfaceScale;
     settings.altClick = next.altClick;
     settings.actions = next.actions;
     settings.nativeDanmakuCapsule = next.nativeDanmakuCapsule;
     settings.platforms = next.platforms;
+    settings.repeatReminder = next.repeatReminder;
     settings.sideChatCapsule = next.sideChatCapsule;
     settings.colors = next.colors;
   }

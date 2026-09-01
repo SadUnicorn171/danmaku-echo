@@ -94,6 +94,13 @@ function serializedAssetDescriptor(value: unknown, baseUrl: string): EmojiAssetD
     return null;
   }
   const keys = new Set(normalizedAssetKeys(value.src, baseUrl));
+  const token = typeof value.emojiToken === "string"
+    && /^(?:\[[^\]\r\n]{1,40}\]|\p{Extended_Pictographic})$/u.test(normalizeText(value.emojiToken))
+    ? normalizeText(value.emojiToken)
+    : "";
+  if (token) {
+    normalizedAssetKeys(token, baseUrl).forEach((key) => keys.add(key));
+  }
   if (Array.isArray(value.assetHints)) {
     value.assetHints.slice(0, 20).forEach((hint) => {
       normalizedAssetKeys(hint, baseUrl).forEach((key) => keys.add(key));
@@ -101,7 +108,7 @@ function serializedAssetDescriptor(value: unknown, baseUrl: string): EmojiAssetD
   }
   return {
     src: value.src.slice(0, 4096),
-    token: "",
+    token,
     keys: [...keys].slice(0, 48)
   };
 }

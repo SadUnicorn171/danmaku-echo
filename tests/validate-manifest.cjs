@@ -33,6 +33,10 @@ function hasAllMatches(entry, expected) {
 if (manifest.manifest_version !== 3) {
   throw new Error("manifest_version must be 3");
 }
+if ((manifest.permissions || []).includes("offscreen")
+    || (manifest.optional_host_permissions || []).length) {
+  throw new Error("The lightweight repeat reminder must not request model or cloud permissions");
+}
 
 const referencedFiles = [
   manifest.action && manifest.action.default_popup,
@@ -77,11 +81,11 @@ for (const [label, css] of [["shared", contentCss], ["Douyin", douyinContentCss]
     }
   }
   if (!/data-action[=~"']plus-one/.test(css)
-      || !css.includes("font-size: 14.4px")
-      || !css.includes("flex: 0 0 56px")
-      || !css.includes("min-width: 56px")
-      || !css.includes("width: 56px")) {
-    throw new Error(`${label} actions must use equal 56px button widths`);
+      || !css.includes("--bcp-capsule-plus-font-size")
+      || !/flex:\s*0 0 var\(--bcp-capsule-item-width,\s*56px\)/.test(css)
+      || !/min-width:\s*var\(--bcp-capsule-item-width,\s*56px\)/.test(css)
+      || !/width:\s*var\(--bcp-capsule-item-width,\s*56px\)/.test(css)) {
+    throw new Error(`${label} actions must use the shared scalable button width`);
   }
 }
 

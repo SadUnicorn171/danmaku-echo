@@ -71,6 +71,32 @@ export function allAssetsMatch(
   });
 }
 
+function normalizedOwnText(value: unknown): string {
+  return String(value ?? "").normalize("NFKC").replace(/\s+/gu, " ").trim();
+}
+
+function textOutsideBracketEmoji(value: string): string {
+  return value.replace(/\[[^\]\r\n]{1,40}\]/gu, "").replace(/\s+/gu, "");
+}
+
+export function douyinOwnMessageTextMatches(
+  expected: unknown,
+  observed: unknown,
+  observedHasImage: boolean
+): boolean {
+  const expectedText = normalizedOwnText(expected);
+  const observedText = normalizedOwnText(observed);
+  if (!expectedText || !observedText) return false;
+  if (expectedText === observedText) return true;
+
+  const expectedPlain = textOutsideBracketEmoji(expectedText);
+  const observedPlain = textOutsideBracketEmoji(observedText);
+  if (expectedPlain && observedPlain && expectedPlain === observedPlain) return true;
+
+  const bracketOnly = !expectedPlain && /\[[^\]\r\n]{1,40}\]/u.test(expectedText);
+  return bracketOnly && observedHasImage && observedText === "表情";
+}
+
 export function payloadSignature(payload: RichPayload, comparableText: (value: unknown) => string): string {
   const textKey = comparableText(payload.plainText || payload.text);
   const assetKey = payload.assets.map((asset) => asset.keys.slice().sort()[0] || "")

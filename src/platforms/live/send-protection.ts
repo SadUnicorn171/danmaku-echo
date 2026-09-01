@@ -1,5 +1,6 @@
 export type SendBlockReason = 'accidental' | 'cooldown' | 'duplicate' | 'in-flight'
 export type PlatformSendFeedbackKind = 'duplicate' | 'rate-limit' | 'rejected'
+export type PlatformSendTransport = 'fetch' | 'page' | 'websocket' | 'xhr'
 
 export interface SendBlock {
   allowed: boolean
@@ -8,9 +9,24 @@ export interface SendBlock {
 }
 
 export interface PlatformSendFeedback {
+  code?: number | string
   cooldownMs: number
+  endpoint?: string
+  httpStatus?: number
   kind: PlatformSendFeedbackKind
   message: string
+  method?: string
+  source?: 'network' | 'page'
+  transport?: PlatformSendTransport
+}
+
+export interface PlatformSendResponseSummary {
+  code?: unknown
+  endpoint?: unknown
+  httpStatus?: unknown
+  message?: unknown
+  method?: unknown
+  transport?: unknown
 }
 
 interface SendProtectionOptions {
@@ -21,12 +37,13 @@ interface SendProtectionOptions {
 }
 
 const DEFAULT_ACCIDENTAL_INTERVAL_MS = 800
-const DEFAULT_SAME_MESSAGE_COOLDOWN_MS = 1_000
+const DEFAULT_SAME_MESSAGE_COOLDOWN_MS = 3_000
 const DEFAULT_SUCCESS_COOLDOWN_MS = 1_000
 const DEFAULT_DUPLICATE_COOLDOWN_MS = 8_000
 const DEFAULT_RATE_LIMIT_COOLDOWN_MS = 15_000
 const MAX_PLATFORM_COOLDOWN_MS = 120_000
 const PLATFORM_FEEDBACK_MAX_LENGTH = 180
+const PLATFORM_ENDPOINT_MAX_LENGTH = 120
 
 const DUPLICATE_PATTERN = /(?:请勿|不要|不能|无法)?\s*(?:重复|连续重复|相同内容).{0,14}(?:发送|发言|弹幕|评论|内容)|(?:发送|发言|弹幕|评论).{0,14}(?:重复|相同)|duplicate(?:\s+(?:message|content))?|same\s+(?:message|content)/i
 const RATE_LIMIT_PATTERN = /(?:发送|发言|弹幕|评论|操作|请求|点击|频率|手速).{0,14}(?:太快|过快|频繁|过于频繁|过高|受限|限制)|(?:太快|过快|频繁|过于频繁).{0,14}(?:发送|发言|弹幕|评论|操作|请求)|请.{0,8}(?:稍后|过一会儿?|片刻后|休息).{0,8}(?:再试|发送|发言)|too\s+(?:fast|frequent)|rate[ -]?limit|try\s+again\s+later/i
@@ -47,6 +64,43 @@ const CHAT_FEED_SELECTOR = [
 
 function normalizeMessage(value: unknown): string {
   return String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
+function sanitizeEndpoint(value: unknown): string {
+  const raw = String(value ?? '').replace(/\s+/g, '').trim()
+  if (!raw) return ''
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(raw)) {
+    return raw.split(/[?#]/, 1)[0].slice(0, PLATFORM_ENDPOINT_MAX_LENGTH)
+  }
+  try {
+    const parsed = new URL(raw, 'https://invalid.local')
+    const host = parsed.hostname === 'invalid.local' ? '' : parsed.hostname.toLowerCase()
+    return `${host}${parsed.pathname}`.slice(0, PLATFORM_ENDPOINT_MAX_LENGTH)
+  } catch {
+    return raw.split(/[?#]/, 1)[0].slice(0, PLATFORM_ENDPOINT_MAX_LENGTH)
+  }
+}
+
+function sanitizeCode(value: unknown): number | string | undefined {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  const code = String(value ?? '').replace(/\s+/g, '').trim().slice(0, 40)
+  return code && /^[\w.-]+$/i.test(code) ? code : undefined
+}
+
+function sanitizeHttpStatus(value: unknown): number | undefined {
+  const status = Number(value)
+  return Number.isInteger(status) && status >= 0 && status <= 599 ? status : undefined
+}
+
+function sanitizeMethod(value: unknown): string | undefined {
+  const method = String(value ?? '').trim().toUpperCase()
+  return /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|SEND)$/.test(method) ? method : undefined
+}
+
+function sanitizeTransport(value: unknown): PlatformSendTransport | undefined {
+  return value === 'fetch' || value === 'page' || value === 'websocket' || value === 'xhr'
+    ? value
+    : undefined
 }
 
 function explicitCooldownMs(message: string): number {
@@ -72,6 +126,8 @@ export function classifyPlatformSendFeedback(value: unknown): PlatformSendFeedba
       cooldownMs: explicit || DEFAULT_DUPLICATE_COOLDOWN_MS,
       kind: 'duplicate',
       message,
+      source: 'page',
+      transport: 'page',
     }
   }
   if (RATE_LIMIT_PATTERN.test(message)) {
@@ -79,12 +135,79 @@ export function classifyPlatformSendFeedback(value: unknown): PlatformSendFeedba
       cooldownMs: explicit || DEFAULT_RATE_LIMIT_COOLDOWN_MS,
       kind: 'rate-limit',
       message,
+      source: 'page',
+      transport: 'page',
     }
   }
   if (REJECTED_PATTERN.test(message)) {
-    return { cooldownMs: explicit, kind: 'rejected', message }
+    return {
+      cooldownMs: explicit,
+      kind: 'rejected',
+      message,
+      source: 'page',
+      transport: 'page',
+    }
   }
   return null
+}
+
+/**
+ * Converts a sanitized native request result into the same feedback object as
+ * the DOM probe. Query strings, request bodies and authentication headers are
+ * deliberately outside this interface so they cannot reach the extension UI.
+ */
+export function classifyPlatformSendResponse(
+  value: PlatformSendResponseSummary,
+): PlatformSendFeedback | null {
+  const message = String(value.message ?? '').replace(/\s+/g, ' ').trim()
+    .slice(0, PLATFORM_FEEDBACK_MAX_LENGTH)
+  const code = sanitizeCode(value.code)
+  const httpStatus = sanitizeHttpStatus(value.httpStatus)
+  const metadata = {
+    code,
+    endpoint: sanitizeEndpoint(value.endpoint) || undefined,
+    httpStatus,
+    method: sanitizeMethod(value.method),
+    source: 'network' as const,
+    transport: sanitizeTransport(value.transport),
+  }
+  const classified = classifyPlatformSendFeedback(message)
+  if (classified) return { ...classified, ...metadata }
+
+  const numericCode = typeof code === 'number' ? code : Number(code)
+  const codeRejected = code !== undefined && (!Number.isFinite(numericCode) || numericCode !== 0)
+  const httpRejected = httpStatus !== undefined && (httpStatus === 0 || httpStatus >= 400)
+  if (!codeRejected && !httpRejected) return null
+
+  const rateLimited = httpStatus === 429
+  return {
+    ...metadata,
+    cooldownMs: rateLimited ? DEFAULT_RATE_LIMIT_COOLDOWN_MS : 0,
+    kind: rateLimited ? 'rate-limit' : 'rejected',
+    message: message || (httpStatus === 0 ? '网络请求未完成' : '平台拒绝了本次发送'),
+  }
+}
+
+export function formatPlatformSendFeedback(feedback: PlatformSendFeedback): string {
+  const summary = formatPlatformSendRequestSummary(feedback)
+  if (!summary && feedback.source === 'page') return `${feedback.message}（官方页面提示）`
+  return summary ? `${feedback.message}（${summary}）` : feedback.message
+}
+
+export function formatPlatformSendRequestSummary(value: PlatformSendResponseSummary): string {
+  const metadata: string[] = []
+  const method = sanitizeMethod(value.method)
+  const endpoint = sanitizeEndpoint(value.endpoint)
+  const httpStatus = sanitizeHttpStatus(value.httpStatus)
+  const code = sanitizeCode(value.code)
+  const transport = sanitizeTransport(value.transport)
+  if (method || endpoint) {
+    metadata.push([method, endpoint].filter(Boolean).join(' '))
+  }
+  if (httpStatus !== undefined) metadata.push(`HTTP ${httpStatus}`)
+  if (code !== undefined) metadata.push(`code ${code}`)
+  if (transport === 'websocket') metadata.push('WebSocket')
+  return metadata.join(' · ')
 }
 
 export function createSendProtection(options: SendProtectionOptions = {}) {

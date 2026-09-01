@@ -1,5 +1,6 @@
 import type { DanmakuDescriptor, DanmakuRichTextPart, PlatformId } from '../../core/types'
 import { normalizeSenderName, normalizeWhitespace, parseMessageText } from '../../core/shared'
+import { douyuOverlayTextElements } from '../douyu/message-content'
 import type { LivePlatformConfig } from './config'
 
 function firstMatch(root: Element, selectors: readonly string[]): Element | null {
@@ -15,7 +16,10 @@ function firstMatch(root: Element, selectors: readonly string[]): Element | null
   return null
 }
 
-function orderedParts(root: Element, platform: PlatformId): DanmakuRichTextPart[] {
+function orderedParts(
+  roots: Element | readonly Element[],
+  platform: PlatformId,
+): DanmakuRichTextPart[] {
   const parts: DanmakuRichTextPart[] = []
   let pendingBilibiliImageLabel = ''
   const appendText = (value: string | null): void => {
@@ -46,7 +50,9 @@ function orderedParts(root: Element, platform: PlatformId): DanmakuRichTextPart[
         'data-emoji-id',
         'data-emoticon',
         'data-emoji',
-      ].map((attribute) => node.getAttribute(attribute)).find(Boolean)
+      ]
+        .map((attribute) => node.getAttribute(attribute))
+        .find(Boolean)
       const label = node.alt || node.getAttribute('data-emoji-name') || undefined
       parts.push({
         resourceId: resourceId || undefined,
@@ -59,7 +65,7 @@ function orderedParts(root: Element, platform: PlatformId): DanmakuRichTextPart[
     }
     node.childNodes.forEach(visit)
   }
-  root.childNodes.forEach(visit)
+  for (const root of Array.isArray(roots) ? roots : [roots]) root.childNodes.forEach(visit)
   return parts.slice(0, 40)
 }
 
@@ -70,17 +76,20 @@ export function describeDanmaku(
   source: DanmakuDescriptor['source'],
 ): DanmakuDescriptor | null {
   const messageElement = firstMatch(candidate, config.messageText) || candidate
-  const parts = orderedParts(messageElement, platform)
+  const douyuTextElements = platform === 'douyu' ? douyuOverlayTextElements(candidate) : []
+  const messageElements = douyuTextElements.length > 1 ? douyuTextElements : [messageElement]
+  const parts = orderedParts(messageElements, platform)
   const text = parseMessageText(
-    parts.map((part) => part.text || '').join('') || messageElement.textContent,
+    parts.map((part) => part.text || '').join('') ||
+      messageElements.map((element) => element.textContent || '').join(''),
     config.maxLength,
   )
   if (!text && !parts.some((part) => part.type !== 'text')) return null
   const senderElement = firstMatch(candidate, config.userNames)
   const senderName = normalizeSenderName(
-    senderElement?.getAttribute('data-username')
-      || senderElement?.getAttribute('title')
-      || senderElement?.textContent,
+    senderElement?.getAttribute('data-username') ||
+      senderElement?.getAttribute('title') ||
+      senderElement?.textContent,
   )
   const messageId = [
     'data-id_str',
@@ -88,7 +97,9 @@ export function describeDanmaku(
     'data-message-id',
     'data-chatid',
     'data-comment-uuid',
-  ].map((attribute) => candidate.getAttribute(attribute)).find(Boolean)
+  ]
+    .map((attribute) => candidate.getAttribute(attribute))
+    .find(Boolean)
   const senderId = ['data-uid', 'data-user-id', 'data-mid']
     .map((attribute) => senderElement?.getAttribute(attribute) || candidate.getAttribute(attribute))
     .find(Boolean)
@@ -96,7 +107,9 @@ export function describeDanmaku(
     messageId: messageId || undefined,
     parts,
     platform,
-    resourceIds: Array.from(new Set(parts.map((part) => normalizeWhitespace(part.resourceId)).filter(Boolean))),
+    resourceIds: Array.from(
+      new Set(parts.map((part) => normalizeWhitespace(part.resourceId)).filter(Boolean)),
+    ),
     senderId: senderId || undefined,
     senderName: senderName || undefined,
     source,

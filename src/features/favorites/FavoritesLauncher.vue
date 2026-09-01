@@ -14,7 +14,7 @@
       aria-modal="true"
       aria-labelledby="bcp-favorites-title"
       tabindex="-1"
-      @pointerdown.stop
+      @pointerdown.stop="handlePanelPointerDown"
       @keydown.ctrl.k.prevent="focusSearch"
     >
       <header class="bcp-favorites-header">
@@ -41,7 +41,7 @@
 
       <div class="bcp-favorites-room">
         <span class="bcp-favorites-room-icon" aria-hidden="true">
-          <img src="../../../public/assets/icons/LiveStreamRoom.svg" alt="" style="height: 32px;width: 32px;">
+          <img src="/assets/icons/live-room.svg" alt="" style="height: 32px;width: 32px;">
         </span>
         <span class="bcp-favorites-room-copy">
           <strong :title="state.room.roomName">{{ state.room.roomName }}</strong>
@@ -114,20 +114,57 @@
           <strong :title="selectedRoom?.roomName">{{ selectedRoom?.roomName || activeTab.label }}</strong>
           <small>{{ listSummary }}</small>
         </span>
-        <label class="bcp-favorites-sort">
-          <span>{{ t("favoritesSort") }}</span>
-          <select
-            :value="state.sort"
-            :aria-label="t('favoritesSortAria')"
-            @change="emit('sort', ($event.target as HTMLSelectElement).value as FavoriteSort)"
+        <div ref="sortRootRef" :class="['bcp-favorites-sort', { 'is-open': sortOpen }]">
+          <span id="bcp-favorites-sort-label">{{ t("favoritesSort") }}</span>
+          <button
+            ref="sortTriggerRef"
+            type="button"
+            class="bcp-favorites-sort-trigger"
+            aria-haspopup="listbox"
+            :aria-expanded="sortOpen"
+            aria-controls="bcp-favorites-sort-options"
+            :aria-label="`${t('favoritesSortAria')}：${selectedSortOption.label}`"
+            @click="toggleSortMenu"
+            @keydown.down.prevent="openSortMenu('current')"
+            @keydown.up.prevent="openSortMenu('last')"
+            @keydown.home.prevent="openSortMenu('first')"
+            @keydown.end.prevent="openSortMenu('last')"
+            @keydown.esc.stop="closeSortMenu(false)"
           >
-            <option value="send-count">{{ t("favoritesSortSendCount") }}</option>
-            <option value="custom">{{ t("favoritesSortCustom") }}</option>
-            <option value="time-desc">{{ t("favoritesSortTimeDesc") }}</option>
-            <option value="time-asc">{{ t("favoritesSortTimeAsc") }}</option>
-          </select>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
-        </label>
+            <span>{{ selectedSortOption.label }}</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
+          </button>
+          <div
+            v-if="sortOpen"
+            id="bcp-favorites-sort-options"
+            ref="sortMenuRef"
+            class="bcp-favorites-sort-menu"
+            role="listbox"
+            aria-labelledby="bcp-favorites-sort-label"
+          >
+            <button
+              v-for="(option, index) in sortOptions"
+              :id="`bcp-favorites-sort-${option.key}`"
+              :key="option.key"
+              type="button"
+              role="option"
+              :class="{ 'is-selected': option.key === state.sort }"
+              :aria-selected="option.key === state.sort"
+              :tabindex="index === activeSortIndex ? 0 : -1"
+              @click="selectSort(option.key)"
+              @focus="activeSortIndex = index"
+              @keydown.down.prevent="focusSortOption(index + 1)"
+              @keydown.up.prevent="focusSortOption(index - 1)"
+              @keydown.home.prevent="focusSortOption(0)"
+              @keydown.end.prevent="focusSortOption(sortOptions.length - 1)"
+              @keydown.esc.stop.prevent="closeSortMenu(true)"
+              @keydown.tab="closeSortMenu(false)"
+            >
+              <span>{{ option.label }}</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 12.5 3.5 3.5 7.5-8" /></svg>
+            </button>
+          </div>
+        </div>
       </div>
 
       <div v-if="state.loading" class="bcp-favorites-loading" role="status" :aria-label="t('favoritesLoading')">
@@ -334,6 +371,11 @@ const emit = defineEmits<{
 
 const panelRef = ref<HTMLElement | null>(null);
 const searchRef = ref<HTMLInputElement | null>(null);
+const sortRootRef = ref<HTMLElement | null>(null);
+const sortTriggerRef = ref<HTMLButtonElement | null>(null);
+const sortMenuRef = ref<HTMLElement | null>(null);
+const sortOpen = ref(false);
+const activeSortIndex = ref(0);
 const pendingRemoveId = ref("");
 const draggingId = ref("");
 const dropTargetId = ref("");
@@ -343,8 +385,16 @@ const tabs: Array<{ key: FavoriteView; label: string }> = [
   { key: "other", label: t("favoritesOtherRooms") },
   { key: "all", label: t("favoritesAll") }
 ];
+const sortOptions: Array<{ key: FavoriteSort; label: string }> = [
+  { key: "send-count", label: t("favoritesSortSendCount") },
+  { key: "custom", label: t("favoritesSortCustom") },
+  { key: "time-desc", label: t("favoritesSortTimeDesc") },
+  { key: "time-asc", label: t("favoritesSortTimeAsc") }
+];
 
 const activeTab = computed(() => tabs.find((tab) => tab.key === props.state.view) || tabs[0]);
+const selectedSortOption = computed(() => sortOptions
+  .find((option) => option.key === props.state.sort) || sortOptions[0]);
 const selectedRoom = computed(() => props.state.groups
   .find((group) => group.roomKey === props.state.selectedRoomKey));
 const normalizedSearch = computed(() => props.state.search.replace(/\s+/g, " ").trim().toLowerCase());
@@ -447,7 +497,60 @@ function platformLabel(platform: PlatformId): string {
 }
 
 function focusSearch(): void {
+  closeSortMenu(false);
   searchRef.value?.focus({ preventScroll: true });
+}
+
+function sortOptionElements(): HTMLButtonElement[] {
+  if (!sortMenuRef.value) return [];
+  return Array.from(sortMenuRef.value.querySelectorAll<HTMLButtonElement>("[role='option']"));
+}
+
+function focusSortOption(index: number): void {
+  const options = sortOptionElements();
+  if (!options.length) return;
+  const nextIndex = (index + options.length) % options.length;
+  activeSortIndex.value = nextIndex;
+  options[nextIndex]?.focus({ preventScroll: true });
+}
+
+async function openSortMenu(preferred: "current" | "first" | "last" = "current"): Promise<void> {
+  const selectedIndex = sortOptions.findIndex((option) => option.key === props.state.sort);
+  activeSortIndex.value = preferred === "first"
+    ? 0
+    : preferred === "last"
+      ? sortOptions.length - 1
+      : Math.max(0, selectedIndex);
+  sortOpen.value = true;
+  await nextTick();
+  focusSortOption(activeSortIndex.value);
+}
+
+function closeSortMenu(restoreFocus: boolean): void {
+  if (!sortOpen.value) return;
+  sortOpen.value = false;
+  if (restoreFocus) {
+    void nextTick(() => sortTriggerRef.value?.focus({ preventScroll: true }));
+  }
+}
+
+function toggleSortMenu(): void {
+  if (sortOpen.value) {
+    closeSortMenu(false);
+    return;
+  }
+  void openSortMenu();
+}
+
+function selectSort(sort: FavoriteSort): void {
+  closeSortMenu(true);
+  if (sort !== props.state.sort) emit("sort", sort);
+}
+
+function handlePanelPointerDown(event: PointerEvent): void {
+  const target = event.target;
+  if (target instanceof Node && sortRootRef.value?.contains(target)) return;
+  closeSortMenu(false);
 }
 
 function finishDrag(): void {
@@ -508,6 +611,7 @@ function dropFavorite(targetId: string, event: DragEvent): void {
 
 watch(() => [props.state.mode, props.state.view, props.state.search,
   props.state.sort, props.state.selectedRoomKey], () => {
+  closeSortMenu(false);
   pendingRemoveId.value = "";
   finishDrag();
 });

@@ -24,7 +24,8 @@ import {
   findDouyuNativeDanmakuCapsuleTargets,
 } from '../platforms/douyu/native-capsule'
 import { DouyuNativeHoverController } from '../platforms/douyu/native-hover'
-import { DouyuOverlayMotionController } from '../platforms/douyu/overlay-motion'
+import { DouyuNativeMotionFallback } from '../platforms/douyu/native-motion-fallback'
+import { douyuOverlayTextElements } from '../platforms/douyu/message-content'
 import {
   BILIBILI_CHAT_ACTION_SURFACES,
   BILIBILI_CHAT_ACTION_TEXT,
@@ -39,9 +40,10 @@ import {
   isBilibiliAdvertisementMarker,
 } from '../platforms/bilibili/dom-config'
 import { BilibiliOverlayMotionController } from '../platforms/bilibili/overlay-motion'
+import { bilibiliRepeatReminderExclusionReason } from '../platforms/bilibili/repeat-reminder-filter'
 import { bilibiliAutoRecognizedEmojiText } from '../platforms/bilibili/rich-message-sender'
 import {
-  bilibiliNativeEmoticonToken,
+  bilibiliNativeEmoticonDisplayToken,
   isBilibiliDecorativeImageDescription,
   isBilibiliEmoticonFallbackLabel,
 } from '../platforms/bilibili/emoticon-metadata'
@@ -56,6 +58,12 @@ import {
 } from '../platforms/bilibili/native-send-observer'
 import { normalizedAssetKeys as normalizedRichAssetKeys } from '../platforms/douyin/rich-data'
 import { createFavoritesRuntime } from '../features/favorites/launcher'
+import { currentRoomContext } from '../features/favorites/room-context'
+import { createRepeatReminderRuntime } from '../features/repeat-reminder/runtime'
+import {
+  eventTouchesRepeatReminder,
+  pointTouchesRepeatReminder,
+} from '../features/repeat-reminder/pointer-guard'
 import { createContentOverlay } from '../components/live/content-overlay'
 import { copyTextToClipboard } from '../core/clipboard'
 import { createDiagnosticsCollector } from '../core/diagnostics'
@@ -63,9 +71,16 @@ import { createLivePlatformAdapter } from '../platforms/live/adapters'
 import { liveRichMessageSender } from '../platforms/live/rich-message-sender'
 import {
   classifyPlatformSendFeedback,
+  classifyPlatformSendResponse,
   createPlatformFeedbackProbe,
   createSendProtection,
+  formatPlatformSendFeedback,
+  formatPlatformSendRequestSummary,
 } from '../platforms/live/send-protection'
+import {
+  INSTALL_NATIVE_SEND_OBSERVER,
+  isNativeSendObservation,
+} from '../platforms/live/native-send-observer'
 import {
   BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES,
   BILIBILI_AUTO_TEXT_ASSET_KEY_PREFIX,
@@ -138,6 +153,8 @@ import { t } from '../core/i18n'
   const REPLY_RESOLVE_INTERVAL = 70
   const PLATFORM_FAILURE_FEEDBACK_WAIT_MS = 1_800
   const PLATFORM_SUCCESS_FEEDBACK_WAIT_MS = 500
+  const BILIBILI_REPEAT_REMINDER_SUPPRESSION_TTL = 90_000
+  const bilibiliRepeatReminderSuppressions = new Map()
   const state = {
     settings: shared.mergeSettings(),
     candidate: null,
@@ -180,6 +197,7 @@ import { t } from '../core/i18n'
     hiddenBilibiliQuickBars: new Map(),
     bilibiliDismissToken: 0,
     emojiPanelOpenedByPlugin: false,
+    repeatReminderRuntime: null,
   }
   const diagnostics = createDiagnosticsCollector({
     platform: platformId,
@@ -204,7 +222,8 @@ import { t } from '../core/i18n'
     }),
   })
   const douyuNativeHover = platformId === 'douyu' ? new DouyuNativeHoverController() : null
-  const douyuOverlayMotion = platformId === 'douyu' ? new DouyuOverlayMotionController() : null
+  const douyuNativeMotionFallback =
+    platformId === 'douyu' ? new DouyuNativeMotionFallback() : null
   const bilibiliOverlayMotion =
     platformId === 'bilibili' ? new BilibiliOverlayMotionController() : null
   const overlayMessageCache = new WeakMap()
@@ -1015,7 +1034,20 @@ import { t } from '../core/i18n'
     )
   }
 
+  function douyuOverlayCandidateFromTarget(target) {
+    if (platformId !== 'douyu' || !(target instanceof Element)) return null
+    const candidate = closestMatching(target, config.overlayMessages)
+    return candidate instanceof HTMLElement && !isOwned(candidate) ? candidate : null
+  }
+
+  function douyuOverlayCandidateFromPath(path) {
+    if (platformId !== 'douyu') return null
+    const candidate = closestFromPath(path, config.overlayMessages)
+    return candidate instanceof HTMLElement && !isOwned(candidate) ? candidate : null
+  }
+
   function findOverlayAtPoint(x, y) {
+    if (pointTouchesRepeatReminder(document, x, y)) return null
     const pointElements =
       typeof document.elementsFromPoint === 'function' ? document.elementsFromPoint(x, y) : []
 
@@ -1067,6 +1099,17 @@ import { t } from '../core/i18n'
   }
 
   function textFromSpecificElement(candidate) {
+    if (platformId === 'douyu' && candidate instanceof Element) {
+      const segments = douyuOverlayTextElements(candidate)
+      if (segments.length > 1) {
+        const text = shared.parseMessageText(
+          segments.map((element) => element.innerText || element.textContent || '').join(''),
+          config.maxLength,
+        )
+        if (shared.isPlausibleMessage(text, config.maxLength)) return text
+      }
+    }
+
     for (const selector of config.messageText) {
       let element = null
 
@@ -1252,18 +1295,21 @@ import { t } from '../core/i18n'
     })
     const authoritativeBilibiliToken =
       platformId === 'bilibili'
-        ? metadataElements
-            .filter(
-              (metadataElement) =>
-                metadataElement.getAttribute('data-type') === '1' ||
-                BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES.some((attribute) =>
-                  metadataElement.hasAttribute(attribute),
-                ),
-            )
-            .map((metadataElement) =>
-              bilibiliNativeEmoticonToken(metadataElement.getAttribute('data-danmaku')),
-            )
-            .find(Boolean) || ''
+        ? bilibiliNativeEmoticonDisplayToken([
+            // The rendered message body is authoritative for display. This
+            // keeps img alt="冲鸭" ahead of opaque send ids such as
+            // data-danmaku="official_332".
+            ...displayMetadata,
+            ...metadataElements
+              .filter(
+                (metadataElement) =>
+                  metadataElement.getAttribute('data-type') === '1' ||
+                  BILIBILI_NATIVE_PANEL_IDENTITY_ATTRIBUTES.some((attribute) =>
+                    metadataElement.hasAttribute(attribute),
+                  ),
+              )
+              .map((metadataElement) => metadataElement.getAttribute('data-danmaku')),
+          ])
         : ''
     const token =
       authoritativeBilibiliToken ||
@@ -1421,6 +1467,50 @@ import { t } from '../core/i18n'
       )
       if (shared.isPlausibleMessage(text, config.maxLength)) {
         return { text, plainText: text, assets: [], parts: [{ type: 'text', text }] }
+      }
+    }
+
+    if (platformId === 'douyu' && candidate instanceof Element) {
+      const segments = douyuOverlayTextElements(candidate)
+      if (segments.length > 1) {
+        const parts = []
+        segments.forEach((segment) => {
+          richPartsFromElement(segment).forEach((part) => {
+            const previous = parts[parts.length - 1]
+            if (part.type === 'text' && previous?.type === 'text') previous.text += part.text
+            else parts.push(part)
+          })
+        })
+        const assets = parts
+          .filter((part) => part?.type === 'emoji' && part.asset)
+          .map((part) => part.asset)
+          .slice(0, 8)
+        const plainText = shared.parseMessageText(
+          segments
+            .map((segment) =>
+              serializedTextFromElement(segment, {
+                imageTokens: false,
+                rejectRoot: false,
+                removals: ['img', 'button', 'svg', "[aria-hidden='true']", '[data-bcp-one-owned]'],
+              }),
+            )
+            .join(''),
+          config.maxLength,
+        )
+        let text = shared.parseMessageText(
+          parts
+            .map((part) => (part.type === 'text' ? part.text : part.asset?.token || ''))
+            .join(''),
+          config.maxLength,
+        )
+        if (!shared.isPlausibleMessage(text, config.maxLength) && assets.length) {
+          text =
+            assets
+              .map((asset) => asset.token)
+              .filter(Boolean)
+              .join(' ') || '图片表情'
+        }
+        return { text, plainText, assets, parts }
       }
     }
 
@@ -2142,6 +2232,35 @@ import { t } from '../core/i18n'
   function mutationContainsDouyuNativeDanmakuCapsule(mutation) {
     if (platformId !== 'douyu') return false
 
+    if (mutation.type === 'attributes') {
+      const element = mutation.target instanceof Element ? mutation.target : null
+      if (!element || isOwned(element) || element.closest("[class*='danmuItem-']")) return false
+
+      // The moving danmaku rows update their style continuously. Looking
+      // through every mutated row for action descendants turned each animation
+      // frame into a full native-capsule scan. Attribute changes only matter
+      // when they occur on the detached capsule itself; child-list mutations
+      // below still discover newly mounted capsule trees.
+      try {
+        const detachedDecoration = element.matches(
+          DOUYU_NATIVE_DANMAKU_CAPSULE_DETACHED_DECORATION_SELECTOR,
+        )
+        const action = element.matches(DOUYU_NATIVE_DANMAKU_ACTION_SELECTOR)
+        const container = element.matches(DOUYU_NATIVE_DANMAKU_CAPSULE_CONTAINER_SELECTOR)
+        if (!detachedDecoration && !action && !container) return false
+        state.douyuNativeCapsuleMutationRoots.add(
+          detachedDecoration
+            ? element.parentElement || element
+            : container
+              ? element
+              : douyuNativeCapsuleBoundary(element),
+        )
+        return true
+      } catch {
+        return false
+      }
+    }
+
     const elements = []
     if (mutation.target instanceof Element) elements.push(mutation.target)
     Array.from(mutation.addedNodes || []).forEach((node) => {
@@ -2485,11 +2604,10 @@ import { t } from '../core/i18n'
 
   function freezeOverlayCandidate(candidate) {
     if (platformId === 'douyu' && candidate instanceof HTMLElement) {
-      // Douyu's computed transform comes from a renderer-owned Web Animation,
-      // not an inline transform or CSS transition. Pause that exact timeline
-      // and keep the original node visible; cloning or rewriting transform
-      // would desynchronise the renderer and cause a release jump.
-      douyuOverlayMotion?.pause(candidate)
+      // Native entry does not always pause before the moving row leaves the
+      // pointer. Stop the current row immediately, but never resume it here;
+      // Douyu's native leave chain remains the only resume owner.
+      douyuNativeMotionFallback?.pause(candidate)
       state.pausedAnimations = []
       return
     }
@@ -2585,7 +2703,6 @@ import { t } from '../core/i18n'
 
     if (!frozenClone) {
       resumeOverlayAnimations(pausedAnimations)
-      douyuOverlayMotion?.release(candidate instanceof HTMLElement ? candidate : null)
       bilibiliOverlayMotion?.release(candidate instanceof HTMLElement ? candidate : null)
       return
     }
@@ -2827,6 +2944,7 @@ import { t } from '../core/i18n'
     } else {
       douyuNativeHover?.reset()
     }
+    douyuNativeMotionFallback?.release(douyuCandidate)
     state.candidate = null
     state.candidateKind = null
     state.overlayViewport = null
@@ -2900,25 +3018,99 @@ import { t } from '../core/i18n'
     return block.allowed
   }
 
-  async function finishProtectedSend(message, success, feedbackProbe) {
-    const feedback = await feedbackProbe.wait(
+  async function finishProtectedSend(message, success, feedbackProbe, networkObserver) {
+    let feedback = await feedbackProbe.wait(
       success ? PLATFORM_SUCCESS_FEEDBACK_WAIT_MS : PLATFORM_FAILURE_FEEDBACK_WAIT_MS,
     )
+    const networkResult = networkObserver ? await networkObserver.read(feedback ? 220 : 160) : null
+    networkObserver?.cancel()
+    const networkFeedback = networkResult && !networkResult.requestOnly
+      ? classifyPlatformSendResponse(networkResult)
+      : null
+    if (feedback && networkResult) {
+      feedback = {
+        ...feedback,
+        code: networkResult.code,
+        endpoint: networkResult.endpoint,
+        httpStatus: networkResult.httpStatus,
+        method: networkResult.method,
+        source: 'network',
+        transport: networkResult.transport,
+      }
+    } else if (!feedback && networkFeedback) {
+      feedback = networkFeedback
+    }
     if (feedback) {
       state.sendProtection.applyPlatformFeedback(feedback, message)
       const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
       showToast(
         feedback.cooldownMs > 0
-          ? t('toastPlatformCooldown', [platformName, feedback.message, String(seconds)])
-          : t('toastPlatformRejected', [platformName, feedback.message]),
+          ? t('toastPlatformCooldown', [
+              platformName,
+              formatPlatformSendFeedback(feedback),
+              String(seconds),
+            ])
+          : t('toastPlatformRejected', [platformName, formatPlatformSendFeedback(feedback)]),
         feedback.kind === 'rejected' ? 'error' : 'warning',
       )
       updateCooldownUi(message)
       return 'feedback'
     }
+    const networkSummary = networkResult
+      ? formatPlatformSendRequestSummary(networkResult)
+      : ''
+    if (!success && networkSummary) {
+      state.sendProtection.finish(message, false)
+      updateCooldownUi(message)
+      showToast(t('toastPlatformSendUnconfirmed', [platformName, networkSummary]), 'error')
+      return 'feedback'
+    }
     state.sendProtection.finish(message, success)
     updateCooldownUi(message)
     return success
+  }
+
+  async function startPlatformSendObservation() {
+    const randomBytes = new Uint32Array(4)
+    crypto.getRandomValues(randomBytes)
+    const nonce = `${Date.now().toString(36)}-${Array.from(randomBytes)
+      .map((value) => value.toString(36))
+      .join('-')}`
+    let settled = false
+    let resolveResult
+    const result = new Promise((resolve) => {
+      resolveResult = resolve
+    })
+    const finish = (value) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      window.removeEventListener('message', onMessage)
+      resolveResult(value)
+    }
+    const onMessage = (event) => {
+      if (event.source !== window || !isNativeSendObservation(event.data, nonce, platformId)) return
+      finish(event.data)
+    }
+    const timer = window.setTimeout(() => finish(null), 8_500)
+    window.addEventListener('message', onMessage)
+    try {
+      const installed = await chrome.runtime.sendMessage({
+        nonce,
+        platform: platformId,
+        type: INSTALL_NATIVE_SEND_OBSERVER,
+      })
+      if (!installed?.ok) finish(null)
+    } catch {
+      finish(null)
+    }
+    return {
+      cancel: () => finish(null),
+      read: (timeout = 160) => Promise.race([
+        result,
+        new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, timeout))),
+      ]),
+    }
   }
 
   function inputSurfaceScore(element, index) {
@@ -3737,6 +3929,20 @@ import { t } from '../core/i18n'
   function platformEmojiCategoryCandidates(includeHidden = false) {
     const results = []
     const seen = new Set()
+    const add = (element) => {
+      if (
+        !(element instanceof Element) ||
+        seen.has(element) ||
+        (!includeHidden && !isVisible(element)) ||
+        isOwned(element) ||
+        element.getAttribute('aria-selected') === 'true' ||
+        element.classList.contains('is-active')
+      ) {
+        return
+      }
+      seen.add(element)
+      results.push(element)
+    }
     queryAllDeep(BILIBILI_EMOJI_SURFACE_SELECTORS).forEach((surface) => {
       if (
         (!includeHidden && !isVisible(surface)) ||
@@ -3744,21 +3950,17 @@ import { t } from '../core/i18n'
         closestMatching(surface, config.overlayMessages)
       )
         return
-      surface.querySelectorAll(PLATFORM_EMOJI_CATEGORY_SELECTORS.join(',')).forEach((element) => {
-        if (
-          !(element instanceof Element) ||
-          seen.has(element) ||
-          (!includeHidden && !isVisible(element)) ||
-          isOwned(element) ||
-          element.getAttribute('aria-selected') === 'true'
-        ) {
-          return
-        }
-        seen.add(element)
-        results.push(element)
-      })
+      surface.querySelectorAll(PLATFORM_EMOJI_CATEGORY_SELECTORS.join(',')).forEach(add)
     })
-    return results.slice(0, 16)
+    if (platformId === 'douyu') {
+      // Current Douyu mounts EmotionTab beside EmotionList instead of inside
+      // the list surface, so a surface-descendant query alone misses every
+      // paid/fan pack tab.
+      queryAllDeep(['.EmotionTab-item', "[class*='EmotionTab-item']"]).forEach(add)
+    }
+    // Douyu exposes many independent packs (including paid/fan-exclusive
+    // groups), so sixteen tabs is not a safe upper bound there.
+    return results.slice(0, platformId === 'douyu' ? 40 : 16)
   }
 
   function platformEmojiToggleCandidates(input, includeHidden = false) {
@@ -3823,6 +4025,38 @@ import { t } from '../core/i18n'
     return match
   }
 
+  async function waitForDouyuCategoryEmoji(
+    asset,
+    previousItems,
+    timeout,
+    includeHidden = false,
+  ) {
+    const deadline = Date.now() + timeout
+    let replacementObservedAt = 0
+    let sawEmptyList = false
+    while (Date.now() < deadline) {
+      const match = findMatchingBilibiliPlatformEmoji(asset, includeHidden)
+      if (match) return match
+      const items = new Set(
+        platformEmojiItemCandidates(includeHidden).map(platformEmojiInteractiveItem),
+      )
+      if (!items.size) sawEmptyList = true
+      const replaced =
+        (sawEmptyList && items.size > 0) ||
+        items.size !== previousItems.size ||
+        Array.from(items).some((item) => !previousItems.has(item))
+      if (replaced && !replacementObservedAt) replacementObservedAt = Date.now()
+      // Wrong Douyu packs usually render within one frame. Once a replacement
+      // list has settled without a resource match, move to the next pack;
+      // slow packs still get the complete timeout while their list is empty.
+      if (items.size && replacementObservedAt && Date.now() - replacementObservedAt >= 80) {
+        return null
+      }
+      await new Promise((resolve) => setTimeout(resolve, 40))
+    }
+    return findMatchingBilibiliPlatformEmoji(asset, includeHidden)
+  }
+
   async function openUniqueBilibiliPlatformEmoji(input, asset) {
     const includeHidden = fullscreenActive()
     let item =
@@ -3860,8 +4094,14 @@ import { t } from '../core/i18n'
     }
     for (const category of platformEmojiCategoryCandidates(includeHidden)) {
       if (!category.isConnected || typeof category.click !== 'function') continue
+      const previousItems = new Set(
+        platformEmojiItemCandidates(includeHidden).map(platformEmojiInteractiveItem),
+      )
       category.click()
-      item = await waitForMatchingBilibiliPlatformEmoji(asset, 320, includeHidden)
+      item =
+        platformId === 'douyu'
+          ? await waitForDouyuCategoryEmoji(asset, previousItems, 750, includeHidden)
+          : await waitForMatchingBilibiliPlatformEmoji(asset, 320, includeHidden)
       if (item) return item
     }
     return findMatchingBilibiliPlatformEmoji(asset, true)
@@ -4191,6 +4431,7 @@ import { t } from '../core/i18n'
     const previousCount = countMatchingPlatformEmojiAssets(asset)
     setNativeValue(input, message)
     await new Promise((resolve) => setTimeout(resolve, 80))
+    const networkObserver = await startPlatformSendObservation()
     const feedbackProbe = createPlatformFeedbackProbe(document)
     let button = findSendButton(input)
     if (button) button.click()
@@ -4209,7 +4450,7 @@ import { t } from '../core/i18n'
       }
     }
     if (!consumed) {
-      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      const settled = await finishProtectedSend(message, false, feedbackProbe, networkObserver)
       if (settled !== 'feedback') {
         debug.fail('auto-text-not-consumed', { asset: debug.asset(asset), message })
         showToast(t('toastAutomaticSendFailed'), 'error')
@@ -4218,7 +4459,7 @@ import { t } from '../core/i18n'
     }
 
     const echoed = await waitForNewPlatformEmojiEcho(asset, previousCount, 3_200)
-    const settled = await finishProtectedSend(message, echoed, feedbackProbe)
+    const settled = await finishProtectedSend(message, echoed, feedbackProbe, networkObserver)
     if (settled === 'feedback') {
       debug.fail('auto-text-platform-feedback', { asset: debug.asset(asset), message })
       return false
@@ -4230,6 +4471,77 @@ import { t } from '../core/i18n'
         previousCount,
       })
       showToast(t('toastImageUnconfirmed', platformName), 'error')
+      return false
+    }
+    releaseInputFocus(input)
+    showToast(t('toastImageEmojiSent'), 'success')
+    return true
+  }
+
+  async function repeatDouyuNativeRichPayload(payload) {
+    if (platformId !== 'douyu') return false
+    const asset = payload && Array.isArray(payload.assets) ? payload.assets[0] : null
+    const protectedMessage = String(payload?.text || asset?.token || '图片表情')
+    if (!asset || !beginProtectedSend(protectedMessage)) return false
+
+    const input = findInput()
+    if (!input) {
+      state.sendProtection.finish(protectedMessage, false)
+      showToast(t('toastEditorNotFound', platformName), 'error')
+      return false
+    }
+    const item = await openMatchingBilibiliPlatformEmoji(input, asset)
+    if (!item || typeof item.click !== 'function') {
+      state.sendProtection.finish(protectedMessage, false)
+      showToast(t('toastEmojiPanelNoMatch', platformName), 'error')
+      return false
+    }
+
+    const previousCount = countMatchingPlatformEmojiAssets(asset)
+    const previousImageMessageCount = countChatImageMessages()
+    const beforeInput = richInputFingerprint(input)
+    const itemWasVisible = isVisible(item)
+    const networkObserver = await startPlatformSendObservation()
+    const feedbackProbe = createPlatformFeedbackProbe(document)
+    item.click()
+    let result = await waitForPlatformEmojiResult(
+      input,
+      asset,
+      previousCount,
+      previousImageMessageCount,
+      beforeInput,
+      item,
+      itemWasVisible,
+      2_400,
+    )
+    if (result === 'dispatched') result = 'sent'
+    if (result === 'inserted' && richInputFingerprint(input) !== beforeInput) {
+      const submission = await submitInsertedPlatformEmoji(
+        input,
+        asset,
+        previousCount,
+        previousImageMessageCount,
+      )
+      result = submission.sent ? 'sent' : 'none'
+    }
+    if (result !== 'sent') {
+      const settled = await finishProtectedSend(
+        protectedMessage,
+        false,
+        feedbackProbe,
+        networkObserver,
+      )
+      if (settled !== 'feedback') {
+        showToast(t('toastImageUnconfirmed', platformName), 'error')
+      }
+      return false
+    }
+    if ((await finishProtectedSend(
+      protectedMessage,
+      true,
+      feedbackProbe,
+      networkObserver,
+    )) !== true) {
       return false
     }
     releaseInputFocus(input)
@@ -4389,7 +4701,8 @@ import { t } from '../core/i18n'
         return { attempted: true, success: true }
       }
       feedbackProbe.stop()
-      const feedback = classifyPlatformSendFeedback(result?.message)
+      const feedback = classifyPlatformSendResponse(result || {})
+        || classifyPlatformSendFeedback(result?.message)
       if (feedback) {
         debug.fail('direct-send-platform-rejected', {
           feedback,
@@ -4400,8 +4713,12 @@ import { t } from '../core/i18n'
         const seconds = Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))
         showToast(
           feedback.cooldownMs > 0
-            ? t('toastPlatformCooldown', [platformName, feedback.message, String(seconds)])
-            : t('toastPlatformRejected', [platformName, feedback.message]),
+            ? t('toastPlatformCooldown', [
+                platformName,
+                formatPlatformSendFeedback(feedback),
+                String(seconds),
+              ])
+            : t('toastPlatformRejected', [platformName, formatPlatformSendFeedback(feedback)]),
           feedback.kind === 'rejected' ? 'error' : 'warning',
         )
         updateCooldownUi(protectedMessage)
@@ -4510,7 +4827,10 @@ import { t } from '../core/i18n'
       const message = shared.normalizeWhitespace(
         nativeSendResult.message || `HTTP ${nativeSendResult.httpStatus || nativeSendResult.code}`,
       )
-      const feedback = classifyPlatformSendFeedback(message)
+      const feedback = classifyPlatformSendResponse({
+        ...nativeSendResult,
+        message,
+      }) || classifyPlatformSendFeedback(message)
       state.sendProtection.finish(protectedMessage, false)
       if (feedback) state.sendProtection.applyPlatformFeedback(feedback, protectedMessage)
       updateCooldownUi(protectedMessage)
@@ -4518,8 +4838,19 @@ import { t } from '../core/i18n'
         nativeSendResult,
       })
       showToast(
-        t('toastPlatformRejected', [platformName, message || String(nativeSendResult.code)]),
-        'error',
+        feedback?.cooldownMs > 0
+          ? t('toastPlatformCooldown', [
+              platformName,
+              formatPlatformSendFeedback(feedback),
+              String(Math.max(1, Math.ceil(feedback.cooldownMs / 1_000))),
+            ])
+          : t('toastPlatformRejected', [
+              platformName,
+              feedback
+                ? formatPlatformSendFeedback(feedback)
+                : message || String(nativeSendResult.code),
+            ]),
+        feedback && feedback.kind !== 'rejected' ? 'warning' : 'error',
       )
       return false
     }
@@ -4616,6 +4947,7 @@ import { t } from '../core/i18n'
       reportEmojiNameUnavailable: () =>
         showToast(t('toastEmojiNameUnavailable', platformName), 'error'),
       sendBilibiliNative: repeatBilibiliNativeRichPayload,
+      sendDouyuNative: repeatDouyuNativeRichPayload,
       sendText: repeatMessage,
     })
   }
@@ -4742,6 +5074,7 @@ import { t } from '../core/i18n'
     setNativeValue(input, message)
     await new Promise((resolve) => setTimeout(resolve, 80))
     let button = findSendButton(input)
+    const networkObserver = await startPlatformSendObservation()
     const feedbackProbe = createPlatformFeedbackProbe(document)
 
     if (button) {
@@ -4770,13 +5103,15 @@ import { t } from '../core/i18n'
     }
 
     if (!consumed) {
-      const settled = await finishProtectedSend(message, false, feedbackProbe)
+      const settled = await finishProtectedSend(message, false, feedbackProbe, networkObserver)
       if (settled === 'feedback') return false
       showToast(t('toastAutomaticSendFailed'), 'error')
       return false
     }
 
-    if ((await finishProtectedSend(message, true, feedbackProbe)) !== true) return false
+    if ((await finishProtectedSend(message, true, feedbackProbe, networkObserver)) !== true) {
+      return false
+    }
     releaseInputFocus(input)
     showToast(t('toastPlusOneSent'), 'success')
     return true
@@ -4835,6 +5170,17 @@ import { t } from '../core/i18n'
 
     const pointer = pointerCoordinates(event)
     if (
+      eventTouchesRepeatReminder(event) ||
+      (pointer && pointTouchesRepeatReminder(document, pointer.x, pointer.y))
+    ) {
+      if (state.pointerFrame) {
+        cancelAnimationFrame(state.pointerFrame)
+        state.pointerFrame = 0
+      }
+      if (state.candidate) clearSelection()
+      return
+    }
+    if (
       pointer &&
       state.candidateKind === 'overlay' &&
       state.candidate &&
@@ -4849,6 +5195,17 @@ import { t } from '../core/i18n'
     }
 
     if (pointer && isInsideFrozenHoverZone(pointer.x, pointer.y)) {
+      const enteringCandidate = douyuOverlayCandidateFromPath(path)
+      if (
+        state.candidateKind === 'overlay' &&
+        enteringCandidate &&
+        enteringCandidate !== state.candidate
+      ) {
+        // An overlapping row can become the browser hit target while the
+        // pointer is still inside the already selected row. Do not let its
+        // native hover handler pause a second danmaku.
+        event.stopImmediatePropagation()
+      }
       cancelHide()
       return
     }
@@ -4861,7 +5218,7 @@ import { t } from '../core/i18n'
     } else if (found && found.element === state.candidate) {
       douyuNativeHover?.remember(event.target)
       if (platformId === 'douyu' && state.candidate instanceof HTMLElement) {
-        douyuOverlayMotion?.hold(state.candidate)
+        douyuNativeMotionFallback?.hold(state.candidate)
       }
     } else if (!found && platformId === 'bilibili') {
       if (pathTouchesBilibiliChatActions(path) || pathTouchesBilibiliChatAdvertisement(path)) {
@@ -4936,6 +5293,21 @@ import { t } from '../core/i18n'
 
     const pointer = pointerCoordinates(event)
     if (
+      eventTouchesRepeatReminder(event) ||
+      (pointer && pointTouchesRepeatReminder(document, pointer.x, pointer.y))
+    ) {
+      if (pointer) {
+        state.pointerX = pointer.x
+        state.pointerY = pointer.y
+      }
+      if (state.pointerFrame) {
+        cancelAnimationFrame(state.pointerFrame)
+        state.pointerFrame = 0
+      }
+      if (state.candidate) clearSelection()
+      return
+    }
+    if (
       pointer &&
       state.candidateKind === 'overlay' &&
       state.candidate &&
@@ -4951,7 +5323,7 @@ import { t } from '../core/i18n'
       state.candidateKind === 'overlay' &&
       state.candidate instanceof HTMLElement
     ) {
-      douyuOverlayMotion?.hold(state.candidate)
+      douyuNativeMotionFallback?.hold(state.candidate)
     }
     if (isOwned(event.target)) {
       cancelHide()
@@ -5024,13 +5396,28 @@ import { t } from '../core/i18n'
         (event.target === state.candidate || state.candidate.contains(event.target))
       ) {
         douyuNativeHover?.hold(event.target)
-        douyuOverlayMotion?.hold(state.candidate)
+        douyuNativeMotionFallback?.hold(state.candidate)
         // The danmaku, transparent gap bridge and portal toolbar form one
         // logical hover body. Do not let Douyu resume its native animation at
         // either internal boundary.
         event.stopImmediatePropagation()
         cancelHide()
       }
+      return
+    }
+
+    const nextDouyuCandidate = douyuOverlayCandidateFromTarget(next)
+    if (
+      state.candidateKind === 'overlay' &&
+      nextDouyuCandidate &&
+      nextDouyuCandidate !== state.candidate &&
+      (event.target === state.candidate || state.candidate.contains(event.target))
+    ) {
+      // This is a real handoff between overlapping sibling danmaku, not a move
+      // into the joined gap/capsule. Release the old row before the new native
+      // entry so at most one row can own hover at any moment.
+      douyuNativeHover?.nativeExitWillProceed()
+      clearSelection()
       return
     }
 
@@ -5056,7 +5443,7 @@ import { t } from '../core/i18n'
         // Keep that transient leave from resuming Douyu before the bridge or
         // joined toolbar receives the next entry.
         douyuNativeHover?.hold(event.target)
-        douyuOverlayMotion?.hold(state.candidate)
+        douyuNativeMotionFallback?.hold(state.candidate)
         event.stopImmediatePropagation()
       }
       cancelHide()
@@ -5066,6 +5453,31 @@ import { t } from '../core/i18n'
     if (path.includes(state.candidate)) {
       douyuNativeHover?.nativeExitWillProceed()
       scheduleHide()
+    }
+  }
+
+  function onMouseOver(event) {
+    if (eventTouchesRepeatReminder(event)) {
+      if (state.candidate) clearSelection()
+      return
+    }
+    if (
+      platformId !== 'douyu' ||
+      state.candidateKind !== 'overlay' ||
+      !(state.candidate instanceof HTMLElement)
+    ) {
+      return
+    }
+
+    const pointer = pointerCoordinates(event)
+    if (!pointer || !isInsideFrozenHoverZone(pointer.x, pointer.y)) return
+    const enteringCandidate = douyuOverlayCandidateFromPath(
+      event.composedPath ? event.composedPath() : [event.target],
+    )
+    if (enteringCandidate && enteringCandidate !== state.candidate) {
+      // pointerover and mouseover are separate native event streams. Suppress
+      // both so Douyu cannot pause the covered sibling behind the lock owner.
+      event.stopImmediatePropagation()
     }
   }
 
@@ -5083,19 +5495,29 @@ import { t } from '../core/i18n'
     }
 
     const next = event.relatedTarget
+    const nextDouyuCandidate = douyuOverlayCandidateFromTarget(next)
+    if (
+      nextDouyuCandidate &&
+      nextDouyuCandidate !== state.candidate &&
+      (event.target === state.candidate || state.candidate.contains(event.target))
+    ) {
+      douyuNativeHover?.nativeExitWillProceed()
+      clearSelection()
+      return
+    }
     if (
       isInsideSelectedHoverBody(next) &&
       (event.target === state.candidate || state.candidate.contains(event.target))
     ) {
       douyuNativeHover?.hold(event.target)
-      douyuOverlayMotion?.hold(state.candidate)
+      douyuNativeMotionFallback?.hold(state.candidate)
       event.stopImmediatePropagation()
       cancelHide()
     } else if (event.composedPath().includes(state.candidate)) {
       const pointer = pointerCoordinates(event)
       if (pointer && isInsideFrozenHoverZone(pointer.x, pointer.y)) {
         douyuNativeHover?.hold(event.target)
-        douyuOverlayMotion?.hold(state.candidate)
+        douyuNativeMotionFallback?.hold(state.candidate)
         event.stopImmediatePropagation()
         cancelHide()
       } else {
@@ -5200,8 +5622,10 @@ import { t } from '../core/i18n'
   function destroyRuntime() {
     releaseTransientResources()
     state.favoritesRuntime?.destroy()
+    state.repeatReminderRuntime?.destroy()
     state.ui?.destroy()
     document.removeEventListener('pointerover', onPointerOver, true)
+    document.removeEventListener('mouseover', onMouseOver, true)
     document.removeEventListener('pointermove', onPointerMove, true)
     document.removeEventListener('pointerout', onPointerOut, true)
     document.removeEventListener('mouseout', onMouseOut, true)
@@ -5244,6 +5668,8 @@ import { t } from '../core/i18n'
 
   function applySettings(saved) {
     state.settings = shared.mergeSettings(saved)
+    state.repeatReminderRuntime?.applySettings(state.settings)
+    shared.applyCapsuleScale(document.documentElement, state.settings.interfaceScale.capsulePercent)
     syncDouyuNativeCapsuleRootAttribute()
     scanDouyuNativeDanmakuCapsules()
     shared.applyPlatformColors(document.documentElement, state.settings.colors[platformId])
@@ -5251,6 +5677,54 @@ import { t } from '../core/i18n'
     if (!isEnabled()) {
       clearSelection()
     }
+  }
+
+  function bilibiliRepeatReminderSuppressionKey(value) {
+    return String(value || '')
+      .normalize('NFKC')
+      .replace(/\s+/gu, '')
+      .toLocaleLowerCase()
+      .slice(0, config.maxLength)
+  }
+
+  function pruneBilibiliRepeatReminderSuppressions(now = Date.now()) {
+    for (const [key, entry] of bilibiliRepeatReminderSuppressions) {
+      if (!entry || entry.expiresAt <= now) bilibiliRepeatReminderSuppressions.delete(key)
+    }
+  }
+
+  function rememberBilibiliRepeatReminderSuppression(text) {
+    const key = bilibiliRepeatReminderSuppressionKey(text)
+    if (!key) return
+    const now = Date.now()
+    pruneBilibiliRepeatReminderSuppressions(now)
+    bilibiliRepeatReminderSuppressions.set(key, {
+      expiresAt: now + BILIBILI_REPEAT_REMINDER_SUPPRESSION_TTL,
+      roomKey: currentRoomContext('bilibili').roomKey,
+    })
+    state.repeatReminderRuntime?.suppressText(text)
+  }
+
+  function isBilibiliRepeatReminderSuppressed(text) {
+    const key = bilibiliRepeatReminderSuppressionKey(text)
+    if (!key) return false
+    pruneBilibiliRepeatReminderSuppressions()
+    const entry = bilibiliRepeatReminderSuppressions.get(key)
+    return Boolean(entry && entry.roomKey === currentRoomContext('bilibili').roomKey)
+  }
+
+  function describeRepeatReminderCandidate(element, source) {
+    const descriptor = platformAdapter.describe(element, source)
+    if (!descriptor || platformId !== 'bilibili') return descriptor
+    if (isBilibiliRepeatReminderSuppressed(descriptor.text)) return null
+    const excluded = bilibiliRepeatReminderExclusionReason({
+      element,
+      source,
+      text: descriptor.text,
+    })
+    if (!excluded) return descriptor
+    rememberBilibiliRepeatReminderSuppression(descriptor.text)
+    return null
   }
 
   function startSenderObserver() {
@@ -5289,6 +5763,11 @@ import { t } from '../core/i18n'
         }
       }
       const relevant = mutations.some((mutation) => {
+        // Douyu's moving rows can mutate class/style every frame. Sender text
+        // correlation only needs structural or text mutations; treating motion
+        // attributes as chat changes schedules repeated whole-list scans and
+        // stalls otherwise untouched danmaku.
+        if (platformId === 'douyu' && mutation.type === 'attributes') return false
         const target =
           mutation.target instanceof Element
             ? mutation.target
@@ -5353,6 +5832,15 @@ import { t } from '../core/i18n'
     scanDouyuNativeDanmakuCapsules()
   }
 
+  state.repeatReminderRuntime = createRepeatReminderRuntime({
+    describe: describeRepeatReminderCandidate,
+    initialSettings: state.settings,
+    messageSelectors: config.messages,
+    overlaySelectors: config.overlayMessages,
+    platform: platformId,
+    plusOne: (message) => repeatMessage(message),
+    roomKey: () => currentRoomContext(platformId).roomKey,
+  })
   syncDouyuNativeCapsuleRootAttribute()
   storageGet().then(applySettings)
   ensureButton()
@@ -5369,6 +5857,7 @@ import { t } from '../core/i18n'
     showToast,
   })
   document.addEventListener('pointerover', onPointerOver, true)
+  document.addEventListener('mouseover', onMouseOver, true)
   document.addEventListener('pointermove', onPointerMove, true)
   document.addEventListener('pointerout', onPointerOut, true)
   document.addEventListener('mouseout', onMouseOut, true)

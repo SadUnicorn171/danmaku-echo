@@ -70,7 +70,15 @@ describe('Bilibili direct room-emoticon fallback', () => {
       href: 'https://live.bilibili.com/1746',
       identity: 'room_3990387_104794',
       timestamp: 1_786_614_744,
-    })).resolves.toEqual({ code: 0, identity: 'room_3990387_104794', ok: true })
+    })).resolves.toEqual({
+      code: 0,
+      endpoint: 'api.live.bilibili.com/msg/send',
+      httpStatus: 200,
+      identity: 'room_3990387_104794',
+      method: 'POST',
+      ok: true,
+      transport: 'fetch',
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
     const [url, init] = fetchMock.mock.calls[2]
@@ -126,7 +134,15 @@ describe('Bilibili direct room-emoticon fallback', () => {
       sourceHints: ['https://i0.hdslb.com/bfs/live/hug.webp?from=danmaku'],
       timestamp: 1_786_614_744,
       token: '[抱小皮]',
-    })).resolves.toEqual({ code: 0, identity: 'room_3990387_104800', ok: true })
+    })).resolves.toEqual({
+      code: 0,
+      endpoint: 'api.live.bilibili.com/msg/send',
+      httpStatus: 200,
+      identity: 'room_3990387_104800',
+      method: 'POST',
+      ok: true,
+      transport: 'fetch',
+    })
 
     expect(fetchMock).toHaveBeenCalledTimes(4)
     expect(String(fetchMock.mock.calls[1][0])).toContain('/emoticon/GetEmoticons')

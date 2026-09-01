@@ -2323,10 +2323,7 @@ async function inspect() {
               (left) => Number.isFinite(heldOverlayLeft)
                 && Math.abs(left - heldOverlayLeft) <= 1.5
             );
-            overlayNativeMotionHeld = Boolean(
-              overlay.getAttribute("data-bcp-douyu-motion-paused") === "true"
-                && overlayNativeInternalHoverHeld
-            );
+            overlayNativeMotionHeld = overlayNativeInternalHoverHeld;
 
           }
         }
@@ -2502,7 +2499,6 @@ async function inspect() {
           );
           overlayReleaseCloneCleared = Boolean(
             !document.querySelector(".bcp-one-frozen")
-              && !overlay.hasAttribute("data-bcp-douyu-motion-paused")
               && !overlay.closest(".bili-danmaku-x-dm")
                 ?.hasAttribute("data-bcp-bilibili-motion-paused")
           );
@@ -2761,14 +2757,16 @@ async function inspect() {
       const delay = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
       const isHuya = platform === "huya";
       const douyuPe3 = !isHuya && new URL(location.href).searchParams.get("pe3emoji") === "1";
-      const douyuEmojiName = douyuPe3 ? "梗就这" : "狗骨头";
+      const douyuEmojiName = douyuPe3 ? "像个小丑" : "狗骨头";
       const emojiUrl = isHuya
         ? "https://cdnfile2.msstatic.com/cdnfile/material_manage/web_base_material_16141731879991_pic.png"
-        : "https://shark2.douyucdn.cn/front-publish/live-next-player-aside-master/assets/images/jiuzhe_ca93c68.png";
+        : douyuPe3
+          ? "https://sta-op.douyucdn.cn/dygev/2024/04/25/14988198d32369566ecbe3312cbc82c7.png"
+          : "https://shark2.douyucdn.cn/front-publish/live-next-player-aside-master/assets/images/gougutou_0fd69bd.png";
       const renderedEmojiUrl = isHuya
         ? "https://fixture.invalid/huya/rendered/opaque-native-emoji.webp"
         : douyuPe3
-          ? "https://sta-op.douyucdn.cn/dygev/2024/04/25/93c5e62669c57adffad63afff32a5ab3.png/fmtpng"
+          ? "https://sta-op.douyucdn.cn/dygev/2024/04/25/14988198d32369566ecbe3312cbc82c7.png/fmtpng"
           : "https://shark2.douyucdn.cn/front-publish/live-next-player-aside-master/assets/images/gougutou_0fd69bd.png/fmtpng";
       document.body.dataset.chatSent = "";
       document.body.dataset.douyuSent = "";
@@ -2856,7 +2854,7 @@ async function inspect() {
         panelImage.removeAttribute("alt");
         const itemTitle = document.createElement("div");
         itemTitle.className = "EmotionList-item-title";
-        itemTitle.textContent = "就这";
+        itemTitle.textContent = douyuEmojiName;
         item.appendChild(itemTitle);
         const tabs = document.createElement("ul");
         tabs.className = "EmotionTab";
@@ -3038,7 +3036,7 @@ async function inspect() {
         document.body.dataset.nativeEmojiItemClicks = String(
           Number(document.body.dataset.nativeEmojiItemClicks || 0) + 1
         );
-        document.body.dataset.nativeEmojiClickedToken = isHuya ? "[傲慢]" : "[就这]";
+        document.body.dataset.nativeEmojiClickedToken = isHuya ? "[傲慢]" : expectedEmojiName;
         if (isHuya) {
           // Current Huya inserts a rich native object first. Its own send
           // button then consumes the editor, while the echo uses another URL.
@@ -3057,6 +3055,7 @@ async function inspect() {
           return;
         }
         // Douyu's built-in item can dispatch directly and close its panel.
+        document.body.dataset.douyuNativePe = "3";
         panel.style.display = "none";
         setTimeout(appendTransformedEcho, 120);
       };
@@ -3127,15 +3126,22 @@ async function inspect() {
       captureFeedback();
       feedbackObserver.disconnect();
       const feedback = feedbackMessages[feedbackMessages.length - 1] || "";
-      const nativePanelStayedClosed = Number(document.body.dataset.nativeEmojiToggleClicks || 0) === 0;
-      const nativeItemStayedUnused = Number(document.body.dataset.nativeEmojiItemClicks || 0) === 0;
+      const nativePanelPathCorrect = isHuya
+        ? Number(document.body.dataset.nativeEmojiToggleClicks || 0) === 0
+        : Number(document.body.dataset.nativeEmojiToggleClicks || 0) > 0;
+      const nativeItemPathCorrect = isHuya
+        ? Number(document.body.dataset.nativeEmojiItemClicks || 0) === 0
+        : Number(document.body.dataset.nativeEmojiItemClicks || 0) === 1;
       const imageEchoRendered = Boolean(
         chatRoot.querySelector("[data-fixture-native-emoji-echo='true'] img")
       );
-      const emojiNameSubmitted = document.body.dataset.nativeEmojiNameSubmitted === expectedEmojiName;
+      const emojiNameSubmitted = isHuya
+        ? document.body.dataset.nativeEmojiNameSubmitted === expectedEmojiName
+        : document.body.dataset.nativeEmojiClickedToken === expectedEmojiName;
       const platformReceivedEmojiName = isHuya
         ? document.body.dataset.chatSent === expectedEmojiName
-        : document.body.dataset.douyuSent === expectedEmojiName;
+        : document.body.dataset.douyuNativePe === "3"
+          && document.body.dataset.douyuSent !== expectedEmojiName;
       const successFeedback = /已发送|sent/i.test(feedback);
       const nativeHoverReleasedAfterAction = isHuya || Boolean(
         overlay.dataset.fixtureDouyuNativeHoverPaused !== "true"
@@ -3156,8 +3162,8 @@ async function inspect() {
         sideEmojiHoverableWithoutKnownRowSelector,
         plusOneAvailable: Boolean(plusOne),
         emojiNameExtracted,
-        nativePanelStayedClosed,
-        nativeItemStayedUnused,
+        nativePanelPathCorrect,
+        nativeItemPathCorrect,
         imageEchoRendered,
         emojiNameSubmitted,
         platformReceivedEmojiName,
@@ -3170,8 +3176,8 @@ async function inspect() {
       'nativeHoverPausedBeforeAction',
       'nativeHoverReleasedAfterAction',
       'plusOneAvailable',
-      'nativePanelStayedClosed',
-      'nativeItemStayedUnused',
+      'nativePanelPathCorrect',
+      'nativeItemPathCorrect',
       'imageEchoRendered',
       'emojiNameSubmitted',
       'platformReceivedEmojiName',

@@ -81,7 +81,7 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
       setTimeout(() => {
         if (state.toast?.id === toastId) state.toast = null;
       }, 180);
-    }, tone === "error" ? 3600 : 2400);
+    }, message.length > 80 ? 6000 : tone === "error" ? 3600 : 2400);
   }
 
   return {
