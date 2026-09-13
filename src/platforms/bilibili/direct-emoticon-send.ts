@@ -4,13 +4,44 @@ export const BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE =
 const ROOM_EMOTICON_PATTERN = /^room_([1-9]\d{0,19})_([1-9]\d{0,19})$/
 
 export interface BilibiliDirectEmoticonSendRequest {
+  attemptId?: string
   identity?: string
   sourceHints?: string[]
   token?: string
   type: typeof BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE
 }
 
+export interface BilibiliSendRequestTrace {
+  stage: string
+  endpoint: string
+  method: 'GET' | 'POST'
+  startedAt: number
+  durationMs: number
+  state: 'pending' | 'response' | 'complete' | 'http-error' | 'transport-error' | 'parse-error'
+  httpStatus?: number
+  responseType?: string
+  contentType?: string
+  apiCode?: number
+  apiMessage?: string
+}
+export interface BilibiliSendDiagnostics {
+  attemptId?: string
+  failedStage: string
+  failureKind: 'transport' | 'http' | 'api' | 'parse' | 'validation' | 'runtime'
+  errorName?: string
+  errorMessage?: string
+  errorStack?: string
+  elapsedMs: number
+  online: boolean | null
+  identityProvided: boolean
+  identityResolved: boolean
+  sendRequestStarted: boolean
+  sendResponseReceived: boolean
+  requests: BilibiliSendRequestTrace[]
+}
+
 export interface BilibiliDirectEmoticonSendResponse {
+  diagnostics?: BilibiliSendDiagnostics
   code?: number
   endpoint?: string
   error?: string
@@ -30,12 +61,16 @@ export function isBilibiliDirectEmoticonSendRequest(
   const request = value as Partial<BilibiliDirectEmoticonSendRequest>
   const identity = String(request.identity || '').toLowerCase()
   const token = String(request.token || '').trim()
-  return request.type === BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE
-    && (ROOM_EMOTICON_PATTERN.test(identity) || /^\[[^\]\n]{1,40}\]$/.test(token))
-    && (request.sourceHints === undefined
-      || (Array.isArray(request.sourceHints)
-        && request.sourceHints.length <= 8
-        && request.sourceHints.every((hint) => typeof hint === 'string' && hint.length <= 4_096)))
+  return (
+    request.type === BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE &&
+    (request.attemptId === undefined ||
+      (typeof request.attemptId === 'string' && /^[a-z0-9._:-]{1,80}$/i.test(request.attemptId))) &&
+    (ROOM_EMOTICON_PATTERN.test(identity) || /^\[[^\]\n]{1,40}\]$/.test(token)) &&
+    (request.sourceHints === undefined ||
+      (Array.isArray(request.sourceHints) &&
+        request.sourceHints.length <= 8 &&
+        request.sourceHints.every((hint) => typeof hint === 'string' && hint.length <= 4_096)))
+  )
 }
 
 export function bilibiliRoomEmoticonIdentity(asset: unknown): string {
@@ -43,7 +78,9 @@ export function bilibiliRoomEmoticonIdentity(asset: unknown): string {
   const keys = (asset as { keys?: unknown }).keys
   if (!Array.isArray(keys)) return ''
   for (const rawKey of keys) {
-    const key = String(rawKey || '').trim().toLowerCase()
+    const key = String(rawKey || '')
+      .trim()
+      .toLowerCase()
     if (!key.startsWith('native-panel:') && !key.startsWith('bili-exclusive:')) continue
     const candidate = key.slice(key.indexOf(':') + 1)
     if (ROOM_EMOTICON_PATTERN.test(candidate)) return candidate
@@ -57,6 +94,7 @@ export function bilibiliRoomEmoticonIdentity(asset: unknown): string {
  * its module scope. Authentication material never leaves the page context.
  */
 export async function sendBilibiliRoomEmoticonInPage(options: {
+  attemptId?: string
   href: string
   identity?: string
   sourceHints?: string[]
@@ -71,10 +109,9 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
   const WEB_LOCATION = '444.8'
   const IDENTITY_PATTERN = /^room_([1-9]\d{0,19})_([1-9]\d{0,19})$/
   const MIXIN_KEY_ENC_TAB = [
-    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35,
-    27, 43, 5, 49, 33, 9, 42, 19, 29, 28, 14, 39, 12, 38, 41, 13,
-    37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
-    22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
+    46, 47, 18, 2, 53, 8, 23, 32, 15, 50, 10, 31, 58, 3, 45, 35, 27, 43, 5, 49, 33, 9, 42, 19, 29,
+    28, 14, 39, 12, 38, 41, 13, 37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4, 22, 25,
+    54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52,
   ]
 
   type ApiEnvelope = {
@@ -82,6 +119,100 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
     data?: unknown
     message?: unknown
     msg?: unknown
+  }
+
+  // This function is serialized into MAIN world; keep diagnostic helpers local.
+  const startedAt = Date.now()
+  const requests: BilibiliSendRequestTrace[] = []
+  let currentStage = 'read-csrf'
+  let phase: 'prepare' | 'fetch' | 'parse' | 'validate' = 'prepare'
+  let activeRequest: BilibiliSendRequestTrace | undefined
+  let exception:
+    | {
+        failureKind: BilibiliSendDiagnostics['failureKind']
+        errorName: string
+        errorMessage: string
+        errorStack: string
+      }
+    | undefined
+  const protectedValues = [options.token, options.identity].filter((value): value is string =>
+    Boolean(value),
+  )
+  const diagnosticText = (value: unknown, limit = 600): string => {
+    let text = String(value || '')
+    for (const secret of protectedValues) if (secret) text = text.split(secret).join('[redacted]')
+    return text
+      .replace(/https?:\/\/[^\s)"'<>]+/gi, '[web-url]')
+      .replace(/room_\d+_\d+/g, '[emoticon]')
+      .replace(/\b(Bearer|Basic)\s+[a-z0-9+/=._-]+/gi, '$1 [redacted]')
+      .replace(
+        /(["']?(?:cookie|authorization|password|secret|csrf(?:_token)?|access_token|token|signature|sessdata|w_rid)["']?\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi,
+        '$1[redacted]',
+      )
+      .slice(0, limit)
+  }
+  const request = async (
+    stage: string,
+    url: URL | string,
+    init: RequestInit = {},
+  ): Promise<Response> => {
+    currentStage = stage
+    phase = 'prepare'
+    const target = new URL(String(url))
+    activeRequest = {
+      stage,
+      endpoint: target.hostname + target.pathname,
+      method: init.method === 'POST' ? 'POST' : 'GET',
+      startedAt: Date.now(),
+      durationMs: 0,
+      state: 'pending',
+    }
+    requests.push(activeRequest)
+    try {
+      phase = 'fetch'
+      const response = await fetch(url, init)
+      phase = 'validate'
+      activeRequest.httpStatus = response.status
+      activeRequest.responseType = response.type
+      activeRequest.contentType = String(response.headers.get('content-type') || '')
+        .split(';')[0]
+        .slice(0, 80)
+      activeRequest.state = response.ok ? 'response' : 'http-error'
+      return response
+    } catch (error) {
+      activeRequest.state = phase === 'fetch' ? 'transport-error' : 'response'
+      throw error
+    } finally {
+      activeRequest.durationMs = Math.max(0, Date.now() - activeRequest.startedAt)
+    }
+  }
+  const failure = (error: unknown): BilibiliDirectEmoticonSendResponse => {
+    const failureKind = phase === 'fetch' ? 'transport' : phase === 'parse' ? 'parse' : 'runtime'
+    const errorName = error instanceof Error ? error.name : 'UnknownError'
+    // JSON parser messages can echo response bodies; retain the type/frames without the body.
+    const errorMessage =
+      phase === 'parse'
+        ? 'Response body could not be parsed as JSON'
+        : diagnosticText(error instanceof Error ? error.message : error)
+    const frames =
+      error instanceof Error ? (error.stack || '').split('\n').slice(1, 9).join('\n') : ''
+    exception = {
+      failureKind,
+      errorName: diagnosticText(errorName, 80),
+      errorMessage,
+      errorStack: diagnosticText(errorName + ': ' + errorMessage + '\n' + frames, 2400),
+    }
+    return {
+      error:
+        failureKind === 'transport'
+          ? 'network'
+          : failureKind === 'parse'
+            ? 'invalid-json'
+            : 'runtime-exception',
+      message: errorMessage,
+      ok: false,
+      stage: currentStage + '-' + (phase === 'fetch' ? 'request' : phase),
+    }
   }
 
   const add32 = (first: number, second: number) => (first + second) | 0
@@ -226,21 +357,35 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
       )
       md5Cycle(state, words)
     }
-    return state.map((word) => {
-      let result = ''
-      for (let index = 0; index < 4; index += 1) {
-        result += ((word >>> (index * 8)) & 0xff).toString(16).padStart(2, '0')
-      }
-      return result
-    }).join('')
+    return state
+      .map((word) => {
+        let result = ''
+        for (let index = 0; index < 4; index += 1) {
+          result += ((word >>> (index * 8)) & 0xff).toString(16).padStart(2, '0')
+        }
+        return result
+      })
+      .join('')
   }
 
   const jsonEnvelope = async (response: Response): Promise<ApiEnvelope> => {
+    phase = 'parse'
     try {
       const value: unknown = await response.json()
-      return value && typeof value === 'object' ? value as ApiEnvelope : {}
-    } catch {
-      return {}
+      const envelope = value && typeof value === 'object' ? (value as ApiEnvelope) : {}
+      if (activeRequest) {
+        activeRequest.apiCode = codeOf(envelope)
+        activeRequest.apiMessage = diagnosticText(messageOf(envelope))
+        activeRequest.state = 'complete'
+      }
+      phase = 'validate'
+      return envelope
+    } catch (error) {
+      if (activeRequest) activeRequest.state = 'parse-error'
+      throw error
+    } finally {
+      if (activeRequest)
+        activeRequest.durationMs = Math.max(0, Date.now() - activeRequest.startedAt)
     }
   }
   const codeOf = (envelope: ApiEnvelope) => {
@@ -248,16 +393,20 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
     return Number.isFinite(code) ? code : undefined
   }
   const messageOf = (envelope: ApiEnvelope) =>
-    String(envelope.message || envelope.msg || '').replace(/\s+/g, ' ').trim().slice(0, 180)
+    String(envelope.message || envelope.msg || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 180)
   const fileKey = (value: unknown) => {
     const source = String(value || '')
     return source.slice(source.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
   }
 
-  const normalizeToken = (value: unknown) => String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .toLowerCase()
+  const normalizeToken = (value: unknown) =>
+    String(value || '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase()
   const sourceFragments = (value: unknown) => {
     const source = String(value || '').toLowerCase()
     const results = new Set<string>()
@@ -276,8 +425,9 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
   const resolveIdentityFromEmoticons = (value: unknown, roomId: string) => {
     const expectedToken = normalizeToken(options.token)
     const expectedSources = new Set(
-      (Array.isArray(options.sourceHints) ? options.sourceHints : [])
-        .flatMap((source) => Array.from(sourceFragments(source))),
+      (Array.isArray(options.sourceHints) ? options.sourceHints : []).flatMap((source) =>
+        Array.from(sourceFragments(source)),
+      ),
     )
     const matches: Array<{ identity: string; sourceScore: number }> = []
     const seen = new Set<unknown>()
@@ -289,21 +439,18 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
         return
       }
       const record = current as Record<string, unknown>
-      const identity = [
-        record.emoticon_unique,
-        record.emoticonUnique,
-        record.emoticon_id,
-        record.unique,
-      ].map((item) => String(item || '').trim().toLowerCase())
-        .find((item) => ROOM_EMOTICON_PATTERN.test(item)) || ''
+      const identity =
+        [record.emoticon_unique, record.emoticonUnique, record.emoticon_id, record.unique]
+          .map((item) =>
+            String(item || '')
+              .trim()
+              .toLowerCase(),
+          )
+          .find((item) => IDENTITY_PATTERN.test(item)) || ''
       if (identity && identity.startsWith(`room_${roomId}_`)) {
-        const names = [
-          record.emoji,
-          record.descript,
-          record.description,
-          record.name,
-          record.text,
-        ].map(normalizeToken).filter(Boolean)
+        const names = [record.emoji, record.descript, record.description, record.name, record.text]
+          .map(normalizeToken)
+          .filter(Boolean)
         if (!expectedToken || names.includes(expectedToken)) {
           const candidateSources = [
             record.url,
@@ -312,18 +459,23 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
             record.webp_url,
           ].flatMap((source) => Array.from(sourceFragments(source)))
           const sourceScore = candidateSources.reduce(
-            (score, source) => Math.max(
-              score,
-              ...Array.from(expectedSources).map((expected) =>
-                source === expected || source.includes(expected) || expected.includes(source) ? 1 : 0,
+            (score, source) =>
+              Math.max(
+                score,
+                ...Array.from(expectedSources).map((expected) =>
+                  source === expected || source.includes(expected) || expected.includes(source)
+                    ? 1
+                    : 0,
+                ),
               ),
-            ),
             0,
           )
           matches.push({ identity, sourceScore })
         }
       }
-      Object.values(record).slice(0, 100).forEach((item) => visit(item, depth + 1))
+      Object.values(record)
+        .slice(0, 100)
+        .forEach((item) => visit(item, depth + 1))
     }
     visit(value, 0)
     const uniqueMatches = Array.from(
@@ -334,160 +486,198 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
     return candidates.length === 1 ? candidates[0].identity : ''
   }
 
-  let identity = String(options.identity || '').trim().toLowerCase()
-  const csrfMatch = document.cookie.match(/(?:^|;\s*)bili_jct=([^;]+)/)
-  if (!csrfMatch) return { error: 'csrf-unavailable', ok: false, stage: 'read-csrf' }
-  let csrf = csrfMatch[1]
-  try {
-    csrf = decodeURIComponent(csrf)
-  } catch {
-    // The cookie is already an unescaped token.
-  }
+  let identity = String(options.identity || '')
+    .trim()
+    .toLowerCase()
+  const execute = async (): Promise<BilibiliDirectEmoticonSendResponse> => {
+    const csrfMatch = document.cookie.match(/(?:^|;\s*)bili_jct=([^;]+)/)
+    if (!csrfMatch) return { error: 'csrf-unavailable', ok: false, stage: 'read-csrf' }
+    let csrf = csrfMatch[1]
+    protectedValues.push(csrf)
+    try {
+      csrf = decodeURIComponent(csrf)
+    } catch {
+      // The cookie is already an unescaped token.
+    }
 
-  try {
-    const pageUrl = new URL(
-      location.hostname === 'live.bilibili.com' ? location.href : options.href,
-    )
-    if (pageUrl.hostname !== 'live.bilibili.com') {
-      return { error: 'invalid-page', ok: false, stage: 'validate-page' }
-    }
-    const shortRoomId = pageUrl.pathname.split('/').find((part) => /^\d+$/.test(part)) || ''
-    if (!shortRoomId) return { error: 'room-unavailable', ok: false, stage: 'read-room' }
-    let identityMatch = identity.match(IDENTITY_PATTERN)
-    let roomId = shortRoomId
-    if (!identityMatch || roomId !== identityMatch[1]) {
-      const roomUrl = new URL(ROOM_INIT_URL)
-      roomUrl.searchParams.set('id', shortRoomId)
-      const roomResponse = await fetch(roomUrl, { credentials: 'include' })
-      if (!roomResponse.ok) {
-        return { error: 'room-unavailable', ok: false, stage: 'resolve-room-http' }
+    try {
+      protectedValues.push(csrf)
+      currentStage = 'validate-page'
+      const pageUrl = new URL(
+        location.hostname === 'live.bilibili.com' ? location.href : options.href,
+      )
+      if (pageUrl.hostname !== 'live.bilibili.com') {
+        return { error: 'invalid-page', ok: false, stage: 'validate-page' }
       }
-      const roomEnvelope = await jsonEnvelope(roomResponse)
-      if (codeOf(roomEnvelope) !== 0 || !roomEnvelope.data || typeof roomEnvelope.data !== 'object') {
-        return { error: 'room-unavailable', ok: false, stage: 'resolve-room-api' }
-      }
-      const resolved = Number((roomEnvelope.data as { room_id?: unknown }).room_id)
-      roomId = Number.isSafeInteger(resolved) && resolved > 0 ? String(resolved) : ''
-    }
-    if (!roomId) return { error: 'room-unavailable', ok: false, stage: 'resolve-room-data' }
-    if (!identityMatch) {
-      const emoticonUrl = new URL(EMOTICON_LIST_URL)
-      emoticonUrl.searchParams.set('platform', 'pc')
-      emoticonUrl.searchParams.set('room_id', roomId)
-      const emoticonResponse = await fetch(emoticonUrl, { credentials: 'include' })
-      if (!emoticonResponse.ok) {
-        return { error: 'emoticon-list-unavailable', ok: false, stage: 'resolve-identity-http' }
-      }
-      const emoticonEnvelope = await jsonEnvelope(emoticonResponse)
-      if (codeOf(emoticonEnvelope) !== 0) {
-        return {
-          error: 'emoticon-list-unavailable',
-          message: messageOf(emoticonEnvelope),
-          ok: false,
-          stage: 'resolve-identity-api',
+      const shortRoomId = pageUrl.pathname.split('/').find((part) => /^\d+$/.test(part)) || ''
+      if (!shortRoomId) return { error: 'room-unavailable', ok: false, stage: 'read-room' }
+      let identityMatch = identity.match(IDENTITY_PATTERN)
+      let roomId = shortRoomId
+      if (!identityMatch || roomId !== identityMatch[1]) {
+        const roomUrl = new URL(ROOM_INIT_URL)
+        roomUrl.searchParams.set('id', shortRoomId)
+        const roomResponse = await request('resolve-room', roomUrl, { credentials: 'include' })
+        if (!roomResponse.ok) {
+          return { error: 'room-unavailable', ok: false, stage: 'resolve-room-http' }
         }
+        const roomEnvelope = await jsonEnvelope(roomResponse)
+        if (
+          codeOf(roomEnvelope) !== 0 ||
+          !roomEnvelope.data ||
+          typeof roomEnvelope.data !== 'object'
+        ) {
+          return { error: 'room-unavailable', ok: false, stage: 'resolve-room-api' }
+        }
+        const resolved = Number((roomEnvelope.data as { room_id?: unknown }).room_id)
+        roomId = Number.isSafeInteger(resolved) && resolved > 0 ? String(resolved) : ''
       }
-      identity = resolveIdentityFromEmoticons(emoticonEnvelope.data, roomId)
-      identityMatch = identity.match(IDENTITY_PATTERN)
+      if (!roomId) return { error: 'room-unavailable', ok: false, stage: 'resolve-room-data' }
       if (!identityMatch) {
-        return { error: 'identity-unavailable', ok: false, stage: 'resolve-identity-data' }
-      }
-    }
-    if (roomId !== identityMatch[1]) {
-      return { error: 'room-mismatch', ok: false, stage: 'validate-room-identity' }
-    }
-
-    const navResponse = await fetch(NAV_URL, { credentials: 'include' })
-    if (!navResponse.ok) {
-      return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-http' }
-    }
-    const navEnvelope = await jsonEnvelope(navResponse)
-    if (codeOf(navEnvelope) !== 0 || !navEnvelope.data || typeof navEnvelope.data !== 'object') {
-      return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-api' }
-    }
-    const wbi = (navEnvelope.data as { wbi_img?: unknown }).wbi_img
-    if (!wbi || typeof wbi !== 'object') {
-      return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-data' }
-    }
-    const imageKey = fileKey((wbi as { img_url?: unknown }).img_url)
-    const subKey = fileKey((wbi as { sub_url?: unknown }).sub_url)
-    if (imageKey.length !== 32 || subKey.length !== 32) {
-      return { error: 'wbi-key-unavailable', ok: false, stage: 'parse-wbi-key' }
-    }
-    const sourceKey = `${imageKey}${subKey}`
-    const mixinKey = MIXIN_KEY_ENC_TAB.map((index) => sourceKey[index] || '').join('').slice(0, 32)
-    const timestamp = Number.isSafeInteger(options.timestamp) && Number(options.timestamp) > 0
-      ? Number(options.timestamp)
-      : Math.floor(Date.now() / 1_000)
-    const signedQuery = `web_location=${encodeURIComponent(WEB_LOCATION)}&wts=${timestamp}`
-    const wRid = md5(`${signedQuery}${mixinKey}`)
-    const sendUrl = new URL(LIVE_SEND_URL)
-    sendUrl.searchParams.set('web_location', WEB_LOCATION)
-    sendUrl.searchParams.set('w_rid', wRid)
-    sendUrl.searchParams.set('wts', String(timestamp))
-
-    const form = new FormData()
-    form.set('bubble', '0')
-    form.set('msg', identity)
-    form.set('color', '16777215')
-    form.set('mode', '1')
-    form.set('dm_type', '1')
-    form.set('emoticonOptions', '[object Object]')
-    form.set('data_extend', JSON.stringify({ trackid: '-99998' }))
-    form.set('fontsize', '25')
-    form.set('rnd', String(timestamp))
-    form.set('roomid', roomId)
-    form.set('csrf', csrf)
-    form.set('csrf_token', csrf)
-
-    const sendResponse = await fetch(sendUrl, {
-      body: form,
-      credentials: 'include',
-      method: 'POST',
-    })
-    if (!sendResponse.ok) {
-      return {
-        endpoint: 'api.live.bilibili.com/msg/send',
-        error: `http-${sendResponse.status}`,
-        httpStatus: sendResponse.status,
-        method: 'POST',
-        ok: false,
-        stage: 'send-http',
-        transport: 'fetch',
-      }
-    }
-    const sendEnvelope = await jsonEnvelope(sendResponse)
-    const code = codeOf(sendEnvelope)
-    const message = messageOf(sendEnvelope)
-    return code === 0
-      ? {
-          code,
-          endpoint: 'api.live.bilibili.com/msg/send',
-          httpStatus: sendResponse.status,
-          identity,
-          method: 'POST',
-          ok: true,
-          transport: 'fetch',
+        const emoticonUrl = new URL(EMOTICON_LIST_URL)
+        emoticonUrl.searchParams.set('platform', 'pc')
+        emoticonUrl.searchParams.set('room_id', roomId)
+        const emoticonResponse = await request('resolve-identity', emoticonUrl, {
+          credentials: 'include',
+        })
+        if (!emoticonResponse.ok) {
+          return { error: 'emoticon-list-unavailable', ok: false, stage: 'resolve-identity-http' }
         }
-      : {
-          code,
+        const emoticonEnvelope = await jsonEnvelope(emoticonResponse)
+        if (codeOf(emoticonEnvelope) !== 0) {
+          return {
+            error: 'emoticon-list-unavailable',
+            message: messageOf(emoticonEnvelope),
+            ok: false,
+            stage: 'resolve-identity-api',
+          }
+        }
+        identity = resolveIdentityFromEmoticons(emoticonEnvelope.data, roomId)
+        identityMatch = identity.match(IDENTITY_PATTERN)
+        if (!identityMatch) {
+          return { error: 'identity-unavailable', ok: false, stage: 'resolve-identity-data' }
+        }
+      }
+      if (roomId !== identityMatch[1]) {
+        return { error: 'room-mismatch', ok: false, stage: 'validate-room-identity' }
+      }
+
+      const navResponse = await request('load-wbi', NAV_URL, { credentials: 'include' })
+      if (!navResponse.ok) {
+        return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-http' }
+      }
+      const navEnvelope = await jsonEnvelope(navResponse)
+      if (codeOf(navEnvelope) !== 0 || !navEnvelope.data || typeof navEnvelope.data !== 'object') {
+        return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-api' }
+      }
+      const wbi = (navEnvelope.data as { wbi_img?: unknown }).wbi_img
+      if (!wbi || typeof wbi !== 'object') {
+        return { error: 'wbi-key-unavailable', ok: false, stage: 'load-wbi-data' }
+      }
+      const imageKey = fileKey((wbi as { img_url?: unknown }).img_url)
+      const subKey = fileKey((wbi as { sub_url?: unknown }).sub_url)
+      if (imageKey.length !== 32 || subKey.length !== 32) {
+        return { error: 'wbi-key-unavailable', ok: false, stage: 'parse-wbi-key' }
+      }
+      currentStage = 'prepare-send'
+      phase = 'prepare'
+      protectedValues.push(imageKey, subKey)
+      const sourceKey = `${imageKey}${subKey}`
+      const mixinKey = MIXIN_KEY_ENC_TAB.map((index) => sourceKey[index] || '')
+        .join('')
+        .slice(0, 32)
+      const timestamp =
+        Number.isSafeInteger(options.timestamp) && Number(options.timestamp) > 0
+          ? Number(options.timestamp)
+          : Math.floor(Date.now() / 1_000)
+      const signedQuery = `web_location=${encodeURIComponent(WEB_LOCATION)}&wts=${timestamp}`
+      const wRid = md5(`${signedQuery}${mixinKey}`)
+      protectedValues.push(wRid)
+      const sendUrl = new URL(LIVE_SEND_URL)
+      sendUrl.searchParams.set('web_location', WEB_LOCATION)
+      sendUrl.searchParams.set('w_rid', wRid)
+      sendUrl.searchParams.set('wts', String(timestamp))
+
+      const form = new FormData()
+      form.set('bubble', '0')
+      form.set('msg', identity)
+      form.set('color', '16777215')
+      form.set('mode', '1')
+      form.set('dm_type', '1')
+      form.set('emoticonOptions', '[object Object]')
+      form.set('data_extend', JSON.stringify({ trackid: '-99998' }))
+      form.set('fontsize', '25')
+      form.set('rnd', String(timestamp))
+      form.set('roomid', roomId)
+      form.set('csrf', csrf)
+      form.set('csrf_token', csrf)
+
+      const sendResponse = await request('send', sendUrl, {
+        body: form,
+        credentials: 'include',
+        method: 'POST',
+      })
+      if (!sendResponse.ok) {
+        return {
           endpoint: 'api.live.bilibili.com/msg/send',
-          error: code === undefined ? 'invalid-response' : `api-${code}`,
+          error: `http-${sendResponse.status}`,
           httpStatus: sendResponse.status,
-          identity,
-          message,
           method: 'POST',
           ok: false,
-          stage: 'send-api',
+          stage: 'send-http',
           transport: 'fetch',
         }
-  } catch (error) {
-    const reason = error instanceof Error ? `${error.name}: ${error.message}` : String(error || '')
-    return {
-      error: 'network',
-      message: reason.replace(/\s+/g, ' ').trim().slice(0, 180),
-      ok: false,
-      stage: 'network',
+      }
+      const sendEnvelope = await jsonEnvelope(sendResponse)
+      const code = codeOf(sendEnvelope)
+      const message = messageOf(sendEnvelope)
+      return code === 0
+        ? {
+            code,
+            endpoint: 'api.live.bilibili.com/msg/send',
+            httpStatus: sendResponse.status,
+            identity,
+            method: 'POST',
+            ok: true,
+            transport: 'fetch',
+          }
+        : {
+            code,
+            endpoint: 'api.live.bilibili.com/msg/send',
+            error: code === undefined ? 'invalid-response' : `api-${code}`,
+            httpStatus: sendResponse.status,
+            identity,
+            message,
+            method: 'POST',
+            ok: false,
+            stage: 'send-api',
+            transport: 'fetch',
+          }
+    } catch (error) {
+      return failure(error)
     }
+  }
+  const result = await execute().catch(failure)
+  if (result.ok) return result
+  const failedStage = result.stage || currentStage
+  const failureKind =
+    exception?.failureKind ||
+    (failedStage.endsWith('-http') ? 'http' : failedStage.endsWith('-api') ? 'api' : 'validation')
+  return {
+    ...result,
+    diagnostics: {
+      attemptId: options.attemptId,
+      failedStage,
+      failureKind,
+      ...exception,
+      elapsedMs: Math.max(0, Date.now() - startedAt),
+      online: typeof navigator === 'undefined' ? null : navigator.onLine,
+      identityProvided: IDENTITY_PATTERN.test(String(options.identity || '')),
+      identityResolved: IDENTITY_PATTERN.test(identity),
+      sendRequestStarted: requests.some((item) => item.stage === 'send'),
+      sendResponseReceived: requests.some(
+        (item) => item.stage === 'send' && item.httpStatus !== undefined,
+      ),
+      requests,
+    },
   }
 }

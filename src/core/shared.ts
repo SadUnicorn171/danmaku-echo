@@ -132,6 +132,7 @@ export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
     thresholdVersion: 2,
   }),
   interfaceScale: Object.freeze({
+    mode: 'manual',
     capsulePercent: DEFAULT_CAPSULE_SCALE_PERCENT,
   }),
   sideChatCapsule: Object.freeze({
@@ -318,6 +319,8 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
     : {}
   const savedColors = isRecord(value.colors) ? value.colors : {}
   const savedInterfaceScale = isRecord(value.interfaceScale) ? value.interfaceScale : {}
+  // `radar` and the v1 threshold shape are 2.x migration inputs. Keep them
+  // readable until 3.0.0 so users can upgrade without losing custom settings.
   const savedRepeatReminder = isRecord(value.repeatReminder)
     ? value.repeatReminder
     : isRecord(value.radar) ? value.radar : {}
@@ -366,6 +369,7 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
     enabled: typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_SETTINGS.enabled,
     altClick: typeof value.altClick === 'boolean' ? value.altClick : DEFAULT_SETTINGS.altClick,
     interfaceScale: {
+      mode: savedInterfaceScale.mode === 'auto' ? 'auto' : 'manual',
       capsulePercent: normalizeCapsuleScalePercent(savedInterfaceScale.capsulePercent),
     },
     actions,

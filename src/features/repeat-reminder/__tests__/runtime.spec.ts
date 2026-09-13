@@ -12,6 +12,60 @@ afterEach(() => {
 })
 
 describe('repeat reminder runtime audience refresh', () => {
+  it('applies editable prompt preferences in auto mode and resizes without changing the threshold', () => {
+    vi.useFakeTimers()
+    const display = { width: 3860, height: 2160 }
+    vi.stubGlobal('screen', display)
+    vi.stubGlobal('devicePixelRatio', 1)
+    document.body.innerHTML = '<div data-e2e="live-room-audience">4,974</div>'
+    const settings = mergeSettings({
+      interfaceScale: { mode: 'auto' },
+      repeatReminder: {
+        mode: 'auto',
+        manual: {
+          douyin: {
+            threshold: 99,
+            promptDurationSeconds: 23,
+            queueLimit: 7,
+            promptScalePercent: 120,
+          },
+        },
+      },
+    })
+    const removeListener = vi.spyOn(window, 'removeEventListener')
+    const runtime = createRepeatReminderRuntime({
+      initialSettings: settings,
+      platform: 'douyin',
+      plusOne: vi.fn<() => void>(),
+      roomKey: () => 'douyin:scale',
+    })
+    try {
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')!.shadowRoot!
+      const promptList = shadow.querySelector<HTMLElement>('.prompt-list')!
+      const launcher = shadow.querySelector<HTMLElement>('.launcher')!
+      expect(shadow.querySelector('[data-value="threshold"]')?.textContent).toBe('7 次')
+      expect(shadow.querySelector('[data-value="duration"]')?.textContent).toBe('23 秒')
+      expect(shadow.querySelector('[data-value="queue"]')?.textContent).toBe('7 条')
+      expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('1.2')
+      display.width = 1930
+      display.height = 1080
+      window.dispatchEvent(new Event('resize'))
+      expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('0.6')
+      expect(launcher.style.transform).toBe('scale(0.5)')
+      expect(shadow.querySelector('[data-value="threshold"]')?.textContent).toBe('7 次')
+      settings.interfaceScale.mode = 'manual'
+      runtime.applySettings(settings)
+      expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('1.2')
+      expect(launcher.style.transform).toBe('scale(1)')
+      expect(settings.repeatReminder.manual.douyin.promptScalePercent).toBe(120)
+    } finally {
+      runtime.destroy()
+      expect(removeListener).toHaveBeenCalledWith('resize', expect.any(Function))
+      expect(removeListener).toHaveBeenCalledWith('focus', expect.any(Function))
+      removeListener.mockRestore()
+    }
+  })
+
   it('keeps the selected platform threshold fixed in manual mode', () => {
     vi.useFakeTimers()
     document.body.innerHTML = '<div data-e2e="live-room-audience">100,000</div>'

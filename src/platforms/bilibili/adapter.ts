@@ -1,9 +1,13 @@
-import { LIVE_PLATFORM_CONFIG } from '../live/config'
 import { createSelectorPlatformAdapter } from '../live/selector-adapter'
+import { BILIBILI_PLATFORM_CONFIG } from './config'
+import { bilibiliRepeatReminderExclusionReason } from './repeat-reminder-filter'
 
 export function createBilibiliAdapter() {
-  return createSelectorPlatformAdapter({
-    config: LIVE_PLATFORM_CONFIG.bilibili,
-    platform: 'bilibili',
-  })
+  return {
+    ...createSelectorPlatformAdapter({
+      config: BILIBILI_PLATFORM_CONFIG,
+      platform: 'bilibili',
+    }),
+    repeatReminderExclusionReason: bilibiliRepeatReminderExclusionReason,
+  }
 }

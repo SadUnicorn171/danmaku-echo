@@ -1,5 +1,6 @@
+import { isOpaqueRichAssetIdentity } from '../../core/rich-asset-identity'
+
 const GENERIC_EMOTICON_LABEL = /^(?:图片|图片表情|表情|表情包|emoji|emote|emoticon|image|sticker)$/i
-const OPAQUE_EMOTICON_IDENTITY = /^(?:official|room|anchor|up|live|emoji|emote|emoticon|face|sticker|pack|package|group|custom)(?:[_:-][a-z\d]+)+$/i
 
 function normalizeLabel(value: unknown): string {
   return String(value == null ? '' : value)
@@ -21,8 +22,7 @@ export function isBilibiliDecorativeImageDescription(value: unknown): boolean {
 
 /** Returns true for a send/resource identity that must never be shown as an Emoji name. */
 export function isBilibiliOpaqueEmoticonIdentity(value: unknown): boolean {
-  const normalized = normalizeLabel(value).replace(/^\[|\]$/g, '')
-  return Boolean(normalized && OPAQUE_EMOTICON_IDENTITY.test(normalized))
+  return isOpaqueRichAssetIdentity(value)
 }
 
 /**

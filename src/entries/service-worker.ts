@@ -1,3 +1,4 @@
+import { startRuntimeLogService } from '../core/runtime-log-store';
 import type { DouyinRuntimeRequest, PlatformId } from "../core/types";
 import {
   isBilibiliDirectEmoticonSendRequest,
@@ -33,6 +34,8 @@ import {
   type DouyinEmojiCatalogEntry,
   type DouyinEmojiCatalogResponse,
 } from "../platforms/douyin/emoji-catalog";
+
+startRuntimeLogService();
 
 const DOUYIN_LIVE_PATTERN = /^https:\/\/(?:live\.douyin\.com\/|www\.douyin\.com\/follow\/live(?:\/|[?#]|$))/i;
 const recentRouteInjections = new Map<number, { at: number; url: string }>();
@@ -435,6 +438,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     chrome.scripting.executeScript({
       args: [{
         href: String(tabUrl),
+        attemptId: message.attemptId,
         identity: message.identity,
         sourceHints: message.sourceHints,
         token: message.token,
@@ -450,16 +454,20 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
       } satisfies BilibiliDirectEmoticonSendResponse;
       if (!result.ok) {
         console.error("[Danmaku Echo][background][Bilibili room Emoji +1] failed", {
+          attemptId: message.attemptId,
           code: result.code,
           error: result.error,
-          message: result.message,
+          errorMessage: result.message,
+          diagnostics: result.diagnostics,
           stage: result.stage
         });
       }
       sendResponse(result);
     }).catch((error: unknown) => {
       console.error("[Danmaku Echo][background][Bilibili room Emoji +1] failed", {
-        error: String(error instanceof Error ? error.message : error),
+        attemptId: message.attemptId,
+        errorName: error instanceof Error ? error.name : 'UnknownError',
+        errorMessage: String(error instanceof Error ? error.message : error),
         stage: "execute-main-world"
       });
       sendResponse({

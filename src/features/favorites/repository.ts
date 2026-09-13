@@ -12,7 +12,7 @@ import {
   type FavoritesDatabase,
   type RoomContext
 } from "./types";
-import { isBilibiliOpaqueEmoticonIdentity } from "../../platforms/bilibili/emoticon-metadata";
+import { isOpaqueRichAssetIdentity } from "../../core/rich-asset-identity";
 
 type StorageAreaLike = Pick<chrome.storage.StorageArea, "get" | "set">;
 const STORAGE_OPERATION_TIMEOUT = 4_000;
@@ -83,7 +83,7 @@ function humanAssetName(value: unknown): string {
   }
   name = name.replace(/[?#].*$/, "").replace(IMAGE_FILE_EXTENSION, "").trim();
   if (!name || GENERIC_RICH_LABEL.test(name) || DECORATIVE_IMAGE_DESCRIPTION.test(name)
-      || isBilibiliOpaqueEmoticonIdentity(name)
+      || isOpaqueRichAssetIdentity(name)
       || /^(?:data|blob|https?):/i.test(name)
       || /[\\/]/.test(name)
       || Array.from(name).length > 80) {

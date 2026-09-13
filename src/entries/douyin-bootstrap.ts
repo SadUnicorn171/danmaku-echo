@@ -1,5 +1,9 @@
+import { installRuntimeLogger, forwardRuntimeLog } from '../core/runtime-logger';
 import type { DouyinRuntimeRequest } from "../core/types";
-import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/protocol";
+import {
+  createDouyinContentToPageMessage,
+  isDouyinPageToContentMessage
+} from "../platforms/douyin/protocol";
 
 (() => {
   "use strict";
@@ -35,13 +39,6 @@ import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/p
     version: string;
   }
 
-  interface PageReadyMessage {
-    instanceCount?: unknown;
-    source: string;
-    type: string;
-    version?: unknown;
-  }
-
   type BootstrapGlobal = typeof globalThis & {
     __danmakuEchoDouyinBootstrapDebug?: BootstrapDebug;
     __danmakuEchoDouyinBootstrapLoaded?: boolean;
@@ -52,8 +49,10 @@ import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/p
     return;
   }
   runtimeGlobal.__danmakuEchoDouyinBootstrapLoaded = true;
+  installRuntimeLogger({ source: 'douyin-isolated', extensionOnlyErrors: true });
 
-  const LIVE_ROUTE_PATTERN = /^https:\/\/(?:live\.douyin\.com\/|www\.douyin\.com\/follow\/live(?:\/|[?#]|$))/i;
+  const LIVE_ROUTE_PATTERN =
+    /^https:\/\/(?:live\.douyin\.com\/|www\.douyin\.com\/follow\/live(?:\/|[?#]|$))/i;
   const startedAt = Date.now();
   let currentHref = location.href;
   let routeGeneration = 0;
@@ -73,17 +72,9 @@ import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/p
   };
   runtimeGlobal.__danmakuEchoDouyinBootstrapDebug = debug;
 
-  function isPageReadyMessage(value: unknown): value is PageReadyMessage {
-    if (!value || typeof value !== "object") {
-      return false;
-    }
-    const message = value as { source?: unknown; type?: unknown };
-    return message.source === DOUYIN_PAGE_SOURCE && message.type === "ready";
-  }
-
   function normalizeInjectionResponse(value: unknown): InjectionResponse {
     return value && typeof value === "object"
-      ? value as InjectionResponse
+      ? (value as InjectionResponse)
       : { ok: false, error: "empty-response" };
   }
 
@@ -106,11 +97,13 @@ import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/p
   }
 
   function pingPage(attempt: number): void {
-    window.postMessage({
-      source: DOUYIN_CONTENT_SOURCE,
-      type: "ping",
-      requestId: 9_000_000 + attempt
-    }, "*");
+    window.postMessage(
+      createDouyinContentToPageMessage({
+        type: "ping",
+        requestId: 9_000_000 + attempt
+      }),
+      "*"
+    );
   }
 
   function requestInjection(attempt: number): void {
@@ -155,7 +148,15 @@ import { DOUYIN_CONTENT_SOURCE, DOUYIN_PAGE_SOURCE } from "../platforms/douyin/p
   }
 
   window.addEventListener("message", (event: MessageEvent<unknown>) => {
-    if (event.source !== window || !isPageReadyMessage(event.data)) {
+    if (event.source === window && isDouyinPageToContentMessage(event.data) && event.data.type === 'runtime-log') {
+      void forwardRuntimeLog(event.data.entry).catch(() => {});
+      return;
+    }
+    if (
+      event.source !== window ||
+      !isDouyinPageToContentMessage(event.data) ||
+      event.data.type !== "ready"
+    ) {
       return;
     }
     debug.pageReady = true;

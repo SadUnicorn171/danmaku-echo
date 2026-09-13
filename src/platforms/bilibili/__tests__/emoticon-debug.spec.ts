@@ -1,3 +1,4 @@
+import { normalizeRuntimeLog, sanitizeLogValue } from '../../../core/runtime-log'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -52,11 +53,28 @@ describe('Bilibili room Emoji debug output', () => {
       attemptId: debug.attemptId,
       details: {
         code: -400,
-        error: { message: 'Failed to fetch', name: 'TypeError' },
+        error: { errorMessage: 'Failed to fetch', name: 'TypeError' },
       },
       stage: 'direct-send-failed',
     })
     expect(JSON.stringify(details)).not.toContain('SESSDATA')
     expect(JSON.stringify(details)).not.toContain('secret-csrf')
   })
+})
+
+it('keeps request traces readable after console capture and storage normalization', () => {
+  const calls: Array<[string, Record<string, unknown>]> = []
+  const debug = createBilibiliEmoticonDebugAttempt({}, (message, details) => calls.push([message, details]))
+  const diagnostics = {
+    failedStage: 'load-wbi-request', failureKind: 'transport', errorMessage: 'Failed to fetch', errorName: 'TypeError',
+    requests: [
+      { stage: 'resolve-room', httpStatus: 200, apiCode: 0, contentType: 'application/json' },
+      { stage: 'load-wbi', endpoint: 'api.bilibili.com/x/web-interface/nav', state: 'transport-error' },
+    ],
+  }
+  debug.fail('direct-send-failed', { result: { diagnostics, message: 'Failed to fetch' } })
+  const row = normalizeRuntimeLog({ id: 'test:trace', at: Date.now(), level: 'error', source: 'content',
+    message: calls[0]![0], details: sanitizeLogValue([calls[0]![1]]), context: null })!
+  const stored = normalizeRuntimeLog(JSON.parse(JSON.stringify(row)))!
+  expect(stored.details).toMatchObject([{ diagnostics, errorMessage: 'Failed to fetch' }])
 })

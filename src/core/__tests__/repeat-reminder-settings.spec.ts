@@ -16,6 +16,36 @@ describe('repeat reminder mode settings', () => {
     })
   })
 
+  it('keeps platform presentation settings in automatic threshold mode', () => {
+    const settings = mergeSettings({
+      repeatReminder: {
+        mode: 'auto',
+        manual: {
+          bilibili: {
+            threshold: 99,
+            promptDurationSeconds: 23,
+            queueLimit: 7,
+            promptScalePercent: 135,
+          },
+        },
+      },
+    })
+    expect(repeatReminderPlatformSettings(settings.repeatReminder, 'bilibili')).toEqual({
+      threshold: 6,
+      promptDurationSeconds: 23,
+      queueLimit: 7,
+      promptScalePercent: 135,
+    })
+    settings.repeatReminder.mode = 'manual'
+    expect(repeatReminderPlatformSettings(settings.repeatReminder, 'bilibili')).toEqual({
+      threshold: 99,
+      promptDurationSeconds: 23,
+      queueLimit: 7,
+      promptScalePercent: 135,
+    })
+    expect(mergeSettings(settings).repeatReminder.manual.bilibili.queueLimit).toBe(7)
+  })
+
   it('keeps independent manual settings for all four platforms', () => {
     const settings = mergeSettings({
       repeatReminder: {

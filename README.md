@@ -9,7 +9,7 @@
 
 [中文](#中文) · [English](#english) · [隐私权政策](PRIVACY.md)
 
-![Version](https://img.shields.io/badge/version-2.3.2-orange)
+![Version](https://img.shields.io/badge/version-2.3.3-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
 ![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
@@ -41,7 +41,13 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前档位、触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到门槛后加入“暂不 / +1”提示队列。首次使用时，雷达完成加载便会显示一次性说明卡片，无需等待高频弹幕触发；动态箭头会直接指向雷达图标，卡片会根据图标所在位置自动显示在左、右、上或下方。引导打开期间，新产生的高频内容只在内存中等待，不创建或播放队列动画，确认引导后才显示并重新获得完整倒计时。引导页提供“自动 +1 雷达弹幕”开关并明确标注默认关闭；用户也可以在扩展主页的弹幕雷达设置中随时开关。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
 
-每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数。用户点击“暂不”或 `+1` 后，该弹幕会强制静默 40 秒，期间即使频率继续增加也绝不会重新提示；40 秒结束后才恢复正常判断。提示未被操作并自动超时时会强制静默 30 秒，静默结束后还必须比隐藏时新增“当前雷达触发次数的一半（向上取整）”才可重新唤醒，例如触发次数为 5 时需再出现 3 次、为 8 时需再出现 4 次。开启自动 +1 后，新达到门槛的队列数据会直接进入受保护的发送流程而不显示待操作卡片；多条自动发送会串行执行，并继续遵守平台反馈、发送冷却以及同一弹幕 40 秒静默规则。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。观众数分档已细分：默认基础值下，3000 人为 6 次、1 万人为 8 次、2 万人为 9 次，超过 2 万后继续逐档提高。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+`、`2万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。切换到“手动”档后，虎牙、B站、抖音和斗鱼分别使用各自保存的固定触发次数、提示时间、队列上限和提示大小，不再根据人数或弹幕量改变触发次数。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。斗鱼同一条画面弹幕如果由多个并列正文片段组成，`+1`、复制、收藏和雷达会按页面顺序合并完整内容，不再只取第一段。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
+每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数。用户点击“暂不”或 `+1` 后，该弹幕会强制静默 40 秒，期间即使频率继续增加也绝不会重新提示；40 秒结束后才恢复正常判断。提示未被操作并自动超时时会强制静默 30 秒，静默结束后还必须比隐藏时新增“当前雷达触发次数的一半（向上取整）”才可重新唤醒，例如触发次数为 5 时需再出现 3 次、为 8 时需再出现 4 次。开启自动 +1 后，新达到门槛的队列数据会直接进入受保护的发送流程而不显示待操作卡片；多条自动发送会串行执行，并继续遵守平台反馈、发送冷却以及同一弹幕 40 秒静默规则。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。观众数分档已细分：默认基础值下，3000 人为 6 次、1 万人为 8 次、2 万人为 9 次，超过 2 万后继续逐档提高。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+`、`2万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。自动档仅自动调整触发次数；提示时间、队列上限和提示大小在两个档位下均可按平台修改并保存。切换到“手动”档后，各平台使用保存的固定触发次数，不再根据人数或弹幕量改变门槛。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。斗鱼同一条画面弹幕如果由多个并列正文片段组成，`+1`、复制、收藏和雷达会按页面顺序合并完整内容，不再只取第一段。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
+
+### 胶囊与雷达大小
+
+在「常规设置」选择界面大小的自动或手动模式，分别保留胶囊基础大小和各平台雷达提示大小。自动大小以 **3860×2160** 为基准，用浏览器报告的屏幕宽高乘像素比估算显示分辨率，按宽、高比例中较小的一项缩放；最终范围为 50%–200%。基准屏幕上 100% 保持原大小，1920×1080、像素比为 1 时约为 50%。浏览器缩放会影响像素比，切换屏幕或窗口重新获得焦点后会重新计算。无法取得有效屏幕数据时使用基础大小。
+
+界面自动大小、雷达自动触发和自动 +1 是三个独立开关。默认使用手动大小，升级保留原设置；自动触发不会锁定提示停留时间、队列上限或提示大小。
 
 ### 抖音 DOM 接管说明
 
@@ -77,7 +83,7 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 - 自动适配原生全屏，并在发送后释放官方输入框焦点。
 - 提供 `Alt + 单击` 通用回退操作，应对直播站点类名调整。
 - 可分别为虎牙、哔哩哔哩、抖音和斗鱼设置 `+1` 按钮、选中高亮、提示浮层及状态颜色；留空时使用内置默认值。
-- 设置通过 `chrome.storage.sync` 保存，不读取账号凭据。
+- 设置通过 `chrome.storage.sync` 保存；收藏和脱敏运行日志保存在本机。
 
 ### 安装
 
@@ -124,6 +130,12 @@ npm run build
 
 抖音调试：在直播页按 `Ctrl + Alt + D`，扩展会把启动链路、Canvas 实例、DOM 接管状态、活动节点数、回退原因和最近事件输出到开发者工具控制台。日志前缀为 `[Danmaku Echo]`。
 
+### 运行日志与故障排查
+
+构建或打包安装后，运行日志默认启用。重现问题后，打开「常规设置 → 运行日志」导出 JSON，并在问题报告中注明发生时间、平台、浏览器版本和操作步骤。日志保存在本机，最多 500 条、约 1 MB，读写时清理超过 7 天的记录；清空日志不影响收藏和设置。
+
+日志包含脱敏后的错误原因、堆栈、扩展版本、屏幕/窗口信息及结构化上下文。B 站表情后备发送失败可通过同一个 attemptId 关联后台与页面记录，定位失败阶段和请求结果。日志不自动上传，也不收集 npm 构建或打包的终端输出。记录范围、字段解释与报告步骤见[日志排查指南](docs/TROUBLESHOOTING.md)。
+
 ### 开发与验证
 
 建议使用 Node.js 22.22.2（CI 固定版本）；项目要求 Node.js 22.22.2+，或 24.15+。
@@ -138,7 +150,7 @@ npm run dev
 npm run check
 ```
 
-该命令会进行 TypeScript 类型检查、使用 Vite 构建 `build/extension`、验证构建产物中的 Manifest，并运行语法与单元测试。
+该命令执行类型检查、代码规范检查、完整构建、Manifest 与架构边界校验、带覆盖率门槛的单元测试，以及契约回归测试。版本同步和提交检查见[发布检查清单](docs/RELEASE_CHECKLIST.md)。
 
 浏览器 E2E 仅作为本地可选回归测试保留，可手动运行 `npm run test:browser`；普通 CI 和发布工作流均不执行浏览器 E2E。涉及直播消息采集时仍需手工验证四个平台的普通页面与网页全屏。
 
@@ -161,32 +173,38 @@ npm run package
 ### 项目结构
 
 ```text
-public/manifest.json       Manifest V3 清单，由 Vite publicDir 原样复制
-index.html                 create-vue 标准 HTML 入口，同时作为扩展设置页
-src/core/                  跨平台共享类型、文本清洗和设置合并
-src/entries/               后台、内容脚本和页面 Hook 的 Vite 构建入口
-src/features/favorites/    本地收藏仓库、房间识别、排序、Vue 面板与轮盘运行时
-src/features/repeat-reminder/ 高频文字计数、跨来源去重和 Shadow DOM +1 提示
-src/platforms/live/        通用直播平台配置
-src/platforms/bilibili/    哔哩哔哩 DOM 选择器与平台适配配置
-src/platforms/douyin/      抖音协议、弹幕轨迹、富文本和消息模型
-src/App.vue、src/main.ts   create-vue 标准 Vue 3 设置页与应用入口
-src/assets/                图标、平台 SVG 及直播间收藏 Shadow DOM 样式
-src/components/            设置页组件及 components/live 直播浮层组件
-src/composables/           设置读取、同步保存和页面状态
-docs/DESIGN_SYSTEM.md      当前界面的设计规范
-docs/ENTRY_REFACTOR_CHECKLIST.md 内容脚本入口拆分与类型化的分步实施清单
-.github/workflows/ci.yml   Windows 与 Fedora 持续集成工作流
-scripts/package.cjs        跨 Windows、Linux 的确定性 Node.js 发布打包器
-vite.config.ts             官方 Vite CLI 的多入口扩展构建配置
-vitest.config.ts           create-vue 标准 Vitest 单元测试配置
-build/extension/           可加载、可发布的生成产物（不提交）
-tests/                     清单校验、单元测试和浏览器测试夹具
+public/manifest.json          Manifest V3 清单，由 Vite publicDir 原样复制
+index.html                    create-vue 标准 HTML 入口，同时作为扩展设置页
+src/core/                     跨平台共享类型、文本处理和设置合并
+src/entries/                  五个 Vite 构建入口及通用三平台装配根 content-app.ts
+src/features/favorites/       本地收藏仓库、房间识别、排序、Vue 面板与轮盘运行时
+src/features/repeat-reminder/ 轻量高频文字计数、跨来源去重和 Shadow DOM +1 提示
+src/platforms/live/           三个平台共享的候选、编辑、悬停、发送和运行时控制器
+src/platforms/bilibili/       Bilibili 候选、富表情、发送及运动适配
+src/platforms/douyu/          斗鱼候选、原生悬停边界、富表情和发送适配
+src/platforms/huya/           虎牙候选、富表情和发送适配
+src/platforms/douyin/         抖音公共协议/模型，以及 content 隔离世界与 page MAIN world 实现
+src/App.vue、src/main.ts      create-vue 标准 Vue 3 设置页与应用入口
+src/assets/                   图标、平台 SVG 及直播间收藏 Shadow DOM 样式
+src/components/               设置页组件及 components/live 直播浮层组件
+src/composables/              设置读取、同步保存和页面状态
+docs/ARCHITECTURE.md          当前模块边界、数据流和运行时架构
+docs/ENTRY_RUNTIME_ARCHITECTURE.md 内容脚本入口、跨世界协议与生命周期说明
+docs/ENTRY_REFACTOR_CHECKLIST.md   内容脚本入口拆分与类型化的分步实施清单
+docs/ENTRY_REFACTOR_REGRESSION.md  入口重构的浏览器与真实直播间回归记录
+tests/contracts/              Node 契约、构建产物和架构边界校验
+tests/fixtures/               四个平台的脱敏 DOM 与页面测试夹具
+tests/browser/                本地可选浏览器 E2E（不进入 CI）
+.github/workflows/ci.yml      Windows 与 Fedora 持续集成工作流
+scripts/package.cjs           跨 Windows、Linux 的确定性 Node.js 发布打包器
+vite.config.ts                官方 Vite CLI 的多入口扩展构建配置
+vitest.config.ts              Vitest 单元测试和分域覆盖率门禁
+build/extension/              可加载、可发布的生成产物（不提交）
 ```
 
 ### 隐私与权限
 
-- 申请 `storage` 权限保存扩展设置及本地弹幕收藏；设置使用 `chrome.storage.sync`，收藏使用 `chrome.storage.local` 且不会上传。
+- 申请 `storage` 权限保存扩展设置、本地弹幕收藏和脱敏运行日志；设置使用 `chrome.storage.sync`，收藏及日志使用 `chrome.storage.local` 且不会自动上传。
 - 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时、执行 B 站房间图片表情一次性后备发送，以及在用户主动发送时短暂观察当前平台的原生发送结果。
 - 主机权限仅覆盖四个受支持直播站点。虎牙、斗鱼的雷达规模信号直接读取当前页面已经显示的贵宾数，不请求房间热度接口。一次性发送观察器最多运行 8 秒，只输出请求方法、去除查询参数后的接口路径、HTTP 状态、平台业务码和官方错误文案；不会输出请求体、Cookie、CSRF、签名或请求头。
 - 完整功能脚本仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面启用。
@@ -241,9 +259,15 @@ Short-press `Alt + Q` in a live room to open the fixed panel, where search, send
 
 ### Lightweight danmaku radar
 
-When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. On first use, a one-time guide opens as soon as the enabled radar finishes loading instead of waiting for a frequent-message queue. Its directional arrow and card placement follow the icon on any side of the viewport. Queue content that arrives while the guide is open waits in memory without creating or animating prompt cards, then receives a full countdown after acknowledgement. The guide explains that the radar never sends automatically and lists the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
+When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. On first use, a one-time guide opens as soon as the enabled radar finishes loading instead of waiting for a frequent-message queue. Its directional arrow and card placement follow the icon on any side of the viewport. Queue content that arrives while the guide is open waits in memory without creating or animating prompt cards, then receives a full countdown after acknowledgement. The guide offers an Automatic +1 switch, which is off by default, and explains the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
 
-Prompts remain visible for ten seconds by default, with an independent live countdown beside +1, then hide and stay dismissed for the current window. The default **Automatic** mode adapts its trigger count from recent danmaku volume and a public room-size signal when available. Bilibili and Douyin start from 6; Huya and Douyu start from 8 and use their displayed guest counts without estimating from popularity. When room size is unavailable, Automatic mode falls back to stable recent danmaku-volume bands after enough samples. **Manual** mode stores an independent fixed trigger count, prompt duration, queue limit, and prompt scale for each of the four platforms and does not adapt the trigger count. Trigger counts support 2–99, prompt duration 1–60 seconds, queue limits 1–10, and prompt scaling 50%–200%. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud analysis, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
+Prompts remain visible for ten seconds by default, with an independent live countdown beside +1. Clicking Dismiss or +1 suppresses the message for 40 seconds. A timeout suppresses it for 30 seconds and then requires additional occurrences equal to half the current threshold, rounded up. Opting into Automatic +1 sends newly triggered items serially through the protected send flow. The default **Automatic** mode adapts its trigger count from recent danmaku volume and a public room-size signal when available. Bilibili and Douyin start from 6; Huya and Douyu start from 8 and use their displayed guest counts without estimating from popularity. When room size is unavailable, Automatic mode falls back to stable recent danmaku-volume bands after enough samples. Both modes let you edit and save prompt duration, queue limit, and prompt scale independently for each platform. **Manual** mode also uses each platform’s saved fixed trigger count. Trigger counts support 2–99, prompt duration 1–60 seconds, queue limits 1–10, and prompt scaling 50%–200%. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud analysis, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
+
+### Capsule and radar size
+
+General settings provides independent Automatic and Manual interface sizing. Automatic sizing uses **3860×2160** as its reference and estimates display pixels from screen dimensions multiplied by devicePixelRatio. It applies the smaller width/height ratio to the saved capsule or platform prompt percentage, rounding and clamping the result to 50%–200%. A 100% base stays unchanged on the reference screen; a 1920×1080 screen at pixel ratio 1 uses approximately 50%. Browser zoom affects the pixel ratio; resize and focus changes recalculate the size. Invalid screen metrics fall back to the saved base size.
+
+Manual sizing is the default and preserves existing settings on upgrade. Interface sizing, automatic radar thresholds, and Automatic +1 are independent controls. Automatic thresholds leave duration, queue limit, and prompt size editable.
 
 ### Douyin DOM takeover
 
@@ -277,7 +301,7 @@ The native Canvas is hidden with `visibility: hidden` only after the first DOM n
 - Supports native fullscreen and releases official editor focus after sending.
 - Includes an `Alt + click` fallback for future site markup changes.
 - Provides independent Huya, Bilibili, Douyin, and Douyu colors for the `+1` action, selection highlight, overlays, and status feedback; blank values keep the built-in defaults.
-- Stores settings with `chrome.storage.sync` and never reads account credentials.
+- Stores settings with `chrome.storage.sync`; favorites and sanitized runtime logs stay local.
 
 ### Installation
 
@@ -319,6 +343,12 @@ On-video capsules choose their side automatically. A capsule stays to the left w
 
 For Douyin diagnostics, press `Ctrl + Alt + D` in a live room. Startup, Canvas instances, DOM-takeover state, active-node counts, fallback reasons, and recent events are written to DevTools with the `[Danmaku Echo]` prefix.
 
+### Runtime logs and troubleshooting
+
+Runtime logging is enabled in installed builds and packages. After reproducing a problem, export JSON from **General settings → Runtime logs** and include the time, platform, browser version, and reproduction steps in your issue. Local storage keeps up to 500 records and about 1 MB; reads and writes prune records older than seven days. Clearing logs preserves favorites and settings.
+
+Logs retain sanitized error messages, stack traces, extension version, screen/window metrics, and structural context. Bilibili room-emote fallback failures include a shared attemptId, request stages, and response metadata. Logs are not uploaded automatically and do not capture npm build/package terminal output. See the [troubleshooting guide](docs/TROUBLESHOOTING.md) for scope and diagnostic fields.
+
 ### Development and verification
 
 Node.js 22.22.2 is recommended and pinned in CI. The project requires Node.js 22.22.2+, or 24.15+.
@@ -333,7 +363,7 @@ npm run dev
 npm run check
 ```
 
-This type-checks TypeScript, builds `build/extension` with Vite, validates the built manifest, and runs the syntax and unit tests.
+This runs type and lint checks, all builds, manifest and architecture validation, unit tests with coverage gates, and contract regressions. See the [release checklist](docs/RELEASE_CHECKLIST.md) for version synchronization and submission checks.
 
 Browser E2E remains a local optional suite (`npm run test:browser`) and is not run by regular or release CI. Live-message collection changes should still be manually regressed on normal and web-fullscreen pages for all four platforms.
 
@@ -356,36 +386,42 @@ Every push and pull request runs the complete check and packaging flow on both W
 ### Project layout
 
 ```text
-public/manifest.json       Manifest V3 definition copied by Vite publicDir
-index.html                 Standard create-vue HTML entry and extension settings page
-src/core/                  Cross-platform types, text parsing, and settings
-src/entries/               Vite entries for background, content scripts, and page hooks
-src/features/favorites/    Local repository, room identity, ranking, Vue panel, and radial runtime
-src/features/repeat-reminder/ Lightweight exact-text counting, source deduplication, and Shadow DOM +1 prompt
-src/platforms/live/        Shared live-platform configuration
-src/platforms/bilibili/    Bilibili DOM selectors and adapter configuration
-src/platforms/douyin/      Douyin protocol, trajectory, rich-data, and message models
-src/App.vue, src/main.ts   Standard create-vue Vue 3 settings app and entry
-src/assets/                Icons, platform SVGs, and live-room favorites Shadow DOM style
-src/components/            Settings components and components/live overlays
-src/composables/           Settings loading, sync persistence, and page state
-docs/DESIGN_SYSTEM.md      Current interface design specification
-docs/ENTRY_REFACTOR_CHECKLIST.md Step-by-step content-entry refactoring and typing checklist
-.github/workflows/ci.yml   Windows and Fedora continuous-integration workflow
-scripts/package.cjs        Deterministic Node.js packaging across Windows and Linux
-vite.config.ts             Multi-entry extension config driven by the official Vite CLI
-vitest.config.ts           Standard create-vue Vitest unit-test configuration
-build/extension/           Loadable, releasable build output (not committed)
-tests/                     Manifest checks, unit tests, and browser fixtures
+public/manifest.json          Manifest V3 definition copied by Vite publicDir
+index.html                    Standard create-vue HTML entry and extension settings page
+src/core/                     Cross-platform types, text processing, and settings
+src/entries/                  Five Vite entries plus the shared three-platform content-app composition root
+src/features/favorites/       Local repository, room identity, ranking, Vue panel, and radial runtime
+src/features/repeat-reminder/ Lightweight frequency counting, source deduplication, and Shadow DOM +1 prompt
+src/platforms/live/           Shared candidate, editor, hover, sending, and runtime controllers
+src/platforms/bilibili/       Bilibili candidates, rich emoji, sending, and motion adapters
+src/platforms/douyu/          Douyu candidates, native-hover boundary, rich emoji, and sending adapters
+src/platforms/huya/           Huya candidates, rich emoji, and sending adapters
+src/platforms/douyin/         Shared protocol/models plus isolated-world content and MAIN-world page implementations
+src/App.vue, src/main.ts      Standard create-vue Vue 3 settings app and entry
+src/assets/                   Icons, platform SVGs, and live-room favorites Shadow DOM style
+src/components/               Settings components and components/live overlays
+src/composables/              Settings loading, sync persistence, and page state
+docs/ARCHITECTURE.md          Current module boundaries, data flow, and runtime architecture
+docs/ENTRY_RUNTIME_ARCHITECTURE.md Content-entry, cross-world protocol, and lifecycle guide
+docs/ENTRY_REFACTOR_CHECKLIST.md   Step-by-step content-entry refactoring and typing checklist
+docs/ENTRY_REFACTOR_REGRESSION.md  Browser and real-room regression record for the entry refactor
+tests/contracts/              Node contracts plus build-output and architecture validators
+tests/fixtures/               Sanitized DOM and page fixtures for all four platforms
+tests/browser/                Optional local browser E2E, intentionally excluded from CI
+.github/workflows/ci.yml      Windows and Fedora continuous-integration workflow
+scripts/package.cjs           Deterministic Node.js packaging across Windows and Linux
+vite.config.ts                Multi-entry extension config driven by the official Vite CLI
+vitest.config.ts              Vitest unit-test and domain coverage gates
+build/extension/              Loadable, releasable build output (not committed)
 ```
 
 ### Privacy and permissions
 
-- Requests `storage` for synchronized settings and local favorites. Favorites use `chrome.storage.local` and are never uploaded.
+- Requests `storage` for synchronized settings, local favorites, and sanitized runtime logs. Favorites use `chrome.storage.local` and are never uploaded.
 - Requests `scripting` to recover the Douyin runtime, run the one-shot Bilibili room-image fallback, and briefly observe a native send result after a user-initiated send.
 - Host access is limited to the four supported live sites. Huya and Douyu radar scaling reads the guest count already displayed on the current page and does not call a popularity endpoint. The one-shot send observer runs for at most eight seconds and exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text. It never exposes request bodies, headers, cookies, CSRF values, or signatures.
 - Activates complete feature scripts only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages.
-- Does not read cookies, passwords, or login tokens and does not call private live APIs.
+- Does not read passwords or store or export cookies/login tokens. The Bilibili room-image fallback temporarily reads the CSRF cookie inside the current page to call the same send endpoint as the official website.
 - The frequent +1 reminder counts only in page memory, does not persist danmaku content, and sends no analysis data.
 - Does not collect, sell, or use data for advertising or profiling.
 

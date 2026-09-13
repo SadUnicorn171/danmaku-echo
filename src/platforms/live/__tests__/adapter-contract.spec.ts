@@ -4,6 +4,7 @@ import { mergeSettings } from '../../../core/shared'
 import { createLivePlatformAdapter } from '../adapters'
 import { createSelectorPlatformAdapter } from '../selector-adapter'
 import type { LivePlatformConfig } from '../config'
+import { compareLiveCandidates, stableCandidateOrder } from '../candidate-adapter'
 
 const TEST_CONFIG: LivePlatformConfig = {
   chatRoots: ['.chat-root'],
@@ -23,24 +24,19 @@ describe('live platform adapter contract', () => {
     'extracts an ordered descriptor for %s',
     (platform) => {
       const row = document.createElement('div')
-      row.className = platform === 'huya'
-        ? 'J_msg'
-        : platform === 'douyu'
-          ? 'Barrage-listItem'
-          : 'danmaku-item'
+      row.className =
+        platform === 'huya' ? 'J_msg' : platform === 'douyu' ? 'Barrage-listItem' : 'danmaku-item'
       const sender = document.createElement('span')
-      sender.className = platform === 'huya'
-        ? 'name'
-        : platform === 'douyu'
-          ? 'Barrage-nickName js-nick'
-          : 'user-name'
+      sender.className =
+        platform === 'huya'
+          ? 'name'
+          : platform === 'douyu'
+            ? 'Barrage-nickName js-nick'
+            : 'user-name'
       sender.textContent = '测试用户：'
       const content = document.createElement('span')
-      content.className = platform === 'huya'
-        ? 'msg'
-        : platform === 'douyu'
-          ? 'Barrage-content'
-          : 'danmaku-content'
+      content.className =
+        platform === 'huya' ? 'msg' : platform === 'douyu' ? 'Barrage-content' : 'danmaku-content'
       content.append('加油啊')
       const image = document.createElement('img')
       image.alt = '[大哭]'
@@ -62,6 +58,41 @@ describe('live platform adapter contract', () => {
       row.remove()
     },
   )
+
+  it.each(['huya', 'bilibili', 'douyu'] as const)(
+    'exposes explicit chat, overlay, normalization and native-capsule capabilities for %s',
+    (platform) => {
+      const adapter = createLivePlatformAdapter(platform)
+      expect(adapter.candidates.capabilities).toEqual({
+        chat: true,
+        nativeCapsule: platform === 'douyu',
+        normalize: true,
+        overlay: true,
+      })
+    },
+  )
+
+  it('uses stable z-index, paint-order, and pointer-distance inputs for overlaps', () => {
+    const first = document.createElement('div')
+    const second = document.createElement('div')
+    first.style.zIndex = '1'
+    second.style.zIndex = '2'
+    document.body.append(first, second)
+    Object.defineProperty(first, 'getBoundingClientRect', {
+      value: () => ({ bottom: 20, height: 20, left: 0, right: 20, top: 0, width: 20 }),
+    })
+    Object.defineProperty(second, 'getBoundingClientRect', {
+      value: () => ({ bottom: 20, height: 20, left: 0, right: 20, top: 0, width: 20 }),
+    })
+    const candidates = [first, second].map((element) => ({
+      element,
+      kind: 'overlay' as const,
+      order: stableCandidateOrder(element, { x: 10, y: 10 }),
+      source: 'video' as const,
+    }))
+
+    expect(candidates.sort(compareLiveCandidates)[0]?.element).toBe(second)
+  })
 
   it('uses the Douyu native capsule setting through the adapter boundary', () => {
     const settings = mergeSettings()
@@ -127,15 +158,20 @@ describe('live platform adapter contract', () => {
     const adapter = createSelectorPlatformAdapter({ config: TEST_CONFIG, platform: 'huya' })
     const settings = mergeSettings()
     expect(adapter.nativeCapsuleVisible(settings)).toBe(true)
-    expect(adapter.resolveSender({
-      parts: [],
-      platform: 'huya',
-      resourceIds: [],
-      senderId: 'sender-1',
-      senderName: 'Sender',
-      source: 'video',
-      text: 'hello',
-    }, document.body)).toEqual({ id: 'sender-1', name: 'Sender' })
+    expect(
+      adapter.resolveSender(
+        {
+          parts: [],
+          platform: 'huya',
+          resourceIds: [],
+          senderId: 'sender-1',
+          senderName: 'Sender',
+          source: 'video',
+          text: 'hello',
+        },
+        document.body,
+      ),
+    ).toEqual({ id: 'sender-1', name: 'Sender' })
   })
 
   it('rejects empty descriptors and preserves image-only descriptors', () => {

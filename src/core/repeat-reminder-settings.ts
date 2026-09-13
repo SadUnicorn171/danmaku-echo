@@ -2,11 +2,7 @@ export const DEFAULT_REPEAT_REMINDER_THRESHOLD = 6
 export const MIN_REPEAT_REMINDER_THRESHOLD = 2
 export const MAX_REPEAT_REMINDER_THRESHOLD = 99
 
-import type {
-  PlatformId,
-  RepeatReminderPlatformSettings,
-  RepeatReminderSettings,
-} from './types'
+import type { PlatformId, RepeatReminderPlatformSettings, RepeatReminderSettings } from './types'
 
 export const DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS = 10
 export const MIN_REPEAT_REMINDER_PROMPT_SECONDS = 1
@@ -24,7 +20,12 @@ export const DEFAULT_CAPSULE_SCALE_PERCENT = 100
 export const MIN_CAPSULE_SCALE_PERCENT = 50
 export const MAX_CAPSULE_SCALE_PERCENT = 200
 
-function boundedInteger(value: unknown, fallback: number, minimum: number, maximum: number): number {
+function boundedInteger(
+  value: unknown,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
   const number = Number(value)
   if (!Number.isFinite(number)) return fallback
   return Math.min(maximum, Math.max(minimum, Math.round(number)))
@@ -76,6 +77,8 @@ export function normalizeCapsuleScalePercent(value: unknown): number {
 }
 
 export function legacySensitivityThreshold(value: unknown): number {
+  // Compatibility for settings saved before the numeric threshold UI. Remove
+  // in 3.0.0 after the 2.x migration window has elapsed.
   if (value === 'high') return 3
   if (value === 'low') return 8
   return DEFAULT_REPEAT_REMINDER_THRESHOLD
@@ -85,19 +88,16 @@ export function repeatReminderPlatformSettings(
   settings: RepeatReminderSettings,
   platform: PlatformId,
 ): RepeatReminderPlatformSettings {
-  if (settings.mode === 'manual') {
-    const manual = settings.manual[platform]
-    return {
-      promptDurationSeconds: normalizeRepeatReminderPromptSeconds(manual?.promptDurationSeconds),
-      promptScalePercent: normalizeRepeatReminderPromptScalePercent(manual?.promptScalePercent),
-      queueLimit: normalizeRepeatReminderQueueLimit(manual?.queueLimit),
-      threshold: normalizeRepeatReminderThreshold(manual?.threshold),
-    }
-  }
+  // Platform presentation preferences apply to both threshold modes. Keep the
+  // existing storage shape so switching modes never discards saved values.
+  const selected = settings.manual[platform]
   return {
-    promptDurationSeconds: DEFAULT_REPEAT_REMINDER_PROMPT_SECONDS,
-    promptScalePercent: DEFAULT_REPEAT_REMINDER_PROMPT_SCALE_PERCENT,
-    queueLimit: DEFAULT_REPEAT_REMINDER_QUEUE_LIMIT,
-    threshold: DEFAULT_REPEAT_REMINDER_THRESHOLD,
+    promptDurationSeconds: normalizeRepeatReminderPromptSeconds(selected?.promptDurationSeconds),
+    promptScalePercent: normalizeRepeatReminderPromptScalePercent(selected?.promptScalePercent),
+    queueLimit: normalizeRepeatReminderQueueLimit(selected?.queueLimit),
+    threshold:
+      settings.mode === 'manual'
+        ? normalizeRepeatReminderThreshold(selected?.threshold)
+        : DEFAULT_REPEAT_REMINDER_THRESHOLD,
   }
 }

@@ -36,6 +36,8 @@ interface SendProtectionOptions {
   successCooldownMs?: number
 }
 
+export type SendProtection = ReturnType<typeof createSendProtection>
+
 const DEFAULT_ACCIDENTAL_INTERVAL_MS = 800
 const DEFAULT_SAME_MESSAGE_COOLDOWN_MS = 3_000
 const DEFAULT_SUCCESS_COOLDOWN_MS = 1_000
@@ -45,10 +47,14 @@ const MAX_PLATFORM_COOLDOWN_MS = 120_000
 const PLATFORM_FEEDBACK_MAX_LENGTH = 180
 const PLATFORM_ENDPOINT_MAX_LENGTH = 120
 
-const DUPLICATE_PATTERN = /(?:请勿|不要|不能|无法)?\s*(?:重复|连续重复|相同内容).{0,14}(?:发送|发言|弹幕|评论|内容)|(?:发送|发言|弹幕|评论).{0,14}(?:重复|相同)|duplicate(?:\s+(?:message|content))?|same\s+(?:message|content)/i
-const RATE_LIMIT_PATTERN = /(?:发送|发言|弹幕|评论|操作|请求|点击|频率|手速).{0,14}(?:太快|过快|频繁|过于频繁|过高|受限|限制)|(?:太快|过快|频繁|过于频繁).{0,14}(?:发送|发言|弹幕|评论|操作|请求)|请.{0,8}(?:稍后|过一会儿?|片刻后|休息).{0,8}(?:再试|发送|发言)|too\s+(?:fast|frequent)|rate[ -]?limit|try\s+again\s+later/i
-const REJECTED_PATTERN = /(?:发送|发言|弹幕|评论).{0,12}(?:失败|未成功|被拒绝|不可用|受限)|(?:被禁言|已禁言|禁止发言|无权发言|内容.{0,8}(?:违规|不合规|敏感)|包含.{0,8}敏感|等级.{0,8}(?:不足|限制)|登录.{0,10}(?:发送|发言))|(?:send|comment).{0,10}(?:failed|rejected|unavailable|not allowed)/i
-const ALERT_MARKER_PATTERN = /(?:toast|notice|tips?|alert|prompt|error|warning|feedback|notify|notification|snackbar)/i
+const DUPLICATE_PATTERN =
+  /(?:请勿|不要|不能|无法)?\s*(?:重复|连续重复|相同内容).{0,14}(?:发送|发言|弹幕|评论|内容)|(?:发送|发言|弹幕|评论).{0,14}(?:重复|相同)|duplicate(?:\s+(?:message|content))?|same\s+(?:message|content)/i
+const RATE_LIMIT_PATTERN =
+  /(?:发送|发言|弹幕|评论|操作|请求|点击|频率|手速).{0,14}(?:太快|过快|频繁|过于频繁|过高|受限|限制)|(?:太快|过快|频繁|过于频繁).{0,14}(?:发送|发言|弹幕|评论|操作|请求)|请.{0,8}(?:稍后|过一会儿?|片刻后|休息).{0,8}(?:再试|发送|发言)|too\s+(?:fast|frequent)|rate[ -]?limit|try\s+again\s+later/i
+const REJECTED_PATTERN =
+  /(?:发送|发言|弹幕|评论).{0,12}(?:失败|未成功|被拒绝|不可用|受限)|(?:被禁言|已禁言|禁止发言|无权发言|内容.{0,8}(?:违规|不合规|敏感)|包含.{0,8}敏感|等级.{0,8}(?:不足|限制)|登录.{0,10}(?:发送|发言))|(?:send|comment).{0,10}(?:failed|rejected|unavailable|not allowed)/i
+const ALERT_MARKER_PATTERN =
+  /(?:toast|notice|tips?|alert|prompt|error|warning|feedback|notify|notification|snackbar)/i
 const CHAT_FEED_SELECTOR = [
   '#chat-room__list',
   '.chat-room__list',
@@ -63,11 +69,17 @@ const CHAT_FEED_SELECTOR = [
 ].join(',')
 
 function normalizeMessage(value: unknown): string {
-  return String(value ?? '').normalize('NFKC').replace(/\s+/g, ' ').trim().toLowerCase()
+  return String(value ?? '')
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
 }
 
 function sanitizeEndpoint(value: unknown): string {
-  const raw = String(value ?? '').replace(/\s+/g, '').trim()
+  const raw = String(value ?? '')
+    .replace(/\s+/g, '')
+    .trim()
   if (!raw) return ''
   if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(raw)) {
     return raw.split(/[?#]/, 1)[0].slice(0, PLATFORM_ENDPOINT_MAX_LENGTH)
@@ -83,7 +95,10 @@ function sanitizeEndpoint(value: unknown): string {
 
 function sanitizeCode(value: unknown): number | string | undefined {
   if (typeof value === 'number' && Number.isFinite(value)) return value
-  const code = String(value ?? '').replace(/\s+/g, '').trim().slice(0, 40)
+  const code = String(value ?? '')
+    .replace(/\s+/g, '')
+    .trim()
+    .slice(0, 40)
   return code && /^[\w.-]+$/i.test(code) ? code : undefined
 }
 
@@ -93,7 +108,9 @@ function sanitizeHttpStatus(value: unknown): number | undefined {
 }
 
 function sanitizeMethod(value: unknown): string | undefined {
-  const method = String(value ?? '').trim().toUpperCase()
+  const method = String(value ?? '')
+    .trim()
+    .toUpperCase()
   return /^(?:DELETE|GET|HEAD|OPTIONS|PATCH|POST|PUT|SEND)$/.test(method) ? method : undefined
 }
 
@@ -105,7 +122,9 @@ function sanitizeTransport(value: unknown): PlatformSendTransport | undefined {
 
 function explicitCooldownMs(message: string): number {
   const minuteMatch = message.match(/(\d+(?:\.\d+)?)\s*(?:分钟|分|min(?:ute)?s?)/i)
-  const secondMatch = message.match(/(\d+(?:\.\d+)?)\s*(?:秒|s(?:ec(?:ond)?s?)?)(?:后|之后|later)?/i)
+  const secondMatch = message.match(
+    /(\d+(?:\.\d+)?)\s*(?:秒|s(?:ec(?:ond)?s?)?)(?:后|之后|later)?/i,
+  )
   const milliseconds = minuteMatch
     ? Number(minuteMatch[1]) * 60_000
     : secondMatch
@@ -118,7 +137,10 @@ function explicitCooldownMs(message: string): number {
 }
 
 export function classifyPlatformSendFeedback(value: unknown): PlatformSendFeedback | null {
-  const message = String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, PLATFORM_FEEDBACK_MAX_LENGTH)
+  const message = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, PLATFORM_FEEDBACK_MAX_LENGTH)
   if (!message) return null
   const explicit = explicitCooldownMs(message)
   if (DUPLICATE_PATTERN.test(message)) {
@@ -159,7 +181,9 @@ export function classifyPlatformSendFeedback(value: unknown): PlatformSendFeedba
 export function classifyPlatformSendResponse(
   value: PlatformSendResponseSummary,
 ): PlatformSendFeedback | null {
-  const message = String(value.message ?? '').replace(/\s+/g, ' ').trim()
+  const message = String(value.message ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
     .slice(0, PLATFORM_FEEDBACK_MAX_LENGTH)
   const code = sanitizeCode(value.code)
   const httpStatus = sanitizeHttpStatus(value.httpStatus)
@@ -228,9 +252,10 @@ export function createSendProtection(options: SendProtectionOptions = {}) {
       return { allowed: false, reason: 'cooldown', remainingMs: globalRemaining }
     }
     const normalized = normalizeMessage(message)
-    const duplicateRemaining = normalized && normalized === lastSuccessfulMessage
-      ? Math.max(0, sameMessageUntil - current)
-      : 0
+    const duplicateRemaining =
+      normalized && normalized === lastSuccessfulMessage
+        ? Math.max(0, sameMessageUntil - current)
+        : 0
     if (duplicateRemaining > 0) {
       return { allowed: false, reason: 'duplicate', remainingMs: duplicateRemaining }
     }
@@ -278,7 +303,9 @@ export function createSendProtection(options: SendProtectionOptions = {}) {
 
 function elementText(element: Element): string {
   const htmlElement = element as HTMLElement
-  return String(htmlElement.innerText || element.textContent || '').replace(/\s+/g, ' ').trim()
+  return String(htmlElement.innerText || element.textContent || '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function elementMarker(element: Element): string {
@@ -289,7 +316,9 @@ function elementMarker(element: Element): string {
     element.getAttribute('aria-live'),
     element.getAttribute('data-e2e'),
     element.getAttribute('data-testid'),
-  ].filter(Boolean).join(' ')
+  ]
+    .filter(Boolean)
+    .join(' ')
 }
 
 function feedbackFromElement(value: unknown): PlatformSendFeedback | null {
@@ -300,8 +329,11 @@ function feedbackFromElement(value: unknown): PlatformSendFeedback | null {
     const marker = elementMarker(element)
     const role = element.getAttribute('role')
     const ariaLive = element.getAttribute('aria-live')
-    const alertLike = role === 'alert' || role === 'status' || Boolean(ariaLive)
-      || ALERT_MARKER_PATTERN.test(marker)
+    const alertLike =
+      role === 'alert' ||
+      role === 'status' ||
+      Boolean(ariaLive) ||
+      ALERT_MARKER_PATTERN.test(marker)
     if (!alertLike) continue
     const text = elementText(element)
     if (text.length > PLATFORM_FEEDBACK_MAX_LENGTH) continue
@@ -331,9 +363,11 @@ function feedbackFromNode(value: unknown): PlatformSendFeedback | null {
     "[data-e2e*='toast' i]",
     "[data-testid*='toast' i]",
   ].join(',')
-  return Array.from(value.querySelectorAll(selectors))
-    .map(feedbackFromElement)
-    .find((candidate): candidate is PlatformSendFeedback => Boolean(candidate)) || null
+  return (
+    Array.from(value.querySelectorAll(selectors))
+      .map(feedbackFromElement)
+      .find((candidate): candidate is PlatformSendFeedback => Boolean(candidate)) || null
+  )
 }
 
 export interface PlatformFeedbackProbe {
@@ -341,7 +375,9 @@ export interface PlatformFeedbackProbe {
   wait(timeoutMs?: number): Promise<PlatformSendFeedback | null>
 }
 
-export function createPlatformFeedbackProbe(root: Document | Element = document): PlatformFeedbackProbe {
+export function createPlatformFeedbackProbe(
+  root: Document | Element = document,
+): PlatformFeedbackProbe {
   let feedback: PlatformSendFeedback | null = null
   let stopped = false
   let resolveFeedback: ((value: PlatformSendFeedback | null) => void) | null = null
@@ -350,9 +386,8 @@ export function createPlatformFeedbackProbe(root: Document | Element = document)
   const observer = new MutationObserver((mutations) => {
     if (feedback || stopped) return
     for (const mutation of mutations) {
-      const candidates = mutation.type === 'childList'
-        ? Array.from(mutation.addedNodes)
-        : [mutation.target]
+      const candidates =
+        mutation.type === 'childList' ? Array.from(mutation.addedNodes) : [mutation.target]
       for (const candidate of candidates) {
         const matched = feedbackFromNode(
           candidate instanceof Element ? candidate : candidate.parentElement,
@@ -392,13 +427,16 @@ export function createPlatformFeedbackProbe(root: Document | Element = document)
       if (feedback || stopped) return Promise.resolve(feedback)
       return new Promise((resolve) => {
         resolveFeedback = resolve
-        timer = setTimeout(() => {
-          timer = undefined
-          observer.disconnect()
-          stopped = true
-          resolveFeedback = null
-          resolve(feedback)
-        }, Math.max(0, timeoutMs))
+        timer = setTimeout(
+          () => {
+            timer = undefined
+            observer.disconnect()
+            stopped = true
+            resolveFeedback = null
+            resolve(feedback)
+          },
+          Math.max(0, timeoutMs),
+        )
       })
     },
   }

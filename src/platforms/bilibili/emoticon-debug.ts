@@ -1,3 +1,4 @@
+import { redactLogText, sanitizeLogValue } from '../../core/runtime-log'
 import { bilibiliRoomEmoticonIdentity } from './direct-emoticon-send'
 
 const LOG_PREFIX = '[Danmaku Echo][Bilibili room Emoji +1] failed'
@@ -31,7 +32,7 @@ function keyKind(value: unknown): string {
 function safeError(error: unknown): Record<string, string> | string {
   if (error instanceof Error) {
     return {
-      message: error.message.slice(0, 240),
+      errorMessage: redactLogText(error.message, 600),
       name: error.name.slice(0, 80),
     }
   }
@@ -67,6 +68,8 @@ export function bilibiliEmoticonAssetDebugSummary(asset: unknown): Record<string
   }
 }
 
+export type BilibiliEmoticonDebugAttempt = ReturnType<typeof createBilibiliEmoticonDebugAttempt>
+
 export function createBilibiliEmoticonDebugAttempt(
   payload: unknown,
   logger: DebugLogger = console.error,
@@ -93,8 +96,12 @@ export function createBilibiliEmoticonDebugAttempt(
     asset: bilibiliEmoticonAssetDebugSummary,
     attemptId,
     fail(stage: string, details: Record<string, unknown> = {}): void {
+      const result = details.result as { diagnostics?: unknown; message?: unknown } | undefined
       logger(LOG_PREFIX, {
         attemptId,
+        // Keep request traces outside the deeply nested asset/result summary.
+        diagnostics: sanitizeLogValue(result?.diagnostics),
+        errorMessage: typeof result?.message === 'string' ? redactLogText(result.message) : undefined,
         details: safeDetails(details),
         elapsedMs: Math.max(0, Date.now() - startedAt),
         payload: payloadSummary,

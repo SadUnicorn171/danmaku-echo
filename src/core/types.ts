@@ -16,6 +16,7 @@ export interface RepeatReminderSettings extends RepeatReminderPlatformSettings {
 }
 
 export interface InterfaceScaleSettings {
+  mode: 'auto' | 'manual'
   capsulePercent: number
 }
 

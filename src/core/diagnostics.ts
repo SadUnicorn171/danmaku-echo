@@ -1,3 +1,4 @@
+import { recordRuntimeLog, setRuntimeLogContext } from './runtime-logger'
 import type {
   DiagnosticsEventV1,
   DiagnosticsSnapshotV1,
@@ -84,6 +85,9 @@ export function createDiagnosticsCollector(options: DiagnosticsCollectorOptions)
     if (!event) return
     events.push(event)
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS)
+    if (event.outcome === 'failure' || event.outcome === 'warning') {
+      recordRuntimeLog(event.outcome === 'failure' ? 'error' : 'warn', event.type, event)
+    }
   }
 
   function snapshot(): DiagnosticsSnapshotV1 {
@@ -116,5 +120,6 @@ export function createDiagnosticsCollector(options: DiagnosticsCollectorOptions)
     }
   }
 
+  setRuntimeLogContext(snapshot)
   return { record, snapshot }
 }

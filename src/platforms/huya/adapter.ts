@@ -1,9 +1,9 @@
-import { LIVE_PLATFORM_CONFIG } from '../live/config'
 import { createSelectorPlatformAdapter } from '../live/selector-adapter'
+import { HUYA_PLATFORM_CONFIG } from './candidate-config'
 
 export function createHuyaAdapter() {
   return createSelectorPlatformAdapter({
-    config: LIVE_PLATFORM_CONFIG.huya,
+    config: HUYA_PLATFORM_CONFIG,
     platform: 'huya',
   })
 }

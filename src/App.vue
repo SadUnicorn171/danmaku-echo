@@ -72,6 +72,18 @@
                 :description="t('settingsAltClickDescription')"
                 @change="save"
               />
+              <fieldset class="repeat-reminder-mode-setting">
+                <legend>{{ t('settingsInterfaceScaleMode') }}</legend>
+                <div class="repeat-reminder-mode-options">
+                  <label v-for="mode in repeatReminderModes" :key="mode.id"
+                    :class="{ 'is-active': settings.interfaceScale.mode === mode.id }">
+                    <input v-model="settings.interfaceScale.mode" type="radio"
+                      name="interface-scale-mode" :value="mode.id" @change="save">
+                    <span>{{ mode.id === 'auto' ? t('settingsInterfaceScaleAuto') : t('settingsInterfaceScaleManual') }}</span>
+                  </label>
+                </div>
+                <p>{{ t('settingsInterfaceScaleDescription') }}</p>
+              </fieldset>
               <label class="repeat-reminder-number-setting" for="capsule-scale-percent">
                 <span>
                   <strong>{{ t('settingsCapsuleScale') }}</strong>
@@ -91,6 +103,7 @@
                 </span>
               </label>
             </div>
+            <div class="settings-card"><RuntimeLogTools @status="setStatus" /></div>
           </section>
 
           <section id="repeat-reminder-settings" class="settings-section" aria-labelledby="repeat-reminder-title">
@@ -142,7 +155,6 @@
               </fieldset>
 
               <div
-                v-if="settings.repeatReminder.mode === 'manual'"
                 class="repeat-reminder-manual-settings"
               >
                 <div class="repeat-reminder-platform-tabs" role="tablist" :aria-label="t('settingsRepeatReminderManualPlatform')">
@@ -166,7 +178,7 @@
                   role="tabpanel"
                   :aria-labelledby="`repeat-reminder-tab-${manualRepeatReminderPlatform}`"
                 >
-                  <label class="repeat-reminder-number-setting" :for="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`">
+                  <label v-if="settings.repeatReminder.mode === 'manual'" class="repeat-reminder-number-setting" :for="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`">
                     <span>
                       <strong>{{ t('settingsRepeatReminderThreshold') }}</strong>
                       <small>{{ t('settingsRepeatReminderManualThresholdDescription') }}</small>
@@ -427,6 +439,7 @@ import type {
 } from "./core/types";
 import ColorPlatform from "./components/ColorPlatform.vue";
 import FavoritesDataTools from "./components/FavoritesDataTools.vue";
+import RuntimeLogTools from "./components/RuntimeLogTools.vue";
 import SettingSwitch from "./components/SettingSwitch.vue";
 import SettingsSidebar from "./components/SettingsSidebar.vue";
 import SettingsTopbar from "./components/SettingsTopbar.vue";

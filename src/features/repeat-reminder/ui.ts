@@ -25,6 +25,7 @@ interface RepeatReminderUiSettings {
   mode?: 'auto' | 'manual'
   promptDurationSeconds: number
   promptScalePercent: number
+  launcherScalePercent?: number
   queueLimit: number
   threshold: number
 }
@@ -376,7 +377,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   let promptScalePercent = 100
   let queueLimit = 3
   let threshold = 5
-  let launcherX = Math.max(VIEWPORT_GAP, window.innerWidth - LAUNCHER_SIZE - 18)
+  let launcherSize = LAUNCHER_SIZE
+  let launcherX = Math.max(VIEWPORT_GAP, window.innerWidth - launcherSize - 18)
   let launcherY = 18
   let countdownTimer: ReturnType<typeof setInterval> | undefined
   let destroyed = false
@@ -455,11 +457,11 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     const rect = onboardingCard.getBoundingClientRect()
     const cardWidth = rect.width || fallbackWidth
     const cardHeight = rect.height || Math.min(440, Math.max(220, viewportHeight - 32))
-    const launcherCenterX = launcherX + LAUNCHER_SIZE / 2
-    const launcherCenterY = launcherY + LAUNCHER_SIZE / 2
+    const launcherCenterX = launcherX + launcherSize / 2
+    const launcherCenterY = launcherY + launcherSize / 2
     const spaceLeft = launcherX - VIEWPORT_GAP
-    const spaceRight = viewportWidth - launcherX - LAUNCHER_SIZE - VIEWPORT_GAP
-    const spaceBelow = viewportHeight - launcherY - LAUNCHER_SIZE - VIEWPORT_GAP
+    const spaceRight = viewportWidth - launcherX - launcherSize - VIEWPORT_GAP
+    const spaceBelow = viewportHeight - launcherY - launcherSize - VIEWPORT_GAP
     let left = VIEWPORT_GAP
     let top = VIEWPORT_GAP
     let placement: 'above' | 'below' | 'left' | 'right'
@@ -474,7 +476,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       )
     } else if (spaceRight >= cardWidth + ONBOARDING_GAP) {
       placement = 'right'
-      left = launcherX + LAUNCHER_SIZE + ONBOARDING_GAP
+      left = launcherX + launcherSize + ONBOARDING_GAP
       top = clamp(
         launcherCenterY - cardHeight / 2,
         VIEWPORT_GAP,
@@ -487,7 +489,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
         VIEWPORT_GAP,
         viewportWidth - cardWidth - VIEWPORT_GAP,
       )
-      top = launcherY + LAUNCHER_SIZE + ONBOARDING_GAP
+      top = launcherY + launcherSize + ONBOARDING_GAP
       onboardingBody.style.maxHeight = `${Math.max(180, viewportHeight - top - VIEWPORT_GAP)}px`
     } else {
       placement = 'above'
@@ -521,8 +523,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
 
   function positionFloatingUi(): void {
     if (destroyed || ownershipLost) return
-    launcherX = clamp(launcherX, VIEWPORT_GAP, window.innerWidth - LAUNCHER_SIZE - VIEWPORT_GAP)
-    launcherY = clamp(launcherY, VIEWPORT_GAP, window.innerHeight - LAUNCHER_SIZE - VIEWPORT_GAP)
+    launcherX = clamp(launcherX, VIEWPORT_GAP, window.innerWidth - launcherSize - VIEWPORT_GAP)
+    launcherY = clamp(launcherY, VIEWPORT_GAP, window.innerHeight - launcherSize - VIEWPORT_GAP)
     launcher.style.left = `${launcherX}px`
     launcher.style.top = `${launcherY}px`
     const panelWidth = 248
@@ -533,11 +535,11 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     const settingsLeft =
       launcherX >= panelWidth + 2 * VIEWPORT_GAP
         ? launcherX - panelWidth - 10
-        : launcherX + LAUNCHER_SIZE + 10
+        : launcherX + launcherSize + 10
     const promptLeft =
       launcherX >= promptWidth + 2 * VIEWPORT_GAP
         ? launcherX - promptWidth - 10
-        : launcherX + LAUNCHER_SIZE + 10
+        : launcherX + launcherSize + 10
     settingsPanel.style.left = `${clamp(settingsLeft, VIEWPORT_GAP, window.innerWidth - panelWidth - VIEWPORT_GAP)}px`
     settingsPanel.style.top = `${clamp(launcherY, VIEWPORT_GAP, window.innerHeight - 260)}px`
     promptList.style.left = `${clamp(promptLeft, VIEWPORT_GAP, window.innerWidth - promptWidth - VIEWPORT_GAP)}px`
@@ -1039,6 +1041,10 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       mode = next.mode === 'manual' ? 'manual' : 'auto'
       promptDurationSeconds = next.promptDurationSeconds
       promptScalePercent = next.promptScalePercent
+      const launcherScale = (next.launcherScalePercent ?? 100) / 100
+      launcherSize = LAUNCHER_SIZE * launcherScale
+      launcher.style.transformOrigin = 'top left'
+      launcher.style.transform = 'scale(' + launcherScale + ')'
       queueLimit = next.queueLimit
       threshold = next.threshold
       promptList.style.setProperty('--bcp-repeat-prompt-scale', String(promptScalePercent / 100))

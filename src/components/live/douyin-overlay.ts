@@ -27,7 +27,7 @@ export interface DouyinOverlayState {
   top: number;
 }
 
-interface DouyinOverlayCallbacks {
+export interface DouyinOverlayCallbacks {
   onCardEnter(): void;
   onCardLeave(): void;
   onCardMove(): void;
@@ -37,6 +37,8 @@ interface DouyinOverlayCallbacks {
   onPlusOne(event: MouseEvent): void;
   onPointerDown(event: MouseEvent | PointerEvent): void;
 }
+
+export type DouyinOverlayHandle = ReturnType<typeof createDouyinOverlay>;
 
 export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
   const portal = document.createElement("div");
@@ -60,7 +62,7 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     toast: null,
     top: 0
   });
-  createApp(DouyinOverlay, {
+  const app = createApp(DouyinOverlay, {
     state,
     onCardEnter: callbacks.onCardEnter,
     onCardLeave: callbacks.onCardLeave,
@@ -70,11 +72,17 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     onFavorite: callbacks.onFavorite,
     onPlusOne: callbacks.onPlusOne,
     onPointerdown: callbacks.onPointerDown
-  }).mount(portal);
+  });
+  app.mount(portal);
   let toastId = 0;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
+  let toastCleanupTimer: ReturnType<typeof setTimeout> | undefined;
+  let toastAnimationFrame = 0;
+  let cardAnimationFrame = 0;
+  let destroyed = false;
 
   function ensureHost(host: Element): HTMLElement {
+    if (destroyed) return portal;
     if (portal.parentNode !== host) {
       try {
         host.appendChild(portal);
@@ -94,16 +102,25 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
   }
 
   function showToast(message: string, tone = "info"): void {
+    if (destroyed) return;
     if (toastTimer !== undefined) clearTimeout(toastTimer);
+    if (toastCleanupTimer !== undefined) clearTimeout(toastCleanupTimer);
+    if (toastAnimationFrame) cancelAnimationFrame(toastAnimationFrame);
     toastId += 1;
     state.toast = { id: toastId, message, tone, visible: false };
-    void nextTick(() => requestAnimationFrame(() => {
-      if (state.toast?.id === toastId) state.toast.visible = true;
-    }));
+    void nextTick(() => {
+      if (destroyed) return;
+      toastAnimationFrame = requestAnimationFrame(() => {
+        toastAnimationFrame = 0;
+        if (state.toast?.id === toastId) state.toast.visible = true;
+      });
+    });
     toastTimer = setTimeout(() => {
+      toastTimer = undefined;
       if (state.toast?.id !== toastId) return;
       state.toast.visible = false;
-      setTimeout(() => {
+      toastCleanupTimer = setTimeout(() => {
+        toastCleanupTimer = undefined;
         if (state.toast?.id === toastId) state.toast = null;
       }, 180);
     }, message.length > 80 ? 6000 : tone === "error" ? 3600 : 2400);
@@ -113,8 +130,26 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     card,
     dismissToast(): void {
       if (toastTimer !== undefined) clearTimeout(toastTimer);
+      if (toastCleanupTimer !== undefined) clearTimeout(toastCleanupTimer);
+      if (toastAnimationFrame) cancelAnimationFrame(toastAnimationFrame);
       toastTimer = undefined;
+      toastCleanupTimer = undefined;
+      toastAnimationFrame = 0;
       state.toast = null;
+    },
+    destroy(): void {
+      if (destroyed) return;
+      destroyed = true;
+      if (toastTimer !== undefined) clearTimeout(toastTimer);
+      if (toastCleanupTimer !== undefined) clearTimeout(toastCleanupTimer);
+      if (toastAnimationFrame) cancelAnimationFrame(toastAnimationFrame);
+      if (cardAnimationFrame) cancelAnimationFrame(cardAnimationFrame);
+      toastTimer = undefined;
+      toastCleanupTimer = undefined;
+      toastAnimationFrame = 0;
+      cardAnimationFrame = 0;
+      app.unmount();
+      portal.remove();
     },
     ensureHost,
     hideCard(): void {
@@ -126,11 +161,14 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     plusOneButton,
     portal,
     positionCard(left: number, top: number, side: string): void {
+      if (destroyed) return;
       state.left = Math.round(left);
       state.top = Math.round(top);
       state.side = side;
       state.measuring = false;
-      requestAnimationFrame(() => {
+      if (cardAnimationFrame) cancelAnimationFrame(cardAnimationFrame);
+      cardAnimationFrame = requestAnimationFrame(() => {
+        cardAnimationFrame = 0;
         if (state.cardVisible) state.cardActive = true;
       });
     },

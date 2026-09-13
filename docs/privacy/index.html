@@ -21,7 +21,7 @@
   <body>
     <main>
       <h1>Danmaku Echo</h1>
-      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-08-28</p>
+      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-09-13</p>
       <nav aria-label="Languages"><a href="#zh-cn">中文</a><a href="#english">English</a></nav>
 
       <section id="zh-cn" lang="zh-CN">
@@ -34,7 +34,9 @@
         <h3>高频 +1 提醒</h3>
         <p>该功能只对最近一分钟内完全相同的普通文字弹幕进行轻量计数，达到设置门槛后显示“暂不 / +1”提示。B 站和抖音默认基础门槛为 6 次并按页面公开观众数调整；虎牙和斗鱼为 8 次并按页面贵宾数使用独立分档调整。直播热度不再用于估算或回退。它不生成热词、问题、时间线或摘要，不下载模型，也不发送弹幕用于云端分析。</p>
         <h3>诊断信息</h3>
-        <p>“复制当前页面诊断”只在内存中生成结构化状态，并在用户点击后复制到剪贴板。诊断不包含弹幕正文、用户名、UID、房间号、完整 URL、Cookie、CSRF、收藏内容或请求体；扩展不会自动上传或持久化诊断。</p>
+        <p>“复制当前页面诊断”只在内存中生成结构化状态，并在用户点击后复制到剪贴板。诊断不包含弹幕正文、用户名、UID、房间号、完整 URL、Cookie、CSRF、收藏内容或请求体；扩展不会自动上传诊断。警告和错误发生时可将结构化上下文保存到本地运行日志。</p>
+        <h3>运行日志</h3>
+        <p>运行日志默认将扩展警告、错误和未捕获异常的时间、版本、堆栈、平台域名、屏幕/窗口信息及结构化诊断上下文保存在 chrome.storage.local。日志不自动上传，不保存弹幕流；凭证字段、正文/用户/房间字段和网页 URL 路径及查询参数会被过滤。最多保留 500 条、约 1 MB，读写时清理超过 7 天的记录；用户可在常规设置中导出 JSON 或清空日志。</p>
         <h3>变更与联系</h3>
         <p>政策变更会在此页面和项目版本记录中公布。问题可通过 <a href="https://github.com/SadUnicorn171/danmaku-echo/issues">GitHub Issues</a> 联系维护者。</p>
       </section>
@@ -49,7 +51,9 @@
         <h3>Frequent-message +1 reminder</h3>
         <p>This feature keeps a lightweight count of identical plain-text messages seen during the last minute and shows a Dismiss / +1 prompt at the configured threshold. Bilibili and Douyin use a default base of 6 and adapt to public viewer values, while Huya and Douyu use 8 and adapt to the displayed guest count with separate bands. Popularity is not used as an estimate or fallback. It does not create hot words, questions, timelines, or summaries, download models, or send danmaku to cloud-analysis services.</p>
         <h3>Diagnostics</h3>
-        <p>“Copy current-page diagnostics” generates structural state in memory and copies it only after a user click. It excludes danmaku text, usernames, UIDs, room identifiers, full URLs, cookies, CSRF values, favorites, and request bodies. Diagnostics are neither uploaded nor persisted automatically.</p>
+        <p>“Copy current-page diagnostics” generates structural state in memory and copies it only after a user click. It excludes danmaku text, usernames, UIDs, room identifiers, full URLs, cookies, CSRF values, favorites, and request bodies. Diagnostics are not uploaded automatically. Structural context may be saved locally with runtime warnings and errors.</p>
+        <h3>Runtime logs</h3>
+        <p>Runtime logs save extension warnings, errors and uncaught exceptions locally, including timestamps, version, stack traces, platform hostname, screen/window metrics and structural diagnostics. Logs are not uploaded automatically and do not store the danmaku stream. Credential fields, content/user/room fields, and web URL paths and queries are filtered. Storage is capped at 500 entries and about 1 MB; entries older than 7 days are removed on reads and writes. General settings provides JSON export and clearing.</p>
         <h3>Changes and contact</h3>
         <p>Policy changes will be published on this page and in the project changelog. Contact the maintainer through <a href="https://github.com/SadUnicorn171/danmaku-echo/issues">GitHub Issues</a>.</p>
       </section>

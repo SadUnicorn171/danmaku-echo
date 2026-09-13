@@ -1,7 +1,11 @@
 import type { DanmakuDescriptor, DanmakuRichTextPart, PlatformId } from '../../core/types'
 import { normalizeSenderName, normalizeWhitespace, parseMessageText } from '../../core/shared'
-import { douyuOverlayTextElements } from '../douyu/message-content'
 import type { LivePlatformConfig } from './config'
+
+export type LiveMessageElementsResolver = (
+  candidate: Element,
+  primary: Element,
+) => readonly Element[]
 
 function firstMatch(root: Element, selectors: readonly string[]): Element | null {
   for (const selector of selectors) {
@@ -74,10 +78,13 @@ export function describeDanmaku(
   config: LivePlatformConfig,
   candidate: Element,
   source: DanmakuDescriptor['source'],
+  resolveMessageElements?: LiveMessageElementsResolver,
 ): DanmakuDescriptor | null {
   const messageElement = firstMatch(candidate, config.messageText) || candidate
-  const douyuTextElements = platform === 'douyu' ? douyuOverlayTextElements(candidate) : []
-  const messageElements = douyuTextElements.length > 1 ? douyuTextElements : [messageElement]
+  const resolvedMessageElements = resolveMessageElements?.(candidate, messageElement) || []
+  const messageElements = resolvedMessageElements.length
+    ? resolvedMessageElements
+    : [messageElement]
   const parts = orderedParts(messageElements, platform)
   const text = parseMessageText(
     parts.map((part) => part.text || '').join('') ||

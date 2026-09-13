@@ -1,4 +1,4 @@
-export const REPEAT_REMINDER_OWNED_SELECTOR = '[data-bcp-repeat-reminder-owned]'
+const REPEAT_REMINDER_OWNED_SELECTOR = '[data-bcp-repeat-reminder-owned]'
 export const REPEAT_REMINDER_HIT_REGIONS_ATTRIBUTE = 'data-bcp-repeat-reminder-hit-regions'
 
 interface RepeatReminderPointDocument {

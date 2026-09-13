@@ -1,4 +1,11 @@
 const ZH_CN_FALLBACK: Record<string, string> = {
+  runtimeLogTitle: "运行日志",
+  runtimeLogDescription: "自动在本机保存扩展警告、错误及当时的运行环境。保留最近 7 天，最多 500 条、约 1 MB；不自动上传。遇到问题后可导出 JSON 日志。",
+  runtimeLogExport: "导出日志",
+  runtimeLogClear: "清空日志",
+  runtimeLogExported: "日志已导出",
+  runtimeLogCleared: "日志已清空",
+  runtimeLogFailed: "日志操作失败，请重新加载扩展后重试",
   actionCopy: '复制',
   actionCooldownTitle: '发送冷却中，$1 秒后可重试',
   actionCopyTitle: '复制弹幕：$1',
@@ -162,8 +169,13 @@ const ZH_CN_FALLBACK: Record<string, string> = {
   settingsAltClick: 'Alt + 单击通用回退',
   settingsAltClickDescription: '直播站点结构变化时，按住 Alt 单击弹幕仍可尝试快速复读。',
   settingsAutoSave: '设置会自动保存',
+  settingsInterfaceScaleMode: '胶囊与雷达大小模式',
+  settingsInterfaceScaleAuto: '自动适配屏幕',
+  settingsInterfaceScaleManual: '手动大小',
+  settingsInterfaceScaleDescription:
+    '自动模式以 3860×2160 为基准，按屏幕分辨率调整胶囊、雷达入口和提示框。下方百分比仍可微调，最终大小限制在 50%–200%。',
   settingsCapsuleScale: '弹幕胶囊大小',
-  settingsCapsuleScaleDescription: '按百分比缩放直播弹幕的快捷操作胶囊。',
+  settingsCapsuleScaleDescription: '手动模式直接使用此百分比；自动模式将其作为基准屏幕下的大小。',
   settingsColors: '直播间颜色',
   settingsColorsDescription: '每个平台独立生效；留空或恢复默认时，继续使用插件内置颜色。',
   settingsCopyDiagnostics: '复制当前页面诊断',
@@ -221,15 +233,18 @@ const ZH_CN_FALLBACK: Record<string, string> = {
   settingsRepeatReminderMode: '雷达档位',
   settingsRepeatReminderAuto: '自动',
   settingsRepeatReminderManual: '手动',
-  settingsRepeatReminderAutoDescription: '自动结合直播间人数与最近弹幕量调整触发次数，并使用默认提示参数。',
-  settingsRepeatReminderManualDescription: '按平台使用独立参数；切换下方平台即可分别设置。',
+  settingsRepeatReminderAutoDescription:
+    '仅自动调整触发次数。下方各平台的停留时间、队列上限和提示框大小仍可自行设置。',
+  settingsRepeatReminderManualDescription:
+    '按平台设置固定触发次数；通用提示参数在自动和手动档位间共享。',
   settingsRepeatReminderManualPlatform: '选择要配置的直播平台',
   settingsRepeatReminderManualThresholdDescription: '达到该平台设置的固定次数后显示 +1 提示，不随人数或弹幕量变化。',
   settingsRepeatReminderPromptDuration: '提示停留时间',
   settingsRepeatReminderPromptDurationDescription: '默认保留 10 秒；未操作倒数结束后静默 30 秒，再按当前档位判断是否唤醒。',
   settingsRepeatReminderPromptDurationUnit: '秒',
   settingsRepeatReminderPromptScale: '+1 提示框大小',
-  settingsRepeatReminderPromptScaleDescription: '按百分比缩放整个高频 +1 提示队列。',
+  settingsRepeatReminderPromptScaleDescription:
+    '调整整个提示队列的基础大小；开启自动适配屏幕后，再按屏幕分辨率缩放。',
   settingsRepeatReminderQueueLimit: '提示队列上限',
   settingsRepeatReminderQueueLimitDescription: '按时间倒序保留最近达到阈值的提示，超出后舍弃最旧项。',
   settingsRepeatReminderQueueLimitUnit: '条',
@@ -284,9 +299,10 @@ export function t(key: string, substitutions?: string | string[]): string {
   const runtimeMessage = globalThis.chrome?.i18n?.getMessage?.(key, substitutions)
   if (runtimeMessage && runtimeMessage !== key) return runtimeMessage
   const values = Array.isArray(substitutions) ? substitutions : substitutions ? [substitutions] : []
-  return (ZH_CN_FALLBACK[key] || key).replace(/\$(\d+)/g, (_match, index: string) => (
-    values[Number(index) - 1] || ''
-  ))
+  return (ZH_CN_FALLBACK[key] || key).replace(
+    /\$(\d+)/g,
+    (_match, index: string) => values[Number(index) - 1] || '',
+  )
 }
 
 export function uiLocale(): string {

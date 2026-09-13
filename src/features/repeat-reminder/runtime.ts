@@ -1,3 +1,4 @@
+import { resolveInterfaceScalePercent, screenResolution } from '../../core/interface-scale'
 import type { DanmakuDescriptor, ExtensionSettings, PlatformId } from '../../core/types'
 import { repeatReminderPlatformSettings } from '../../core/repeat-reminder-settings'
 import { createRepeatReminderCollector, type RepeatReminderCollector } from './collector'
@@ -32,7 +33,19 @@ const TRAFFIC_THRESHOLD_RISE_CONFIRMATIONS = 2
 const TRAFFIC_THRESHOLD_FALL_CONFIRMATIONS = 6
 const AUTOMATIC_PLUS_ONE_GAP_MS = 1_100
 
+export interface RepeatReminderSourceSink {
+  ingest(observation: RepeatReminderObservation): void
+  suppressText(text: string): void
+}
+
+export interface RepeatReminderSourceCollector {
+  connect(sink: RepeatReminderSourceSink): void
+  describe(element: Element, source: DanmakuDescriptor['source']): DanmakuDescriptor | null
+  destroy(): void
+}
+
 interface RepeatReminderRuntimeOptions {
+  collector?: RepeatReminderSourceCollector
   describe?(element: Element, source: DanmakuDescriptor['source']): DanmakuDescriptor | null
   initialSettings: ExtensionSettings
   messageSelectors?: readonly string[]
@@ -199,8 +212,11 @@ export function createRepeatReminderRuntime(
       autoPlusOne: settings.repeatReminder.autoPlusOne,
       enabled: visible,
       mode: settings.repeatReminder.mode,
+      launcherScalePercent: resolveInterfaceScalePercent(100, settings.interfaceScale, screenResolution(window)),
       promptDurationSeconds: selected.promptDurationSeconds,
-      promptScalePercent: selected.promptScalePercent,
+      promptScalePercent: resolveInterfaceScalePercent(
+        selected.promptScalePercent, settings.interfaceScale, screenResolution(window),
+      ),
       queueLimit: selected.queueLimit,
       threshold: effectiveThreshold,
     })
@@ -406,10 +422,19 @@ export function createRepeatReminderRuntime(
     ui.setSuggestions(ownsPrompt() ? selection.current() : [])
   }
 
+  options.collector?.connect({
+    ingest,
+    suppressText(text): void {
+      forgetSuggestionText(text)
+      ui.setSuggestions(ownsPrompt() ? selection.current() : [])
+    },
+  })
+
   let collector: RepeatReminderCollector | null = null
-  if (options.describe && options.messageSelectors && options.overlaySelectors) {
+  const describe = options.collector?.describe ?? options.describe
+  if (describe && options.messageSelectors && options.overlaySelectors) {
     collector = createRepeatReminderCollector({
-      describe: options.describe,
+      describe,
       enabled,
       messageSelectors: options.messageSelectors,
       observation: ingest,
@@ -422,6 +447,8 @@ export function createRepeatReminderRuntime(
     ui.ensureHost()
     syncUi()
   }
+  window.addEventListener('resize', syncUi)
+  window.addEventListener('focus', syncUi)
   document.addEventListener('fullscreenchange', onFullscreenChange, true)
   document.addEventListener('webkitfullscreenchange', onFullscreenChange, true)
   const routeTimer = setInterval(checkRoom, 1_000)
@@ -446,7 +473,10 @@ export function createRepeatReminderRuntime(
       destroyed = true
       clearInterval(routeTimer)
       collector?.destroy()
+      options.collector?.destroy()
       ui.destroy()
+      window.removeEventListener('resize', syncUi)
+      window.removeEventListener('focus', syncUi)
       document.removeEventListener('fullscreenchange', onFullscreenChange, true)
       document.removeEventListener('webkitfullscreenchange', onFullscreenChange, true)
     },
