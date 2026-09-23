@@ -3,6 +3,9 @@
     <SettingsSidebar
       :active-section="activeSection"
       :version="version"
+      :language="language"
+      :language-saving="languageSaving"
+      @language="changeLanguage"
       @navigate="scrollToSection"
     />
 
@@ -445,7 +448,7 @@ import SettingsSidebar from "./components/SettingsSidebar.vue";
 import SettingsTopbar from "./components/SettingsTopbar.vue";
 import { useSectionNavigation } from "./composables/useSectionNavigation";
 import { useSettings } from "./composables/useSettings";
-import { t } from "./core/i18n";
+import { t } from "./composables/settings-language";
 import { SETTINGS_SECTION_IDS } from "./core/settings-sections";
 import {
   MAX_CAPSULE_SCALE_PERCENT,
@@ -466,25 +469,25 @@ import {
 } from "./core/repeat-reminder-settings";
 
 const feedbackEmail = "sadunicorn1113@gmail.com";
-const platforms: ReadonlyArray<{ id: PlatformId; label: string }> = [
+const platforms = computed<ReadonlyArray<{ id: PlatformId; label: string }>>(() => [
   { id: "bilibili", label: t("platformBilibili") },
   { id: "douyin", label: t("platformDouyin") },
   { id: "douyu", label: t("platformDouyu") },
   { id: "huya", label: t("platformHuya") }
-];
-const repeatReminderModes: ReadonlyArray<{
+]);
+const repeatReminderModes = computed<ReadonlyArray<{
   id: RepeatReminderSettings["mode"];
   label: string;
-}> = [
+}>>(() => [
   { id: "auto", label: t("settingsRepeatReminderAuto") },
   { id: "manual", label: t("settingsRepeatReminderManual") }
-];
+]);
 const manualRepeatReminderPlatform = ref<PlatformId>("bilibili");
-const colorFields: ReadonlyArray<{
+const colorFields = computed<ReadonlyArray<{
   defaultValue: string;
   key: ColorSettingKey;
   label: string;
-}> = [
+}>>(() => [
   { key: "actionStart", label: t("colorActionStart"), defaultValue: "#FD8101" },
   { key: "actionEnd", label: t("colorActionEnd"), defaultValue: "#FD8101" },
   { key: "actionText", label: t("colorActionText"), defaultValue: "#FFFFFF" },
@@ -495,8 +498,11 @@ const colorFields: ReadonlyArray<{
   { key: "success", label: t("colorSuccess"), defaultValue: "#27AE60" },
   { key: "warning", label: t("colorWarning"), defaultValue: "#E6A000" },
   { key: "error", label: t("colorError"), defaultValue: "#FF4747" }
-];
+]);
 const {
+  changeLanguage,
+  language,
+  languageSaving,
   copyFeedbackEmail,
   save,
   settings,
@@ -508,7 +514,7 @@ const {
 } = useSettings();
 const { activeSection, contentCanvas, scrollToSection } = useSectionNavigation(SETTINGS_SECTION_IDS);
 
-const customColorCount = computed(() => platforms.reduce((total, platform) => (
+const customColorCount = computed(() => platforms.value.reduce((total, platform) => (
   total + Object.values(settings.colors[platform.id]).filter(Boolean).length
 ), 0));
 const manualRepeatReminderSettings = computed(() => (
@@ -575,7 +581,7 @@ function setColor(platform: PlatformId, key: ColorSettingKey, value: string): vo
 }
 
 function resetPlatformColors(platform: PlatformId): void {
-  colorFields.forEach((field) => {
+  colorFields.value.forEach((field) => {
     settings.colors[platform][field.key] = "";
   });
   save();
@@ -656,6 +662,15 @@ input {
   font: inherit;
 }
 
+.app-shell :where(button, a, summary):focus-visible {
+  outline: 2px solid #fd8101;
+  outline-offset: 2px;
+}
+
+.app-shell :is(button, input[type="checkbox"], input[type="radio"], summary):focus:not(:focus-visible) {
+  outline: none;
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -714,10 +729,10 @@ a {
 }
 
 .settings-section h2 {
-  color: #000;
+  color: var(--text);
   font-size: 14px;
-  font-weight: 500;
-  letter-spacing: .05em;
+  font-weight: 600;
+  letter-spacing: .02em;
   line-height: 20px;
   margin: 0;
 }
@@ -785,7 +800,7 @@ a {
   width: 1px;
 }
 
-.repeat-reminder-mode-options label:focus-within {
+.repeat-reminder-mode-options label:has(input:focus-visible) {
   outline: 2px solid rgb(253 129 1 / 42%);
   outline-offset: 1px;
 }
@@ -818,6 +833,11 @@ a {
   font-weight: 500;
   min-height: 44px;
   padding: 6px 8px;
+  transition: background-color 140ms ease, border-color 140ms ease;
+}
+
+.repeat-reminder-platform-tabs button:hover:not(.is-active) {
+  background: var(--surface-muted);
 }
 
 .repeat-reminder-platform-tabs button.is-active {
@@ -882,6 +902,7 @@ a {
   border: 0;
   color: var(--text);
   font: 500 12px/20px ui-monospace, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
   outline: 0;
   padding: 6px 4px 6px 10px;
   text-align: right;

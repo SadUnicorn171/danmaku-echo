@@ -35,7 +35,7 @@
 import { computed } from "vue";
 import type { ColorSettingKey, ColorSettings, PlatformId } from "../core/types";
 import ColorField from "./ColorField.vue";
-import { t } from "../core/i18n";
+import { t } from "../composables/settings-language";
 
 const props = defineProps<{
   colors: ColorSettings;

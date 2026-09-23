@@ -51,6 +51,11 @@ if (isMicrosoftEdge) browserArguments.push(`--disable-extensions-except=${extens
 browserArguments.push("about:blank");
 
 const browser = spawn(browserPath, browserArguments, {
+  // Linux's browser UI locale also follows the process language environment.
+  // Keep the requested fixture locale independent of the developer's desktop.
+  env: process.platform === "linux"
+    ? { ...process.env, LANGUAGE: locale.replaceAll("-", "_"), LANG: `${locale.replaceAll("-", "_")}.UTF-8` }
+    : process.env,
   stdio: ["ignore", "ignore", "pipe", "pipe", "pipe"],
   windowsHide: true,
 });
@@ -175,7 +180,34 @@ async function inspect() {
     return result.result.value;
   }
 
+  const languageSwitch = await evaluate(`(async () => {
+    const root = document.querySelector('.app-shell');
+    const defaultChinese = document.documentElement.lang === 'zh-CN'
+      && document.querySelector('.topbar h1')?.textContent === '常规设置';
+    document.querySelector('.language-switch button[lang="en"]').click();
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if ((await chrome.storage.sync.get('settingsLanguage')).settingsLanguage === 'en') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const english = document.documentElement.lang === 'en'
+      && document.querySelector('.topbar h1')?.textContent === 'General'
+      && document.querySelector('#repeat-reminder-tab-bilibili')?.textContent.trim() === 'Bilibili';
+    const samePage = root === document.querySelector('.app-shell');
+    if (${locale.toLowerCase().startsWith('zh')}) {
+      document.querySelector('.language-switch button[lang="zh-CN"]').click();
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if ((await chrome.storage.sync.get('settingsLanguage')).settingsLanguage === 'zh-CN') break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    return { defaultChinese, english, samePage };
+  })()`);
+  await send('Page.reload', {}, sessionId);
+  await delay(1000);
+  languageSwitch.persisted = await evaluate(`document.documentElement.lang === ${JSON.stringify(locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en')}`);
+
   const viewports = [];
+  const polishLayouts = [];
   for (const width of [800, 1013, 1280]) {
     await send("Emulation.setDeviceMetricsOverride", {
       deviceScaleFactor: 1,
@@ -247,6 +279,35 @@ async function inspect() {
       Buffer.from(screenshot.data, "base64"),
     );
     viewports.push({ width, ...layout });
+    if (width === 800 || width === 1280) {
+      for (const section of ['platform-colors', 'favorites-guide']) {
+        await evaluate(`(() => {
+          if (${JSON.stringify(section)} === 'platform-colors') {
+            document.querySelector('.color-platform').open = true;
+          }
+          document.getElementById(${JSON.stringify(section)}).scrollIntoView({ block: 'start', behavior: 'instant' });
+          return true;
+        })()`);
+        await delay(150);
+        const screenshot = await send('Page.captureScreenshot', { captureBeyondViewport: false, format: 'png' }, sessionId);
+        writeFileSync(path.join(artifactDirectory, `${scenarioName}-${section}-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+      }
+      const polishLayout = await evaluate(`(() => {
+        const buttons = [...document.querySelectorAll('.color-platform[open] .color-reset')];
+        const labels = [...document.querySelectorAll('.color-platform[open] .color-field__label')];
+        return {
+          buttonsFit: buttons.length > 0 && buttons.every(button => button.scrollWidth <= button.clientWidth),
+          labelsFit: labels.length > 0 && labels.every(label => label.scrollWidth <= label.clientWidth),
+          pageFits: document.documentElement.scrollWidth <= innerWidth,
+        };
+      })()`);
+      polishLayouts.push({ width, ...polishLayout });
+      await evaluate(`(() => {
+        document.querySelector('.content-canvas').scrollTo({ top: 0, behavior: 'instant' });
+        return true;
+      })()`);
+      await delay(150);
+    }
   }
 
   const persistence = await evaluate(`(async () => {
@@ -370,6 +431,10 @@ async function inspect() {
   })()`);
 
   const failures = [];
+  if (Object.values(languageSwitch).some(value => value !== true)) failures.push('settings-language-switch');
+  for (const layout of polishLayouts) {
+    if (!layout.buttonsFit || !layout.labelsFit || !layout.pageFits) failures.push(`${layout.width}:settings-detail-overflow`);
+  }
   if (!beforeReloadLogs || !runtimeLogs) failures.push("persistent-runtime-logs");
   if (!sizing) failures.push("auto-sizing-and-radar-preferences");
   for (const viewport of viewports) {
@@ -410,6 +475,7 @@ async function inspect() {
 
   return {
     assertionFailures: failures,
+    languageSwitch,
     runtimeLogs,
     browserStderr: browserStderr.slice(-8_000),
     actionSettings,
@@ -417,6 +483,7 @@ async function inspect() {
     persistence,
     protocolEvents,
     viewports,
+    polishLayouts,
   };
 }
 

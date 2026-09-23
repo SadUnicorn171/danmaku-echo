@@ -37,7 +37,7 @@
 import { ref, watch } from "vue";
 import { normalizeHexColor } from "../core/shared";
 import type { ColorSettingKey } from "../core/types";
-import { t } from "../core/i18n";
+import { t } from "../composables/settings-language";
 
 const props = defineProps<{
   colorKey: ColorSettingKey;
@@ -105,6 +105,8 @@ function reset(): void {
 .color-field__label {
   align-items: baseline;
   display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
   justify-content: space-between;
   margin-bottom: 8px;
 }
@@ -116,18 +118,17 @@ function reset(): void {
 }
 
 .color-field__label small {
-  color: var(--text-muted);
+  color: var(--text-secondary);
   font-family: Consolas, monospace;
   font-size: 10px;
   line-height: 16px;
-  margin-left: 8px;
 }
 
 .color-control {
   align-items: stretch;
   display: grid;
   gap: 6px;
-  grid-template-columns: 34px minmax(0, 1fr) 46px;
+  grid-template-columns: 34px minmax(0, 1fr) max-content;
 }
 
 .color-picker {
@@ -160,12 +161,18 @@ function reset(): void {
   min-width: 0;
   padding: 0 9px;
   text-transform: uppercase;
+  transition: border-color 140ms ease;
 }
 
 .color-text::placeholder {
-  color: #999c9c;
+  color: var(--text-muted);
   opacity: 1;
   text-transform: none;
+}
+
+.color-text:focus {
+  border-color: #fd8101;
+  outline: none;
 }
 
 .color-text[aria-invalid="true"] {
@@ -192,6 +199,8 @@ function reset(): void {
 
 .color-reset {
   height: 32px;
+  min-width: 46px;
   padding: 0 8px;
+  white-space: nowrap;
 }
 </style>

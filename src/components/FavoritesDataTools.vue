@@ -35,7 +35,7 @@ import {
   exportFavoritesData,
   importFavoritesData
 } from "../features/favorites/repository";
-import { t } from "../core/i18n";
+import { t } from "../composables/settings-language";
 
 const emit = defineEmits<{
   status: [message: string, kind: "error" | "saved"];
@@ -159,9 +159,11 @@ async function importBackup(event: Event): Promise<void> {
   gap: 6px;
   min-height: 44px;
   padding: 0 12px;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
 
-.favorites-data-actions button:hover,
+.favorites-data-actions button:hover:not(:disabled),
 .favorites-data-actions button:focus-visible {
   background: #fff7ef;
   border-color: #fd8101;

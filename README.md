@@ -126,7 +126,9 @@ npm run build
 
 斗鱼播放器原生的 `+1`、回复和收藏胶囊也默认关闭，并有独立开关；开启后可能与扩展提供的视频弹幕快捷操作同时显示。
 
-点击浏览器工具栏中的扩展图标，可以总开关扩展、分别启用平台以及开关 `Alt + 单击` 回退功能。
+点击浏览器工具栏中的扩展图标，可以总开关扩展并分别启用平台。在常规设置中可以关闭默认开启的 `Alt + 单击通用回退`：按住 Alt 单击扩展能识别的弹幕时，会尝试直接执行受发送保护约束的 `+1`；无法识别弹幕时不会发送。
+
+设置页侧栏提供独立的「中文 / English」按钮，默认中文，点击后立即切换设置页语言并保存选择。直播页提示及浏览器管理的扩展名称仍沿用浏览器语言机制。
 
 抖音调试：在直播页按 `Ctrl + Alt + D`，扩展会把启动链路、Canvas 实例、DOM 接管状态、活动节点数、回退原因和最近事件输出到开发者工具控制台。日志前缀为 `[Danmaku Echo]`。
 
@@ -134,7 +136,7 @@ npm run build
 
 构建或打包安装后，运行日志默认启用。重现问题后，打开「常规设置 → 运行日志」导出 JSON，并在问题报告中注明发生时间、平台、浏览器版本和操作步骤。日志保存在本机，最多 500 条、约 1 MB，读写时清理超过 7 天的记录；清空日志不影响收藏和设置。
 
-日志包含脱敏后的错误原因、堆栈、扩展版本、屏幕/窗口信息及结构化上下文。B 站表情后备发送失败可通过同一个 attemptId 关联后台与页面记录，定位失败阶段和请求结果。日志不自动上传，也不收集 npm 构建或打包的终端输出。记录范围、字段解释与报告步骤见[日志排查指南](docs/TROUBLESHOOTING.md)。
+日志包含脱敏后的错误原因、堆栈、扩展版本、屏幕/窗口信息及结构化上下文。B 站表情后备发送失败可通过同一个 attemptId 关联后台与页面记录，定位失败阶段和请求结果。日志不自动上传，也不收集 npm 构建或打包的终端输出。发送失败还可附带脱敏 DOM 的 HTML 片段、请求耗时、参数结构和响应状态；不包含原始正文、参数值或凭据。记录范围、字段解释与报告步骤见[日志排查指南](docs/TROUBLESHOOTING.md)。
 
 ### 开发与验证
 
@@ -189,6 +191,8 @@ src/assets/                   图标、平台 SVG 及直播间收藏 Shadow DOM 
 src/components/               设置页组件及 components/live 直播浮层组件
 src/composables/              设置读取、同步保存和页面状态
 docs/ARCHITECTURE.md          当前模块边界、数据流和运行时架构
+docs/PERFORMANCE_OPTIMIZATION.md 性能现状、优化优先级、基线与验收计划
+docs/PERFORMANCE_RESULTS.md      性能优化实施、实测对照与验证范围
 docs/ENTRY_RUNTIME_ARCHITECTURE.md 内容脚本入口、跨世界协议与生命周期说明
 docs/ENTRY_REFACTOR_CHECKLIST.md   内容脚本入口拆分与类型化的分步实施清单
 docs/ENTRY_REFACTOR_REGRESSION.md  入口重构的浏览器与真实直播间回归记录
@@ -333,7 +337,9 @@ npm run build
 3. Click the displayed `+1` button.
 4. The extension fills the official editor and triggers the platform's official send flow.
 
-Use the toolbar popup to enable or disable the extension, toggle individual platforms, and control the `Alt + click` fallback.
+Use the toolbar popup to enable or disable the extension and toggle individual platforms. The **Alt + click fallback** is enabled by default and can be changed in General settings. Holding Alt while clicking a danmaku the extension recognizes attempts an immediate, send-protected +1; unrecognized content is not sent.
+
+The settings sidebar has a separate **中文 / English** button. Settings default to Chinese, change immediately on click, and remember the selection. Live-page messages and the browser-managed extension name continue to follow the browser language.
 
 Click **Favorite** in a danmaku action bar to store it. Short-press `Alt + Q` for the current-room list; search, number-key sending, other-room browsing, add-to-room, deletion, and **Wheel order** editing are available there. Select **Wheel order**, then drag a handle or use the move buttons to persist the order; the radial menu displays its first six current-room entries. Hold `Alt + Q` for about 0.18 seconds to open the cursor-centered radial menu, point to an item, and release to send; move back to the center or press `Esc` to cancel.
 
@@ -347,7 +353,7 @@ For Douyin diagnostics, press `Ctrl + Alt + D` in a live room. Startup, Canvas i
 
 Runtime logging is enabled in installed builds and packages. After reproducing a problem, export JSON from **General settings → Runtime logs** and include the time, platform, browser version, and reproduction steps in your issue. Local storage keeps up to 500 records and about 1 MB; reads and writes prune records older than seven days. Clearing logs preserves favorites and settings.
 
-Logs retain sanitized error messages, stack traces, extension version, screen/window metrics, and structural context. Bilibili room-emote fallback failures include a shared attemptId, request stages, and response metadata. Logs are not uploaded automatically and do not capture npm build/package terminal output. See the [troubleshooting guide](docs/TROUBLESHOOTING.md) for scope and diagnostic fields.
+Logs retain sanitized error messages, stack traces, extension version, screen/window metrics, and structural context. Bilibili room-emote fallback failures include a shared attemptId, request stages, and response metadata. Logs are not uploaded automatically and do not capture npm build/package terminal output. Failed sends can also include sanitized DOM HTML fragments, request timing, parameter structure and response states, without raw content, parameter values or credentials. See the [troubleshooting guide](docs/TROUBLESHOOTING.md) for scope and diagnostic fields.
 
 ### Development and verification
 
@@ -402,6 +408,8 @@ src/assets/                   Icons, platform SVGs, and live-room favorites Shad
 src/components/               Settings components and components/live overlays
 src/composables/              Settings loading, sync persistence, and page state
 docs/ARCHITECTURE.md          Current module boundaries, data flow, and runtime architecture
+docs/PERFORMANCE_OPTIMIZATION.md Performance audit, priorities, baseline and validation plan (Chinese)
+docs/PERFORMANCE_RESULTS.md      Implemented optimizations, measurements and validation scope (Chinese)
 docs/ENTRY_RUNTIME_ARCHITECTURE.md Content-entry, cross-world protocol, and lifecycle guide
 docs/ENTRY_REFACTOR_CHECKLIST.md   Step-by-step content-entry refactoring and typing checklist
 docs/ENTRY_REFACTOR_REGRESSION.md  Browser and real-room regression record for the entry refactor

@@ -23,7 +23,7 @@
 
 <script setup lang="ts">
 import type { PlatformId } from "../core/types";
-import { t } from "../core/i18n";
+import { t } from "../composables/settings-language";
 
 defineProps<{
   label: string;
@@ -75,6 +75,7 @@ function onChange(event: Event): void {
   align-items: center;
   cursor: pointer;
   display: flex;
+  gap: 16px;
   justify-content: space-between;
   min-height: 58px;
   padding: 15px 16px;
@@ -90,7 +91,7 @@ function onChange(event: Event): void {
   background: rgb(255 255 255 / 60%);
 }
 
-.platform-row:focus-within {
+.platform-row:has(.platform-input:focus-visible) {
   outline: 2px solid rgb(39 174 96 / 38%);
   outline-offset: -2px;
 }
@@ -116,10 +117,11 @@ function onChange(event: Event): void {
 
 .platform-identity {
   gap: 12px;
+  min-width: 0;
 }
 
 .platform-identity strong {
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: inherit;
   font-size: 16px;
   font-weight: 500;
   line-height: 24px;
@@ -143,6 +145,7 @@ function onChange(event: Event): void {
 
 .platform-status {
   color: #5e5e5e;
+  flex-shrink: 0;
   font-size: 14px;
   gap: 6px;
   line-height: 20px;

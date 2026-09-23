@@ -192,6 +192,11 @@ Bilibili 和虎牙以 selector adapter 为基础，并由平台模块补充候�
 它不持久化弹幕内容，不在 Service Worker 聚合，不生成热词、问题、时间线或摘要，也不使用
 本地模型或云端分析。关闭雷达或刷新/切房会清理当前计数。
 
+检测器按规范化文本增量维护计数和发送者引用计数；记录、镜像指纹、消息 ID 与相似簇分别使用
+可更新的到期堆，支持乱序时间戳。相似度特征缓存属于检测器实例，最多 512 项，清空时一并释放。
+通用采集器每批最多处理 200 个候选，并在元素之间检查 4ms 软预算；这不是单次 DOM 查询或
+单个元素解析的硬上限。关闭时断开观察器，分离 Shadow Root 后清除对应观察。
+
 ---
 
 # 7. Douyin isolated-world runtime
@@ -284,13 +289,20 @@ scroll、resize、hashchange 和 popstate。切房时先释放瞬时资源和 fe
 
 当前只使用两类 Chrome Storage：
 
-- `chrome.storage.sync`：扩展开关、平台设置、颜色、尺寸和雷达配置
-- `chrome.storage.local`：收藏、雷达首次说明确认标记、抖音表情目录缓存
+- `chrome.storage.sync`：扩展开关、平台设置、颜色、尺寸、雷达配置及设置页语言偏好（默认中文）
+- `chrome.storage.local`：收藏、雷达首次说明确认标记、抖音表情目录缓存、脱敏运行日志及发送失败附件
 
-雷达计数、提示队列、发送关联、观众 frame 缓存和运行时诊断只存在于页面或 Service Worker
+雷达计数、提示队列、发送关联、观众 frame 缓存和实时诊断缓冲只存在于页面或 Service Worker
 短期内存中，不使用 `chrome.storage.session`，也不会跨刷新恢复。
 
 修改 schema 时允许旧字段缺失并补默认值，不得破坏已有收藏和用户设置。
+
+发送协调器在失败时通过现有 runtime logger 保存请求摘要及可选的 `evidence` 附件。
+`core/send-failure-evidence.ts` 负责有界 DOM 结构采集、白名单重校验和导出 HTML；旧日志可缺少附件。
+后台沿用 schema-v1 串行写入、去重、总容量限制和按接收时间过期。相邻、已到达的追加请求可
+合为一次存储操作，逐条应用容量淘汰；导出/清空是顺序屏障，成功响应必须等待实际持久化，
+不使用后台定时器延迟落盘。导出时才将结构转成 HTML，不会在后台解析或执行网页代码。
+详情见 `TROUBLESHOOTING.md`，性能对照见 `PERFORMANCE_RESULTS.md`。
 
 ---
 

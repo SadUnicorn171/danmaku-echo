@@ -1,6 +1,9 @@
 {
+  "settingsPreviewSaved": {"message": "Preview settings updated"},
+  "settingsFeedbackCopied": {"message": "Feedback email copied: $EMAIL$", "placeholders": {"email": {"content": "$1"}}},
+  "settingsFeedbackCopyFailed": {"message": "Copy failed. Please copy manually: $EMAIL$", "placeholders": {"email": {"content": "$1"}}},
   "runtimeLogTitle": { "message": "Runtime logs" },
-  "runtimeLogDescription": { "message": "Warnings, errors and their runtime context are saved locally for up to 7 days, 500 entries and about 1 MB. Nothing is uploaded automatically. Export JSON logs after an issue." },
+  "runtimeLogDescription": { "message": "Warnings and errors are saved locally, with sanitized page structure and request diagnostics on send failures. Kept for up to 7 days, 500 entries and about 1 MB. Export as JSON; no automatic uploads." },
   "runtimeLogExport": { "message": "Export logs" },
   "runtimeLogClear": { "message": "Clear logs" },
   "runtimeLogExported": { "message": "Logs exported" },

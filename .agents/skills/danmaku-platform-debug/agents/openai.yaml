@@ -1,0 +1,3 @@
+interface:
+  display_name: "弹幕回声平台排障"
+  short_description: "结合运行日志、页面证据与平台调用链定位弹幕交互故障并验证修复"

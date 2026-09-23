@@ -16,7 +16,7 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { LOG_MESSAGE } from '../core/runtime-log'
-import { t } from '../core/i18n'
+import { t } from '../composables/settings-language'
 
 const emit = defineEmits<{ status: [message: string, kind: 'error' | 'saved'] }>()
 const busy = ref(false)
@@ -79,6 +79,7 @@ strong {
   font-weight: 500;
 }
 p {
+  color: var(--text-secondary);
   margin: 6px 0 0;
   font-size: 12px;
   line-height: 1.6;
@@ -97,8 +98,11 @@ button {
   cursor: pointer;
   font: inherit;
   font-size: 12px;
+  min-height: 34px;
+  transition: background-color 140ms ease, border-color 140ms ease;
 }
-button:hover {
+button:hover:not(:disabled) {
+  background: var(--surface-muted);
   border-color: #fd8101;
 }
 button:focus-visible {
@@ -108,5 +112,16 @@ button:focus-visible {
 button:disabled {
   opacity: 0.5;
   cursor: wait;
+}
+
+@media (max-width: 900px) {
+  .runtime-log-tools {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .runtime-log-actions button {
+    flex: 1;
+  }
 }
 </style>

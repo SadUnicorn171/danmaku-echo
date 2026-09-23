@@ -1,6 +1,10 @@
 const ZH_CN_FALLBACK: Record<string, string> = {
+  settingsPreviewSaved: "预览设置已更新",
+  settingsFeedbackCopied: "反馈邮箱已复制：$1",
+  settingsFeedbackCopyFailed: "复制失败，请手动复制：$1",
+
   runtimeLogTitle: "运行日志",
-  runtimeLogDescription: "自动在本机保存扩展警告、错误及当时的运行环境。保留最近 7 天，最多 500 条、约 1 MB；不自动上传。遇到问题后可导出 JSON 日志。",
+  runtimeLogDescription: "自动在本机保存扩展警告和错误；发送失败附带脱敏页面结构与请求诊断。保留最近 7 天，最多 500 条、约 1 MB，不自动上传。可导出 JSON 日志。",
   runtimeLogExport: "导出日志",
   runtimeLogClear: "清空日志",
   runtimeLogExported: "日志已导出",

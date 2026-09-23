@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { installRuntimeLogger } from '../../../core/runtime-logger'
+import type { RuntimeLog } from '../../../core/runtime-log'
 
 import { SendCoordinator, type SendNetworkObserver } from '../send-coordinator'
 import {
@@ -22,7 +24,60 @@ function network(value: Awaited<ReturnType<SendNetworkObserver['read']>>): SendN
   }
 }
 
+afterEach(() => {
+  installRuntimeLogger({ source: 'test', write: () => {} }).destroy()
+  document.body.replaceChildren()
+})
+
 describe('SendCoordinator', () => {
+  it('records failed attempts once with DOM and request evidence, and skips successful sends', async () => {
+    const write = vi.fn<(entry: RuntimeLog) => void>()
+    installRuntimeLogger({ source: 'test', write })
+    document.body.innerHTML = '<textarea class="chat-input">private-message</textarea>'
+    const coordinator = new SendCoordinator({
+      platform: 'douyin', protection: createSendProtection({ accidentalIntervalMs: 0 }),
+    })
+    coordinator.begin('private-message')
+    await coordinator.settle({
+      message: 'private-message', method: 'text', success: false, feedbackProbe: probe(null),
+      networkObserver: network({
+        nonce: 'nonce-12345678', platform: 'douyin', source: 'danmaku-echo.live-native-send-observer',
+        type: 'native-send-result', transport: 'fetch', endpoint: 'live.douyin.com/webcast/room/chat/',
+        requestOnly: true, pending: true, requestFields: ['content', 'csrf'],
+      }),
+    })
+    coordinator.finish('private-message', false)
+    expect(write).toHaveBeenCalledTimes(1)
+    expect(write.mock.calls[0]?.[0]).toMatchObject({
+      message: 'send-failure', details: { reason: 'unconfirmed', networkObserved: true },
+      evidence: { schemaVersion: 1, page: { scope: 'current-frame' } },
+    })
+    expect(JSON.stringify(write.mock.calls)).not.toContain('private-message')
+    coordinator.begin('success')
+    coordinator.finish('success', true)
+    expect(write).toHaveBeenCalledTimes(1)
+  })
+
+  it('limits page snapshots while retaining later error summaries and survives snapshot errors', () => {
+    const write = vi.fn<(entry: RuntimeLog) => void>()
+    installRuntimeLogger({ source: 'test', write })
+    const coordinator = new SendCoordinator({
+      platform: 'huya', protection: createSendProtection({ accidentalIntervalMs: 0 }),
+    })
+    for (let index = 0; index < 4; index++) {
+      coordinator.begin(`failed-${index}`)
+      coordinator.finish(`failed-${index}`, false)
+    }
+    expect(write).toHaveBeenCalledTimes(4)
+    expect(write.mock.calls.filter(([row]) => row.evidence)).toHaveLength(3)
+    const brokenDocument = { querySelectorAll() { throw new Error('detached') } } as unknown as Document
+    const other = new SendCoordinator({ platform: 'douyin', document: brokenDocument })
+    other.begin('failure')
+    expect(() => other.finish('failure', false)).not.toThrow()
+    expect(write.mock.calls.at(-1)?.[0]).toMatchObject({ message: 'send-failure' })
+    expect(write.mock.calls.at(-1)?.[0].evidence).toBeUndefined()
+  })
+
   it('reports in-flight and duplicate blocks through one begin boundary', () => {
     let now = 1_000
     const blocks: SendBlock[] = []

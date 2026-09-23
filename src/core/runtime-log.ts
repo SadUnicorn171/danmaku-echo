@@ -1,3 +1,5 @@
+import { normalizeSendFailureEvidence, type SendFailureEvidence } from './send-failure-evidence'
+
 export const LOG_MESSAGE = 'danmaku-echo.runtime-log'
 export const LOG_STORAGE_KEY = 'danmakuEchoRuntimeLogsV1'
 export const LOG_LIMIT = 500
@@ -12,6 +14,7 @@ export interface RuntimeLog {
   message: string
   details: unknown
   context: unknown
+  evidence?: SendFailureEvidence
 }
 const PRIVATE_KEY =
   /cookie|authorization|password|secret|csrf|token|signature|sessdata|w_rid|text|content|message|sender|user|uid|room|url|href|body|headers/i
@@ -109,5 +112,7 @@ export function normalizeRuntimeLog(value: unknown): RuntimeLog | null {
     row.context = '[size-limit]'
     if (JSON.stringify(row).length > 12000) row.details = '[size-limit]'
   }
+  const evidence = normalizeSendFailureEvidence(value.evidence)
+  if (evidence) row.evidence = evidence
   return row
 }

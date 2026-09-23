@@ -264,9 +264,21 @@ async function inspect() {
     await sendBrowser('Runtime.enable', {}, pageSessionId)
     await sendBrowser('Page.enable', {}, pageSessionId)
     await sendBrowser('Page.bringToFront', {}, pageSessionId)
+    if (targetParameters.get('startupperf') === '1') {
+      await sendBrowser('Performance.enable', {}, pageSessionId)
+      await sendBrowser('Page.addScriptToEvaluateOnNewDocument', { source: `(() => {
+        const record = globalThis.__danmakuPerformanceStartup = { firstPortalAtMs: null };
+        const observer = new MutationObserver(() => {
+          if (!document.querySelector('.bcp-one-portal,[data-bcp-repeat-reminder-owned]')) return;
+          record.firstPortalAtMs = performance.now();
+          observer.disconnect();
+        });
+        observer.observe(document, { childList: true, subtree: true });
+      })();` }, pageSessionId)
+    }
     // Douyin's HSTS upgrades HTTP fixtures to HTTPS. Serve only this exact
     // fixture navigation through CDP, with content read from the loopback server.
-    if (normalizedInjectPlatform === 'douyin' && targetParameters.get('autoscale') === '1'
+    if (normalizedInjectPlatform === 'douyin' && (targetParameters.get('autoscale') === '1' || targetParameters.get('startupperf') === '1')
         && hostResolverRules.includes('MAP live.douyin.com 127.0.0.1')) {
       const fixtureUrl = new URL(targetUrl)
       fixtureUrl.hostname = '127.0.0.1'
@@ -398,6 +410,20 @@ async function inspect() {
       throw new Error(evaluationError)
     }
     return result.result.value
+  }
+
+  if (targetParameters.get('favoritesdesign') === '1') {
+    const favoritesDesign = await require('./inspect-favorites-design.cjs')({ send, evaluateValue, artifactDirectory })
+    socket?.close()
+    return { favoritesDesign, assertionFailures: favoritesDesign.assertionFailures, extensionProbe, consoleEvents }
+  }
+
+  if (targetParameters.get('startupperf') === '1') {
+    const recorded = await send('Runtime.evaluate', { expression: 'globalThis.__danmakuPerformanceStartup', returnByValue: true })
+    const startupPerformance = { ...recorded.result.value, metrics: (await send('Performance.getMetrics')).metrics, extensionPath: path.resolve(extensionPath) }
+    const assertionFailures = Number.isFinite(startupPerformance.firstPortalAtMs) && executionContexts.some((context) => context.origin.startsWith('chrome-extension://')) ? [] : ['extension UI did not mount']
+    socket?.close()
+    return { startupPerformance, assertionFailures, extensionProbe, consoleEvents }
   }
 
   if (extensionOnlyPlatform) {
@@ -628,6 +654,33 @@ async function inspect() {
     shouldProbeDouyin || normalizedInjectPlatform === 'douyin'
       ? await evaluateValue('Boolean(window.__douyinDomFixture)')
       : false
+  if (targetParameters.get('runtimeperf') === '1') {
+    const source = readFileSync(path.resolve(__dirname, '../../test-results/performance/browser-benchmark.js'), 'utf8')
+    if (artifactDirectory) writeFileSync(path.join(artifactDirectory, `${scenarioName}-fixture.js`), source)
+    await evaluateValue(`${source}\ntrue`)
+    const soak = targetParameters.get('soakperf') === '1'
+    const heapSamples = []
+    let sampling = false
+    const sampleHeap = async () => {
+      if (sampling) return
+      sampling = true
+      try {
+        await send('HeapProfiler.collectGarbage')
+        heapSamples.push({ at: new Date().toISOString(), ...await send('Runtime.getHeapUsage') })
+        if (artifactDirectory) writeFileSync(path.join(artifactDirectory, `${scenarioName}-heap.json`), JSON.stringify(heapSamples, null, 2))
+      } finally { sampling = false }
+    }
+    if (soak) await sampleHeap()
+    const heapTimer = soak ? setInterval(() => { void sampleHeap().catch((error) => consoleEvents.push({ level: 'heap-sample-error', text: String(error) })) }, 60_000) : null
+    let runtimePerformance
+    try {
+      runtimePerformance = await evaluateValue(`DanmakuPerformanceFixture.run({ logs: ${targetParameters.get('logperf') === '1'}, renderer: ${targetParameters.get('rendererperf') === '1'}, soak: ${soak}, ui: ${targetParameters.get('uiperf') === '1'} })`)
+      if (soak) await sampleHeap()
+    } finally { if (heapTimer) clearInterval(heapTimer) }
+    if (soak) runtimePerformance.heapSamples = heapSamples
+    socket?.close()
+    return { runtimePerformance, assertionFailures: runtimePerformance.assertionFailures, extensionProbe, executionContexts, consoleEvents }
+  }
   let douyinProbe = null
   if (shouldProbeDouyin && !hasDouyinFixture && normalizedInjectPlatform !== 'douyin') {
     const probeResult = await send('Runtime.evaluate', {
@@ -4692,6 +4745,10 @@ inspect()
   .then((result) => {
     const output = compactOutput
       ? {
+          favoritesDesign: result.favoritesDesign,
+          startupPerformance: result.startupPerformance,
+          runtimePerformance: result.runtimePerformance,
+          assertionFailures: result.assertionFailures,
           bilibiliRichRegression: result.bilibiliRichRegression,
           browserStderr: result.browserStderr,
           browserTargets: result.browserTargets,
@@ -4713,6 +4770,7 @@ inspect()
       )
     }
     process.stdout.write(`${JSON.stringify(output, null, 2)}\n`)
+    if (result.assertionFailures?.length) process.exitCode = 1
     if (
       result.douyinDomRegression &&
       result.douyinDomRegression.assertionFailures &&

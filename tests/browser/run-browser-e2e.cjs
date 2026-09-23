@@ -14,8 +14,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..", "..");
-const extensionPath = path.join(root, "build", "extension");
-const artifactRoot = path.join(root, "test-results", "browser-e2e");
+const extensionPath = path.resolve(root, process.argv.find((arg) => arg.startsWith("--extension-path="))?.slice("--extension-path=".length) || "build/extension");
+const artifactRoot = path.resolve(root, process.argv.find((arg) => arg.startsWith("--artifact-root="))?.slice("--artifact-root=".length) || "test-results/browser-e2e");
 const requestedBrowser = String(
   process.argv.find((argument) => argument.startsWith("--browser="))?.slice("--browser=".length)
     || "all",
@@ -26,6 +26,16 @@ const requestedScenario = String(
 );
 
 const scenarios = [
+  { name: "favorites-design", host: "www.huya.com", platform: "huya", query: "platform=huya&favoritesdesign=1&skipSide=1", manualOnly: true },
+  ...[
+    ["bilibili", "live.bilibili.com"], ["douyu", "www.douyu.com"],
+    ["huya", "www.huya.com"], ["douyin", "live.douyin.com"],
+  ].map(([platform, host]) => ({ name: `${platform}-startup`, platform, host, query: `platform=${platform}&startupperf=1&skipSide=1`, manualOnly: true })),
+  { name: "ui-performance", host: "www.huya.com", platform: "huya", query: "platform=huya&runtimeperf=1&uiperf=1&skipSide=1", timeout: 60_000 },
+  { name: "lifecycle-soak", host: "www.huya.com", platform: "huya", query: "platform=huya&runtimeperf=1&soakperf=1&skipSide=1", timeout: 1_920_000, manualOnly: true },
+  { name: "renderer-performance", host: "www.huya.com", platform: "huya", query: "platform=huya&runtimeperf=1&rendererperf=1&skipSide=1", timeout: 150_000 },
+  { name: "log-performance", host: "www.huya.com", platform: "huya", query: "platform=huya&runtimeperf=1&logperf=1&skipSide=1", timeout: 150_000 },
+  { name: "runtime-performance", host: "www.huya.com", platform: "huya", query: "platform=huya&runtimeperf=1&skipSide=1", timeout: 90_000 },
   { name: "bilibili-precise-logs", host: "live.bilibili.com", platform: "bilibili", query: "platform=bilibili&preciselogs=1&skipSide=1" },
   { name: "bilibili-auto-scale", host: "live.bilibili.com", platform: "bilibili", query: "platform=bilibili&autoscale=1&skipSide=1" },
   { name: "douyin-auto-scale", host: "live.douyin.com", platform: "douyin", query: "platform=douyin&autoscale=1&skipSide=1", timeout: 90_000 },
@@ -378,6 +388,10 @@ async function runScenario(browser, fixturePort, scenario, attempt) {
 }
 
 async function main() {
+  if (!requestedScenario || ["runtime-performance", "log-performance", "renderer-performance", "lifecycle-soak", "ui-performance"].includes(requestedScenario)) {
+    const { buildPerformanceFixture } = await import('../../scripts/build-performance-fixture.mjs');
+    await buildPerformanceFixture();
+  }
   if (!existsSync(path.join(extensionPath, "manifest.json"))) {
     throw new Error("Build output is missing. Run npm run build first.");
   }
@@ -394,7 +408,7 @@ async function main() {
   try {
     for (const browser of browsers) {
       for (const scenario of scenarios.filter((entry) =>
-        !requestedScenario || entry.name === requestedScenario
+        requestedScenario ? entry.name === requestedScenario : !entry.manualOnly
       )) {
         let result = await runScenario(browser, fixturePort, scenario, 1);
         const startupFailure = result.timedOut || result.code === 2 || !result.parsed;
@@ -418,6 +432,12 @@ async function main() {
           timedOut: result.timedOut,
           assertionFailures,
         });
+        // Keep completed scenarios reviewable if the host or a later run stops.
+        writeFileSync(
+          path.join(artifactRoot, "summary.json"),
+          `${JSON.stringify(summary, null, 2)}\n`,
+          "utf8",
+        );
         process.stdout.write(`${passed ? "PASS" : "FAIL"} ${browser.name} ${scenario.name}\n`);
       }
     }

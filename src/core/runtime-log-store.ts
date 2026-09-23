@@ -8,6 +8,7 @@ import {
   type RuntimeLog,
 } from './runtime-log'
 import { installRuntimeLogger } from './runtime-logger'
+import { exportSendFailureEvidence } from './send-failure-evidence'
 
 interface StoredLog extends RuntimeLog {
   receivedAt: number
@@ -20,18 +21,29 @@ interface LogBundle {
   entries: StoredLog[]
 }
 type Storage = Pick<chrome.storage.StorageArea, 'get' | 'set' | 'remove'>
+type LogMetadata = { version: string; tabId?: number; frameId?: number }
+interface PendingAppend { entry: RuntimeLog; metadata: LogMetadata }
 
 export function createRuntimeLogStore(storage: Storage, now = Date.now) {
   let tail: Promise<unknown> = Promise.resolve()
   let waiting = 0
-  function serial<T>(operation: () => Promise<T>): Promise<T> {
+  let appendBatch: { items: PendingAppend[]; done: Promise<void> } | undefined
+  function reserve<T>(operation: () => Promise<T>): Promise<T> {
     if (waiting >= 100) return Promise.reject(new Error('log-queue-full'))
     waiting++
-    const task = tail.then(operation).finally(() => {
-      waiting--
-    })
+    return operation().finally(() => { waiting-- })
+  }
+  function enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    const task = tail.then(operation)
     tail = task.catch(() => {})
     return task
+  }
+  function serial<T>(operation: () => Promise<T>): Promise<T> {
+    return reserve(() => {
+      // Export/clear are barriers: later appends cannot join an earlier batch.
+      appendBatch = undefined
+      return enqueue(operation)
+    })
   }
   async function read(): Promise<StoredLog[]> {
     const value = (await storage.get(LOG_STORAGE_KEY))[LOG_STORAGE_KEY] as
@@ -60,22 +72,65 @@ export function createRuntimeLogStore(storage: Storage, now = Date.now) {
     }
     return kept
   }
+  async function appendEntries(items: PendingAppend[]): Promise<void> {
+    const entries = await read()
+    const counts = new Map<string, number>()
+    for (const entry of entries) counts.set(entry.id, (counts.get(entry.id) || 0) + 1)
+    if (items.every(({ entry }) => counts.has(entry.id))) return
+    const encoder = new TextEncoder()
+    const sizeOf = (entry: StoredLog) => encoder.encode(JSON.stringify(entry)).length
+    const sizes = entries.map(sizeOf)
+    let bytes = 2 + Math.max(0, entries.length - 1) + sizes.reduce((sum, size) => sum + size, 0)
+    let head = 0
+    for (const { entry, metadata } of items) {
+      if (counts.has(entry.id)) continue
+      const stored = { ...entry, ...metadata, receivedAt: now() }
+      const size = sizeOf(stored)
+      bytes += size + (entries.length > head ? 1 : 0)
+      entries.push(stored)
+      sizes.push(size)
+      counts.set(entry.id, 1)
+      // Apply the same eviction after each append, including retry IDs evicted
+      // earlier in this batch. Only the final I/O is coalesced.
+      while (entries.length - head > LOG_LIMIT || bytes > LOG_MAX_BYTES) {
+        bytes -= sizes[head]! + (entries.length - head > 1 ? 1 : 0)
+        const removed = entries[head++]!
+        const count = counts.get(removed.id)! - 1
+        if (count) counts.set(removed.id, count)
+        else counts.delete(removed.id)
+      }
+    }
+    await storage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries: entries.slice(head) } })
+  }
   return {
-    append(value: unknown, metadata: { version: string; tabId?: number; frameId?: number }) {
+    append(value: unknown, metadata: LogMetadata) {
       const entry = normalizeRuntimeLog(value)
       if (!entry) return Promise.reject(new Error('invalid-log-entry'))
-      return serial(async () => {
-        const entries = await read()
-        if (entries.some((row) => row.id === entry.id)) return
-        entries.push({ ...entry, ...metadata, receivedAt: now() })
-        await storage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries: bound(entries) } })
+      return reserve(() => {
+        if (!appendBatch) {
+          const items: PendingAppend[] = []
+          const done = enqueue(async () => {
+            if (appendBatch?.items === items) appendBatch = undefined
+            await appendEntries(items)
+          })
+          appendBatch = { items, done }
+        }
+        appendBatch.items.push({ entry, metadata })
+        return appendBatch.done
       })
     },
     export() {
       return serial(async () => {
         const entries = bound(await read())
         await storage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries } })
-        return { schemaVersion: 1, exportedAt: new Date(now()).toISOString(), entries }
+        return {
+          schemaVersion: 1,
+          exportedAt: new Date(now()).toISOString(),
+          entries: entries.map(({ evidence, ...entry }) => ({
+            ...entry,
+            ...(evidence ? { evidence: exportSendFailureEvidence(evidence) } : {}),
+          })),
+        }
       })
     },
     clear() {

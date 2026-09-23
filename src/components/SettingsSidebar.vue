@@ -8,6 +8,13 @@
       </span>
     </div>
 
+    <div class="language-switch" role="group" aria-label="界面语言 / Interface language">
+      <button type="button" lang="zh-CN" :aria-pressed="language === 'zh-CN'"
+        :disabled="languageSaving" @click="emit('language', 'zh-CN')">中文</button>
+      <button type="button" lang="en" :aria-pressed="language === 'en'"
+        :disabled="languageSaving" @click="emit('language', 'en')">English</button>
+    </div>
+
     <nav class="nav-list">
       <a
         :class="['nav-item', { 'is-active': activeSection === 'general-settings' }]"
@@ -82,15 +89,18 @@
 
 <script setup lang="ts">
 import type { SettingsSectionId } from '../core/settings-sections'
-import { t } from '../core/i18n'
+import { t, type SettingsLanguage } from '../composables/settings-language'
 
 defineProps<{
   activeSection: SettingsSectionId
   version: string
+  language: SettingsLanguage
+  languageSaving: boolean
 }>()
 
 const emit = defineEmits<{
   navigate: [section: SettingsSectionId]
+  language: [language: SettingsLanguage]
 }>()
 </script>
 
@@ -111,7 +121,7 @@ const emit = defineEmits<{
   align-items: center;
   display: flex;
   gap: 12px;
-  margin-bottom: 32px;
+  margin-bottom: 16px;
   padding: 0 8px;
 }
 
@@ -139,9 +149,10 @@ const emit = defineEmits<{
 
 .brand__copy small {
   color: var(--text-secondary);
-  font-family: Georgia, serif;
-  font-size: 10px;
-  line-height: 15px;
+  font-family: Bahnschrift, "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  line-height: 16px;
 }
 
 .nav-list {
@@ -149,6 +160,44 @@ const emit = defineEmits<{
   flex: 1;
   flex-direction: column;
   gap: 2px;
+}
+
+.language-switch {
+  display: flex;
+  gap: 2px;
+  align-self: flex-start;
+  margin: 0 8px 20px;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-muted);
+}
+
+.language-switch button {
+  min-height: 28px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 140ms ease, color 140ms ease;
+}
+
+.language-switch button[aria-pressed="true"] {
+  background: var(--surface);
+  color: #9a4d00;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
+}
+
+.language-switch button:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.language-switch button:disabled {
+  cursor: wait;
 }
 
 .nav-item {
@@ -177,7 +226,8 @@ const emit = defineEmits<{
 
 .nav-item.is-active {
   background: rgb(228 226 226 / 50%);
-  color: #646464;
+  color: var(--text);
+  font-weight: 600;
 }
 
 .nav-item__icon {

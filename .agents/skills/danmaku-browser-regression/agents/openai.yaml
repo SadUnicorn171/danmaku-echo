@@ -1,0 +1,3 @@
+interface:
+  display_name: "弹幕回声浏览器回归"
+  short_description: "复用项目浏览器夹具选择回归场景并区分模拟结果与真实直播间验收"

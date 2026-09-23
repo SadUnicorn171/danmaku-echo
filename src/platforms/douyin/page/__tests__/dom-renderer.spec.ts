@@ -165,6 +165,29 @@ beforeEach(() => {
 })
 
 describe('Douyin DOM Renderer', () => {
+  it('avoids DOM mutations for unchanged frames and still updates placement when a track moves', () => {
+    const harness = createHarness()
+    const instance = createInstance()
+    const track = addTrack(instance)
+    const render = () => harness.renderer.commitFrame(harness.renderer.readFrame(instance, rect, { enabled: true, now: 2_000 }))
+    render()
+    const observer = new MutationObserver(() => {})
+    observer.observe(instance.rendererLayer!, { attributes: true, subtree: true })
+    try {
+      for (let frame = 0; frame < 20; frame++) render()
+      expect(observer.takeRecords()).toEqual([])
+      const initialTransform = track.renderer!.node.style.transform
+      track.motion = initialTrackMotion(300)
+      render()
+      expect(track.renderer!.node.style.transform).not.toBe(initialTransform)
+      expect(track.renderer!.node.dataset.bcpOverlaySide).toBe(track.renderer!.actionSide)
+      expect(observer.takeRecords().length).toBeGreaterThan(0)
+    } finally {
+      observer.disconnect()
+      harness.renderer.shutdown(instance, 'test-complete')
+    }
+  })
+
   it('keeps frame reads side-effect free and hides Canvas only after nodes connect', () => {
     const harness = createHarness()
     const instance = createInstance()

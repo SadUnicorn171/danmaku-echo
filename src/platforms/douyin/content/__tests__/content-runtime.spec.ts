@@ -139,6 +139,27 @@ afterEach(() => {
 })
 
 describe('DouyinContentRuntime', () => {
+  it('does not accumulate timers or extension listeners across 20 SPA rooms', async () => {
+    vi.useFakeTimers()
+    const harness = createHarness()
+    await harness.runtime.start()
+    const timerCount = vi.getTimerCount()
+    const counts: number[] = []
+    try {
+      for (let room = 0; room < 20; room++) {
+        harness.setHref(`https://live.douyin.com/${1000 + room}`)
+        await vi.advanceTimersByTimeAsync(1_000)
+        counts.push(vi.getTimerCount())
+      }
+      expect(counts).toEqual(Array.from({ length: 20 }, () => timerCount))
+      expect(harness.calls.filter((call) => call === 'storage-listener.add')).toHaveLength(1)
+      expect(harness.calls.filter((call) => call === 'runtime-listener.add')).toHaveLength(1)
+    } finally { harness.runtime.destroy() }
+    expect(harness.storageListener()).toBeNull()
+    expect(harness.diagnosticsListener()).toBeNull()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('keeps the isolated-world entry strict and limited to runtime startup', () => {
     const entry = readFileSync(
       resolvePath(process.cwd(), 'src/entries/douyin-content.ts'),

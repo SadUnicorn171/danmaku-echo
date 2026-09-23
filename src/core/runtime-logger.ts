@@ -1,7 +1,8 @@
 import { LOG_MESSAGE, type RuntimeLog, redactLogText, sanitizeLogValue } from './runtime-log'
+import { normalizeSendFailureEvidence, type SendFailureEvidence } from './send-failure-evidence'
 
 interface Logger {
-  record(level: RuntimeLog['level'], message: string, details?: unknown): void
+  record(level: RuntimeLog['level'], message: string, details?: unknown, evidence?: () => SendFailureEvidence): void
   destroy(): void
   context?: () => unknown
 }
@@ -27,8 +28,9 @@ export function recordRuntimeLog(
   level: RuntimeLog['level'],
   message: string,
   details?: unknown,
+  evidence?: () => SendFailureEvidence,
 ): void {
-  ;(globalThis as LoggerGlobal)[SLOT]?.record(level, message, details)
+  ;(globalThis as LoggerGlobal)[SLOT]?.record(level, message, details, evidence)
 }
 
 export function setRuntimeLogContext(context: () => unknown): void {
@@ -64,7 +66,7 @@ export function installRuntimeLogger(options: LoggerOptions): Logger {
     }
   }
   const logger: Logger = {
-    record(level, message, details) {
+    record(level, message, details, evidence) {
       if (destroyed || recording) return
       if (Date.now() - windowAt >= 60_000) {
         windowAt = Date.now()
@@ -92,6 +94,12 @@ export function installRuntimeLogger(options: LoggerOptions): Logger {
           snapshot,
           callStack: new Error('log-callsite').stack,
         }
+        let attachment: SendFailureEvidence | undefined
+        try {
+          attachment = normalizeSendFailureEvidence(evidence?.())
+        } catch {
+          // Preserve the error summary even if the page cannot be inspected.
+        }
         deliver({
           id: session + ':' + ++sequence,
           at: Date.now(),
@@ -100,6 +108,7 @@ export function installRuntimeLogger(options: LoggerOptions): Logger {
           message: redactLogText(message),
           details: sanitizeLogValue(details),
           context: sanitizeLogValue(context),
+          ...(attachment ? { evidence: attachment } : {}),
         })
       } catch {
         /* Even hostile objects must not escape a console wrapper. */

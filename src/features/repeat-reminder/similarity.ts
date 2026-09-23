@@ -141,25 +141,51 @@ function tokenSet(value: string): Set<string> {
   return new Set([...latin, ...ngrams(han.join(''), 2)])
 }
 
-export function repeatReminderSimilarity(firstValue: unknown, secondValue: unknown): number {
-  const first = repeatReminderSimilarityProfile(firstValue)
-  const second = repeatReminderSimilarityProfile(secondValue)
+export interface PreparedRepeatReminderText {
+  profile: RepeatReminderSimilarityProfile
+  canonicalLength: number
+  bigrams: Set<string>
+  tokens: Set<string>
+}
+
+/** Cached only by the owning detector; no page-global message cache. */
+export function prepareRepeatReminderText(value: unknown): PreparedRepeatReminderText {
+  const profile = repeatReminderSimilarityProfile(value)
+  return {
+    profile,
+    // Qualification has always used the full text, while scoring is capped at 160.
+    canonicalLength: Array.from(canonicalRepeatReminderText(value)).length,
+    bigrams: ngrams(profile.canonical, 2),
+    tokens: tokenSet(profile.canonical),
+  }
+}
+
+function preparedSimilarity(firstText: PreparedRepeatReminderText, secondText: PreparedRepeatReminderText): number {
+  const first = firstText.profile
+  const second = secondText.profile
   if (!first.canonical || !second.canonical) return 0
   if (!protectedEntitiesMatch(first, second)) return 0
   if (first.canonical === second.canonical) return 1
-  const bigramScore = diceCoefficient(ngrams(first.canonical, 2), ngrams(second.canonical, 2))
-  const tokenScore = diceCoefficient(tokenSet(first.canonical), tokenSet(second.canonical))
+  const bigramScore = diceCoefficient(firstText.bigrams, secondText.bigrams)
+  const tokenScore = diceCoefficient(firstText.tokens, secondText.tokens)
   const editScore = editSimilarity(first.canonical, second.canonical)
   const containmentBonus = first.canonical.includes(second.canonical)
     || second.canonical.includes(first.canonical) ? 0.08 : 0
   return Math.min(1, bigramScore * 0.4 + editScore * 0.35 + tokenScore * 0.25 + containmentBonus)
 }
 
-export function areRepeatReminderTextsSimilar(first: unknown, second: unknown): boolean {
-  const firstLength = Array.from(canonicalRepeatReminderText(first)).length
-  const secondLength = Array.from(canonicalRepeatReminderText(second)).length
-  const threshold = Math.min(firstLength, secondLength) <= SHORT_TEXT_LENGTH
+export function comparePreparedRepeatReminderTexts(first: PreparedRepeatReminderText, second: PreparedRepeatReminderText): { score: number; similar: boolean } {
+  const threshold = Math.min(first.canonicalLength, second.canonicalLength) <= SHORT_TEXT_LENGTH
     ? SHORT_TEXT_THRESHOLD
     : STANDARD_TEXT_THRESHOLD
-  return repeatReminderSimilarity(first, second) >= threshold
+  const score = preparedSimilarity(first, second)
+  return { score, similar: score >= threshold }
+}
+
+export function repeatReminderSimilarity(first: unknown, second: unknown): number {
+  return preparedSimilarity(prepareRepeatReminderText(first), prepareRepeatReminderText(second))
+}
+
+export function areRepeatReminderTextsSimilar(first: unknown, second: unknown): boolean {
+  return comparePreparedRepeatReminderTexts(prepareRepeatReminderText(first), prepareRepeatReminderText(second)).similar
 }

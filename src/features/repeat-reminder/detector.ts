@@ -2,12 +2,14 @@ import {
   DEFAULT_REPEAT_REMINDER_THRESHOLD,
   normalizeRepeatReminderThreshold,
 } from '../../core/repeat-reminder-settings'
+import { ExpirationQueue } from './expiration-queue'
 import type { RepeatReminderObservation, RepeatReminderSuggestion } from './types'
 import {
-  areRepeatReminderTextsSimilar,
+  comparePreparedRepeatReminderTexts,
   canonicalRepeatReminderText,
   normalizeRepeatReminderText,
-  repeatReminderSimilarity,
+  prepareRepeatReminderText,
+  type PreparedRepeatReminderText,
   repeatReminderSimilarityBuckets,
 } from './similarity'
 
@@ -17,13 +19,24 @@ const CROSS_SOURCE_WINDOW = 3_000
 const MESSAGE_ID_TTL = 10 * 60_000
 
 interface FingerprintRecord {
+  key: string
   at: number
   matched: boolean
   sender: string
   source: RepeatReminderObservation['source']
 }
 
+interface WindowEntry {
+  at: number
+  key: string
+  sender: string
+  text: string
+  sequence: number
+}
+
 interface RepeatGroup {
+  entries: Set<WindowEntry>
+  senderCounts: Map<string, number>
   count: number
   latestAt: number
   recognizedSenderCount: number
@@ -65,13 +78,19 @@ function plainTextKey(observation: RepeatReminderObservation): string {
 }
 
 export class RepeatReminderDetector {
-  private entries: Array<{ at: number; key: string; sender: string; text: string }> = []
-  private fingerprints = new Map<string, FingerprintRecord[]>()
+  private groupIndex = new Map<string, RepeatGroup>()
+  private entryExpiry = new ExpirationQueue<WindowEntry>()
+  private fingerprintExpiry = new ExpirationQueue<FingerprintRecord>()
+  private messageIdExpiry = new ExpirationQueue<string>()
+  private clusterExpiry = new ExpirationQueue<string>()
+  private sequence = 0
+  private fingerprints = new Map<string, Set<FingerprintRecord>>()
   private messageIds = new Map<string, number>()
   private clusters = new Map<string, SimilarityCluster>()
   private clusterIndex = new Map<string, Set<string>>()
   private keyClusters = new Map<string, string>()
   private lastSuggestedRepresentative = new Map<string, string>()
+  private profiles = new Map<string, PreparedRepeatReminderText>()
   private threshold: number
 
   constructor(threshold = DEFAULT_REPEAT_REMINDER_THRESHOLD) {
@@ -79,7 +98,13 @@ export class RepeatReminderDetector {
   }
 
   clear(): void {
-    this.entries = []
+    this.profiles.clear()
+    this.groupIndex.clear()
+    this.entryExpiry.clear()
+    this.fingerprintExpiry.clear()
+    this.messageIdExpiry.clear()
+    this.clusterExpiry.clear()
+    this.sequence = 0
     this.fingerprints.clear()
     this.messageIds.clear()
     this.clusters.clear()
@@ -95,7 +120,11 @@ export class RepeatReminderDetector {
   forgetText(value: unknown): string[] {
     const key = normalizeRepeatReminderText(value)
     if (!key) return []
-    this.entries = this.entries.filter((entry) => entry.key !== key)
+    this.profiles.delete(key)
+    const group = this.groupIndex.get(key)
+    group?.entries.forEach((entry) => this.entryExpiry.delete(entry))
+    this.groupIndex.delete(key)
+    this.fingerprints.get(key)?.forEach((record) => this.fingerprintExpiry.delete(record))
     this.fingerprints.delete(key)
     const clusterId = this.keyClusters.get(key)
     if (!clusterId) return []
@@ -111,6 +140,7 @@ export class RepeatReminderDetector {
     }
     if (!cluster.keys.size) {
       this.clusters.delete(clusterId)
+      this.clusterExpiry.delete(clusterId)
       return [clusterId]
     }
     cluster.anchor = cluster.keys.values().next().value || ''
@@ -132,30 +162,45 @@ export class RepeatReminderDetector {
       const previous = this.messageIds.get(messageId)
       if (previous !== undefined && now - previous <= MESSAGE_ID_TTL) return false
       this.messageIds.set(messageId, observation.observedAt)
+      this.messageIdExpiry.set(messageId, observation.observedAt + MESSAGE_ID_TTL)
     }
 
     const sender = senderKey(observation)
-    const records = (this.fingerprints.get(key) || [])
-      .filter((record) => now - record.at <= CROSS_SOURCE_WINDOW)
-    const mirrored = records.find((record) => (
-      !record.matched
-      && record.source !== observation.source
-      && senderCompatible(record.sender, sender)
-    ))
-    if (mirrored) {
-      mirrored.matched = true
-      this.fingerprints.set(key, records)
-      return false
+    const records = this.fingerprints.get(key) || new Set<FingerprintRecord>()
+    for (const record of records) {
+      if (!record.matched && record.source !== observation.source && senderCompatible(record.sender, sender)) {
+        record.matched = true
+        return false
+      }
     }
-    records.push({ at: observation.observedAt, matched: false, sender, source: observation.source })
+    const record = { key, at: observation.observedAt, matched: false, sender, source: observation.source }
+    records.add(record)
     this.fingerprints.set(key, records)
-    this.entries.push({ at: observation.observedAt, key, sender, text: observation.text.trim() })
+    this.fingerprintExpiry.set(record, record.at + CROSS_SOURCE_WINDOW)
+    const entry = { at: observation.observedAt, key, sender, text: observation.text.trim(), sequence: this.sequence++ }
+    this.entryExpiry.set(entry, entry.at + REPEAT_REMINDER_WINDOW)
+    const group = this.groupIndex.get(key) || {
+      count: 0, latestAt: 0, recognizedSenderCount: 0, senders: new Set<string>(),
+      senderCounts: new Map<string, number>(), entries: new Set<WindowEntry>(), text: entry.text,
+    }
+    group.entries.add(entry)
+    group.count++
+    if (entry.at >= group.latestAt) { group.latestAt = entry.at; group.text = entry.text }
+    if (sender) {
+      group.recognizedSenderCount++
+      group.senders.add(sender)
+      group.senderCounts.set(sender, (group.senderCounts.get(sender) || 0) + 1)
+    }
+    this.groupIndex.set(key, group)
     return true
   }
 
   suggestion(now = Date.now()): RepeatReminderSuggestion | null {
     const groups = this.groups(now)
-    for (const key of groups.keys()) this.resolveCluster(key, now)
+    // Rebuilt groups used first surviving arrival order. Preserve it for tied clusters.
+    const ordered = [...groups.entries()].sort(([, first], [, second]) =>
+      first.entries.values().next().value!.sequence - second.entries.values().next().value!.sequence)
+    for (const [key] of ordered) this.resolveCluster(key, now)
     const suggestions = Array.from(this.clusters.values())
       .map((cluster) => this.clusterSuggestion(cluster, groups))
       .filter((suggestion): suggestion is RepeatReminderSuggestion => Boolean(suggestion))
@@ -183,27 +228,16 @@ export class RepeatReminderDetector {
 
   private groups(now: number): Map<string, RepeatGroup> {
     this.prune(now)
-    const groups = new Map<string, RepeatGroup>()
-    this.entries.forEach((entry) => {
-      const group = groups.get(entry.key) || {
-        count: 0,
-        latestAt: 0,
-        recognizedSenderCount: 0,
-        senders: new Set<string>(),
-        text: entry.text,
-      }
-      group.count += 1
-      if (entry.at >= group.latestAt) {
-        group.latestAt = entry.at
-        group.text = entry.text
-      }
-      if (entry.sender) {
-        group.recognizedSenderCount += 1
-        group.senders.add(entry.sender)
-      }
-      groups.set(entry.key, group)
-    })
-    return groups
+    return this.groupIndex
+  }
+
+  private profile(key: string): PreparedRepeatReminderText {
+    const cached = this.profiles.get(key)
+    if (cached) return cached
+    const profile = prepareRepeatReminderText(key)
+    if (this.profiles.size >= 512) this.profiles.delete(this.profiles.keys().next().value!)
+    this.profiles.set(key, profile)
+    return profile
   }
 
   private resolveCluster(key: string, now: number): SimilarityCluster {
@@ -211,6 +245,7 @@ export class RepeatReminderDetector {
     if (existingId) {
       const existing = this.clusters.get(existingId)!
       existing.latestAt = now
+      this.clusterExpiry.set(existing.id, now + MESSAGE_ID_TTL)
       return existing
     }
     let best: { cluster: SimilarityCluster; score: number } | null = null
@@ -219,11 +254,12 @@ export class RepeatReminderDetector {
     for (const bucket of buckets) {
       for (const id of this.clusterIndex.get(bucket) || []) candidateIds.add(id)
     }
+    const profile = candidateIds.size ? this.profile(key) : null
     for (const id of candidateIds) {
       const cluster = this.clusters.get(id)
       if (!cluster) continue
-      if (!areRepeatReminderTextsSimilar(key, cluster.anchor)) continue
-      const score = repeatReminderSimilarity(key, cluster.anchor)
+      const { score, similar } = comparePreparedRepeatReminderTexts(profile!, this.profile(cluster.anchor))
+      if (!similar) continue
       if (!best || score > best.score) best = { cluster, score }
     }
     const cluster = best?.cluster || (() => {
@@ -240,6 +276,7 @@ export class RepeatReminderDetector {
     })()
     cluster.keys.add(key)
     cluster.latestAt = now
+    this.clusterExpiry.set(cluster.id, now + MESSAGE_ID_TTL)
     this.keyClusters.set(key, cluster.id)
     return cluster
   }
@@ -289,17 +326,30 @@ export class RepeatReminderDetector {
   }
 
   private prune(now: number): void {
-    this.entries = this.entries.filter((entry) => entry.at >= now - REPEAT_REMINDER_WINDOW)
-    this.fingerprints.forEach((records, key) => {
-      const recent = records.filter((record) => now - record.at <= CROSS_SOURCE_WINDOW)
-      if (recent.length) this.fingerprints.set(key, recent)
-      else this.fingerprints.delete(key)
-    })
-    this.messageIds.forEach((at, id) => {
-      if (now - at > MESSAGE_ID_TTL) this.messageIds.delete(id)
-    })
-    this.clusters.forEach((cluster, id) => {
-      if (now - cluster.latestAt <= MESSAGE_ID_TTL) return
+    let entry: WindowEntry | undefined
+    while ((entry = this.entryExpiry.popBefore(now)) !== undefined) {
+      const group = this.groupIndex.get(entry.key)!
+      group.entries.delete(entry)
+      group.count--
+      if (!group.count) this.groupIndex.delete(entry.key)
+      else if (entry.sender) {
+        group.recognizedSenderCount--
+        const count = group.senderCounts.get(entry.sender)! - 1
+        if (count) group.senderCounts.set(entry.sender, count)
+        else { group.senderCounts.delete(entry.sender); group.senders.delete(entry.sender) }
+      }
+    }
+    let fingerprint: FingerprintRecord | undefined
+    while ((fingerprint = this.fingerprintExpiry.popBefore(now)) !== undefined) {
+      const records = this.fingerprints.get(fingerprint.key)!
+      records.delete(fingerprint)
+      if (!records.size) this.fingerprints.delete(fingerprint.key)
+    }
+    let id: string | undefined
+    while ((id = this.messageIdExpiry.popBefore(now)) !== undefined) this.messageIds.delete(id)
+    while ((id = this.clusterExpiry.popBefore(now)) !== undefined) {
+      const cluster = this.clusters.get(id)!
+      this.profiles.delete(cluster.anchor)
       this.clusters.delete(id)
       this.lastSuggestedRepresentative.delete(id)
       for (const key of cluster.keys) this.keyClusters.delete(key)
@@ -308,6 +358,6 @@ export class RepeatReminderDetector {
         ids?.delete(id)
         if (!ids?.size) this.clusterIndex.delete(bucket)
       }
-    })
+    }
   }
 }

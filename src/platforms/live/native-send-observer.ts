@@ -20,6 +20,16 @@ export interface NativeSendObservation {
   nonce: string
   platform: PlatformId
   requestOnly?: boolean
+  pending?: boolean
+  startedAt?: number
+  elapsedMs?: number
+  requestFormat?: string
+  requestFields?: string[]
+  queryFields?: string[]
+  requestMediaType?: string
+  responseMediaType?: string
+  responseFields?: string[]
+  responseState?: string
   source: typeof NATIVE_SEND_RESULT_SOURCE
   transport: 'fetch' | 'websocket' | 'xhr'
   type: 'native-send-result'
@@ -54,8 +64,8 @@ export function isNativeSendObservation(
 
 /**
  * Runs for one send attempt in the page's MAIN world. It publishes only a
- * bounded transport summary; query strings, headers, cookies and bodies never
- * cross into the extension context.
+ * bounded transport summary and parameter names. Raw headers, query values,
+ * cookies and bodies never cross into the extension context.
  */
 export function installNativeSendObserverInPage(options: {
   nonce: string
@@ -85,6 +95,8 @@ export function installNativeSendObserverInPage(options: {
   const originalWebSocketSend = WebSocket.prototype.send
   let settled = false
   let timeout = 0
+  let current: Record<string, unknown> | null = null
+  const xhrCleanup = new Set<() => void>()
 
   const parsedUrl = (value: unknown) => {
     try {
@@ -158,8 +170,47 @@ export function installNativeSendObserverInPage(options: {
       ).replace(/\s+/g, ' ').trim().slice(0, 180),
     }
   }
+  const fields = (names: Iterable<string>) => {
+    const result: string[] = []
+    for (const name of names) {
+      if (result.length >= 24) break
+      if (/^[a-z_][a-z0-9_.-]{0,39}$/i.test(name)) result.push(name)
+    }
+    return result
+  }
+  const mediaType = (value: string | null | undefined) =>
+    String(value || '').split(';', 1)[0]!.replace(/[^a-z0-9/+.-]/gi, '').slice(0, 80)
+  const requestShape = (body: unknown) => {
+    try {
+      if (body instanceof FormData) return { requestFormat: 'form-data', requestFields: fields(body.keys()) }
+      if (body instanceof URLSearchParams) return { requestFormat: 'urlencoded', requestFields: fields(body.keys()) }
+      if (typeof body === 'string') {
+        if (body.length > 16_384) return { requestFormat: 'oversize-omitted' }
+        if (/^\s*\{/.test(body)) return { requestFormat: 'json', requestFields: fields(Object.keys(JSON.parse(body))) }
+        if (body.includes('=')) return { requestFormat: 'urlencoded', requestFields: fields(new URLSearchParams(body).keys()) }
+        return { requestFormat: 'text-omitted' }
+      }
+    } catch { /* Parsing diagnostics must not affect the actual send. */ }
+    return { requestFormat: body == null ? 'none-or-request-stream' : 'binary-or-stream-omitted' }
+  }
+  const start = (url: unknown, transport: string, method: string, body: unknown, contentType = '') => {
+    if (settled || current) return false
+    current = {
+      endpoint: endpointOf(url), transport, method, startedAt: Date.now(),
+      ...requestShape(body),
+      queryFields: fields(parsedUrl(url)?.searchParams.keys() || []),
+      requestMediaType: mediaType(contentType),
+      pending: true, requestOnly: true, responseState: 'pending',
+    }
+    window.postMessage({ ...current, nonce, platform, source: PAGE_SOURCE, type: 'native-send-result' }, '*')
+    return true
+  }
   const restore = () => {
+    settled = true
     if (timeout) clearTimeout(timeout)
+    xhrCleanup.forEach((cleanup) => cleanup())
+    xhrCleanup.clear()
+    window.removeEventListener('pagehide', restore)
     if (globalThis.fetch === observedFetch) globalThis.fetch = originalFetch
     if (XMLHttpRequest.prototype.open === observedOpen) XMLHttpRequest.prototype.open = originalOpen
     if (XMLHttpRequest.prototype.send === observedXhrSend) {
@@ -176,7 +227,10 @@ export function installNativeSendObserverInPage(options: {
     if (settled) return
     settled = true
     window.postMessage({
+      ...current,
       ...value,
+      pending: false,
+      elapsedMs: current ? Math.max(0, Date.now() - Number(current.startedAt)) : 0,
       nonce,
       platform,
       source: PAGE_SOURCE,
@@ -184,12 +238,33 @@ export function installNativeSendObserverInPage(options: {
     }, '*')
     restore()
   }
-  const publishFetchResponse = async (response: Response, body: unknown, url: unknown) => {
+  const publishFetchResponse = async (response: Response, url: unknown) => {
     let envelope: unknown = null
+    let responseState = 'response'
     try {
-      envelope = await response.clone().json()
+      const reader = response.clone().body?.getReader()
+      if (reader) {
+        const cancelRead = () => { void reader.cancel().catch(() => {}) }
+        xhrCleanup.add(cancelRead)
+        let text = ''
+        let bytes = 0
+        const decoder = new TextDecoder()
+        try {
+          while (!settled) {
+            const chunk = await reader.read()
+            if (chunk.done) break
+            bytes += chunk.value.byteLength
+            if (bytes > 65_536) { responseState = 'body-omitted-size'; break }
+            text += decoder.decode(chunk.value, { stream: true })
+          }
+          if (responseState === 'response' && !settled) envelope = JSON.parse(text + decoder.decode())
+        } finally {
+          xhrCleanup.delete(cancelRead)
+          cancelRead()
+        }
+      }
     } catch {
-      // HTTP metadata still makes this request useful for diagnostics.
+      responseState = 'parse-error'
     }
     publish({
       ...envelopeSummary(envelope),
@@ -197,27 +272,35 @@ export function installNativeSendObserverInPage(options: {
       httpStatus: response.status,
       method: 'POST',
       requestOnly: false,
+      responseState,
+      responseMediaType: mediaType(response.headers.get('content-type')),
+      responseFields: envelope && typeof envelope === 'object' ? fields(Object.keys(envelope)) : [],
       transport: 'fetch',
     })
-    void body
   }
   function observedFetch(input: RequestInfo | URL, init?: RequestInit) {
     const request = input instanceof Request ? input : null
     const url = request?.url || String(input || '')
     const method = init?.method || request?.method || 'GET'
     const response = Reflect.apply(originalFetch, globalThis, [input, init])
-    if (matchesHttpSend(url, method)) {
+    let observed = false
+    try {
+      observed = matchesHttpSend(url, method) && start(url, 'fetch', String(method).toUpperCase(), init?.body,
+        new Headers(init?.headers || request?.headers).get('content-type') || '')
+    } catch { /* Always return the original fetch promise, including rejected requests. */ }
+    if (observed) {
       response.then(
-        (result) => void publishFetchResponse(result, init?.body, url),
+        (result) => publishFetchResponse(result, url),
         (error) => publish({
           endpoint: endpointOf(url),
           httpStatus: 0,
           message: String(error instanceof Error ? error.message : error).slice(0, 180),
           method: 'POST',
           requestOnly: false,
+          responseState: 'transport-error',
           transport: 'fetch',
         }),
-      )
+      ).catch(() => {})
     }
     return response
   }
@@ -227,12 +310,15 @@ export function installNativeSendObserverInPage(options: {
     return Reflect.apply(originalOpen, this, [method, url, ...rest] as Parameters<XMLHttpRequest['open']>)
   }
   function observedXhrSend(this: ObservedXhr, body?: Document | XMLHttpRequestBodyInit | null) {
-    if (matchesHttpSend(this.__danmakuEchoSendUrl, this.__danmakuEchoSendMethod)) {
+    if (matchesHttpSend(this.__danmakuEchoSendUrl, this.__danmakuEchoSendMethod)
+      && start(this.__danmakuEchoSendUrl, 'xhr', 'POST', body)) {
       const url = this.__danmakuEchoSendUrl
-      this.addEventListener('loadend', () => {
+      const onLoadEnd = () => {
+        cleanup()
         let envelope: unknown = null
         try {
-          envelope = JSON.parse(this.responseText)
+          if (this.responseType === 'json') envelope = this.response
+          else if (this.responseText.length <= 65_536) envelope = JSON.parse(this.responseText)
         } catch {
           // HTTP metadata still makes this request useful for diagnostics.
         }
@@ -242,29 +328,42 @@ export function installNativeSendObserverInPage(options: {
           httpStatus: this.status,
           method: 'POST',
           requestOnly: false,
+          responseState: this.status === 0 ? 'transport-error' : envelope ? 'response' : 'body-unavailable',
+          responseMediaType: mediaType(this.getResponseHeader('content-type')),
+          responseFields: envelope && typeof envelope === 'object' ? fields(Object.keys(envelope)) : [],
           transport: 'xhr',
         })
-      }, { once: true })
+      }
+      const cleanup = () => { this.removeEventListener('loadend', onLoadEnd); xhrCleanup.delete(cleanup) }
+      xhrCleanup.add(cleanup)
+      this.addEventListener('loadend', onLoadEnd, { once: true })
     }
     return Reflect.apply(originalXhrSend, this, [body])
   }
   function observedWebSocketSend(this: WebSocket, data: string | ArrayBufferLike | Blob | ArrayBufferView) {
-    if (matchesWebSocketSend(data)) {
+    const result = Reflect.apply(originalWebSocketSend, this, [data])
+    if (matchesWebSocketSend(data) && start(this.url, 'websocket', 'SEND', null)) {
       publish({
         endpoint: endpointOf(this.url),
         method: 'SEND',
         requestOnly: true,
+        requestFormat: 'websocket-frame-omitted',
+        responseState: 'request-only',
         transport: 'websocket',
       })
     }
-    return Reflect.apply(originalWebSocketSend, this, [data])
+    return result
   }
 
   if (typeof originalFetch === 'function') globalThis.fetch = observedFetch
   XMLHttpRequest.prototype.open = observedOpen as typeof XMLHttpRequest.prototype.open
   XMLHttpRequest.prototype.send = observedXhrSend
   WebSocket.prototype.send = observedWebSocketSend
-  timeout = window.setTimeout(restore, 8_000)
+  timeout = window.setTimeout(() => {
+    if (current) publish({ requestOnly: true, responseState: 'timeout' })
+    else restore()
+  }, 8_000)
+  window.addEventListener('pagehide', restore, { once: true })
   runtime.__danmakuEchoNativeSendObserver = { restore }
   return { ok: true }
 }

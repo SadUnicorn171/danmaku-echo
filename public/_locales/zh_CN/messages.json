@@ -1,6 +1,9 @@
 {
+  "settingsPreviewSaved": {"message": "预览设置已更新"},
+  "settingsFeedbackCopied": {"message": "反馈邮箱已复制：$EMAIL$", "placeholders": {"email": {"content": "$1"}}},
+  "settingsFeedbackCopyFailed": {"message": "复制失败，请手动复制：$EMAIL$", "placeholders": {"email": {"content": "$1"}}},
   "runtimeLogTitle": { "message": "运行日志" },
-  "runtimeLogDescription": { "message": "自动在本机保存扩展警告、错误及当时的运行环境。保留最近 7 天，最多 500 条、约 1 MB；不自动上传。遇到问题后可导出 JSON 日志。" },
+  "runtimeLogDescription": { "message": "自动在本机保存扩展警告和错误；发送失败附带脱敏页面结构与请求诊断。保留最近 7 天，最多 500 条、约 1 MB，不自动上传。可导出 JSON 日志。" },
   "runtimeLogExport": { "message": "导出日志" },
   "runtimeLogClear": { "message": "清空日志" },
   "runtimeLogExported": { "message": "日志已导出" },

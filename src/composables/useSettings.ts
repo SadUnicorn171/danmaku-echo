@@ -1,7 +1,7 @@
-import { onMounted, onUnmounted, reactive, ref, toRaw } from "vue";
+import { onMounted, onUnmounted, reactive, ref, toRaw, watchEffect } from "vue";
 import { mergeSettings } from "../core/shared";
 import type { ExtensionSettings } from "../core/types";
-import { t } from "../core/i18n";
+import { normalizeSettingsLanguage, settingsLanguage, t, type SettingsLanguage } from "./settings-language";
 
 type StatusKind = "error" | "saved" | "";
 
@@ -12,9 +12,18 @@ export function useSettings() {
   const statusVisible = ref(false);
   const version = ref("1.1.4");
   const storage = globalThis.chrome?.storage?.sync ?? null;
+  const languageSaving = ref(false);
   let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
+  watchEffect(() => {
+    document.documentElement.lang = settingsLanguage.value;
+    document.title = t("extensionActionTitle");
+  });
+
   function replaceSettings(value: unknown): void {
+    const preference = value && typeof value === "object" && "settingsLanguage" in value
+      ? value.settingsLanguage : undefined;
+    settingsLanguage.value = normalizeSettingsLanguage(preference);
     const next = mergeSettings(value);
     settings.enabled = next.enabled;
     settings.interfaceScale = next.interfaceScale;
@@ -46,7 +55,7 @@ export function useSettings() {
   function save(): void {
     const payload = plainSettings();
     if (!storage) {
-      setStatus("预览设置已更新", "saved");
+      setStatus(t("settingsPreviewSaved"), "saved");
       return;
     }
     storage.set(payload, () => {
@@ -54,6 +63,22 @@ export function useSettings() {
         setStatus(t("settingsSaveFailed"), "error");
       } else {
         setStatus(t("settingsSaved"), "saved");
+      }
+    });
+  }
+
+  function changeLanguage(language: SettingsLanguage): void {
+    if (languageSaving.value || language === settingsLanguage.value) return;
+    const previous = settingsLanguage.value;
+    settingsLanguage.value = language;
+    statusVisible.value = false;
+    if (!storage) return;
+    languageSaving.value = true;
+    storage.set({ settingsLanguage: language }, () => {
+      languageSaving.value = false;
+      if (chrome.runtime.lastError) {
+        settingsLanguage.value = previous;
+        setStatus(t("settingsSaveFailed"), "error");
       }
     });
   }
@@ -86,9 +111,9 @@ export function useSettings() {
       if (!copied) {
         throw new Error("copy command rejected");
       }
-      setStatus(`反馈邮箱已复制：${email}`, "saved");
+      setStatus(t("settingsFeedbackCopied", email), "saved");
     } catch {
-      setStatus(`复制失败，请手动复制：${email}`, "error");
+      setStatus(t("settingsFeedbackCopyFailed", email), "error");
     }
   }
 
@@ -117,6 +142,9 @@ export function useSettings() {
   });
 
   return {
+    changeLanguage,
+    language: settingsLanguage,
+    languageSaving,
     copyFeedbackEmail,
     save,
     settings,

@@ -222,6 +222,27 @@ afterEach(() => {
 })
 
 describe('Douyin MAIN world page runtime', () => {
+  it('keeps one maintenance timer across 20 BFCache restorations and five hidden minutes', () => {
+    const harness = createHarness()
+    harness.runtime.start()
+    const timers: number[] = []
+    for (let cycle = 0; cycle < 20; cycle++) {
+      window.dispatchEvent(pageTransition('pagehide', true))
+      timers.push(vi.getTimerCount())
+      window.dispatchEvent(pageTransition('pageshow', true))
+      timers.push(vi.getTimerCount())
+    }
+    expect(timers).toEqual(Array.from({ length: 20 }, () => [0, 1]).flat())
+    setDocumentHidden(true)
+    document.dispatchEvent(new Event('visibilitychange'))
+    vi.advanceTimersByTime(300_000)
+    expect(vi.getTimerCount()).toBe(1)
+    setDocumentHidden(false)
+    document.dispatchEvent(new Event('visibilitychange'))
+    harness.runtime.destroy()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('starts and destroys every owned resource idempotently', () => {
     const harness = createHarness()
 

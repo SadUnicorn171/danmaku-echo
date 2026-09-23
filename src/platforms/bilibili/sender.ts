@@ -41,6 +41,8 @@ interface DirectSendResponse {
   diagnostics?: BilibiliSendDiagnostics
   code?: number | string
   error?: string
+  endpoint?: string
+  stage?: string
   httpStatus?: number
   identity?: string
   message?: string
@@ -571,6 +573,18 @@ export class BilibiliSender implements LivePlatformSender {
           ok: false,
         }
       }
+      runtime.coordinator.setFailureContext({
+        method: 'direct-emoji',
+        reason: result?.ok ? 'unconfirmed' : result?.stage || 'direct-send-failed',
+        network: {
+          attemptId: debug.attemptId,
+          endpoint: result?.endpoint,
+          httpStatus: result?.httpStatus,
+          code: result?.code,
+          apiMessage: result?.message,
+          diagnostics: result?.diagnostics,
+        },
+      })
       if (result?.ok) {
         if (result.identity && !identity) {
           asset.keys = Array.from(
@@ -694,6 +708,20 @@ export class BilibiliSender implements LivePlatformSender {
       result = submission.sent ? 'sent' : 'none'
     }
     const nativeResult = nativeSendObserver ? await nativeSendObserver.read() : null
+    runtime.coordinator.setFailureContext({
+      method: 'panel-emoji',
+      network: nativeResult ? {
+        endpoint: nativeResult.endpoint,
+        method: nativeResult.method,
+        transport: nativeResult.transport,
+        httpStatus: nativeResult.httpStatus,
+        code: nativeResult.code,
+        apiMessage: nativeResult.message,
+        dmType: nativeResult.dmType,
+        hasEmoticonOptions: nativeResult.hasEmoticonOptions,
+        requestFields: nativeResult.requestFields,
+      } : null,
+    })
     if (nativeResult?.identity && !bilibiliRoomEmoticonIdentity(asset)) {
       asset.keys = Array.from(
         new Set([`${NATIVE_PANEL_ASSET_KEY_PREFIX}${nativeResult.identity}`, ...asset.keys]),

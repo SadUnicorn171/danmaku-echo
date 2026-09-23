@@ -53,7 +53,7 @@
 </template>
 
 <script setup lang="ts">
-import { t } from '../core/i18n'
+import { t } from '../composables/settings-language'
 
 defineProps<{
   activeSectionTitle: string

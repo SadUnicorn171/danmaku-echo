@@ -10,6 +10,8 @@ import {
 } from '../runtime-log'
 import { createRuntimeLogStore, startRuntimeLogService } from '../runtime-log-store'
 import { installRuntimeLogger, setRuntimeLogContext } from '../runtime-logger'
+import { captureSendFailureEvidence } from '../send-failure-evidence'
+import { createRuntimeLogStore as createReferenceLogStore } from '../../../tests/fixtures/performance/runtime-log-store'
 
 function entry(id = 'test:1'): RuntimeLog {
   return {
@@ -43,6 +45,87 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('persistent runtime logs', () => {
+  it.each(['count', 'bytes'])('preserves sequential eviction and retry semantics across a %s-bounded batch', async (limit) => {
+    const now = Date.now()
+    const seed = Array.from({ length: limit === 'count' ? 500 : 280 }, (_, index) => ({
+      ...entry(`seed-${index}`), at: now, details: limit === 'bytes' ? '界'.repeat(1200) : {}, receivedAt: now, version: 'test',
+    }))
+    const additions = ['new', 'seed-0', 'seed-1', 'new', 'seed-2'].map((id) => ({ ...entry(id), at: now }))
+    const baselineStorage = storageFixture()
+    const currentStorage = storageFixture()
+    await baselineStorage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries: seed } })
+    await currentStorage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries: seed } })
+    const baseline = createReferenceLogStore(baselineStorage, () => now)
+    const current = createRuntimeLogStore(currentStorage, () => now)
+    await Promise.all(additions.map((row) => baseline.append(row, { version: 'test' })))
+    await Promise.all(additions.map((row) => current.append(row, { version: 'test' })))
+    expect(await current.export()).toEqual(await baseline.export())
+  })
+
+  it('coalesces queued appends, acknowledges only after persistence, and respects export/clear barriers', async () => {
+    const storage = storageFixture()
+    const originalSet = storage.set.getMockImplementation()!
+    let release!: () => void
+    storage.set.mockImplementationOnce(async (patch) => {
+      await new Promise<void>((resolve) => { release = resolve })
+      await originalSet(patch)
+    })
+    const store = createRuntimeLogStore(storage)
+    const acknowledged: string[] = []
+    const first = store.append(entry('first'), { version: 'test' }).then(() => acknowledged.push('first'))
+    const second = store.append(entry('second'), { version: 'test' }).then(() => acknowledged.push('second'))
+    await vi.waitFor(() => expect(storage.set).toHaveBeenCalledTimes(1))
+    expect(acknowledged).toEqual([])
+    const exported = store.export()
+    const cleared = store.clear()
+    const third = store.append(entry('third'), { version: 'test' })
+    release()
+    await Promise.all([first, second, cleared, third])
+    expect((await exported).entries.map((row) => row.id)).toEqual(['first', 'second'])
+    expect((await store.export()).entries.map((row) => row.id)).toEqual(['third'])
+    expect(acknowledged).toEqual(['first', 'second'])
+  })
+
+  it('rejects every unpersisted batch member on storage failure and allows later retries', async () => {
+    const storage = storageFixture()
+    storage.set.mockRejectedValueOnce(new Error('offline'))
+    const store = createRuntimeLogStore(storage)
+    const failed = await Promise.allSettled([
+      store.append(entry('a'), { version: 'test' }),
+      store.append(entry('b'), { version: 'test' }),
+    ])
+    expect(failed.map((result) => result.status)).toEqual(['rejected', 'rejected'])
+    await Promise.all([store.append(entry('a'), { version: 'test' }), store.append(entry('b'), { version: 'test' })])
+    expect((await createRuntimeLogStore(storage).export()).entries.map((row) => row.id)).toEqual(['a', 'b'])
+  })
+
+  it('bounds pending requests even when they share one write', async () => {
+    const store = createRuntimeLogStore(storageFixture())
+    const pending = Array.from({ length: 100 }, (_, index) => store.append(entry(`pending-${index}`), { version: 'test' }))
+    await expect(store.append(entry('overflow'), { version: 'test' })).rejects.toThrow('log-queue-full')
+    await Promise.all(pending)
+    expect((await store.export()).entries).toHaveLength(100)
+  })
+
+  it('retains bounded page evidence across restarts and exports readable HTML beside old logs', async () => {
+    document.body.innerHTML = '<form class="send-form"><textarea>private-draft</textarea><button>发送</button></form>'
+    const storage = storageFixture()
+    const store = createRuntimeLogStore(storage)
+    await store.append(entry('old'), { version: 'test' })
+    await store.append({
+      ...entry('failure'),
+      evidence: captureSendFailureEvidence('attempt-12345678', Date.now(), document),
+    }, { version: 'test' })
+    const exported = await createRuntimeLogStore(storage).export()
+    expect(exported.entries).toHaveLength(2)
+    expect(exported.entries[0]?.evidence).toBeUndefined()
+    expect(JSON.stringify(exported.entries[1]?.evidence)).toContain('send-form')
+    expect(JSON.stringify(exported)).not.toContain('private-draft')
+    await store.clear()
+    expect((await store.export()).entries).toEqual([])
+    document.body.replaceChildren()
+  })
+
   it('redacts credentials, page identifiers and hostile objects while retaining error stacks', () => {
     const object = {
       cookie: 'hidden',
@@ -82,6 +165,7 @@ describe('persistent runtime logs', () => {
         store.append(entry('test:' + index), { version: '2.3.2', tabId: index, frameId: 0 }),
       ),
     )
+    expect(storage.set).toHaveBeenCalledTimes(1)
     await store.append(entry('test:1'), { version: '2.3.2' })
     const restarted = createRuntimeLogStore(storage)
     const bundle = await restarted.export()

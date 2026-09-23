@@ -45,6 +45,7 @@ function onChange(event: Event): void {
   justify-content: space-between;
   min-height: 72px;
   padding: 15px 16px;
+  transition: background-color 140ms ease;
 }
 
 .setting-row + .setting-row {
@@ -82,10 +83,12 @@ input[role="switch"] {
   background: #e8e8e8;
   border: 1px solid var(--border);
   border-radius: 12px;
+  box-sizing: border-box;
   cursor: pointer;
   flex: 0 0 36px;
   height: 20px;
   margin: 0;
+  padding: 0;
   position: relative;
   transition: background-color 140ms ease, border-color 140ms ease;
   width: 36px;
@@ -95,6 +98,7 @@ input[role="switch"]::after {
   background: #fff;
   border: 1px solid #d4d5d5;
   border-radius: 50%;
+  box-sizing: border-box;
   box-shadow: 0 1px 2px rgb(0 0 0 / 14%);
   content: "";
   height: 16px;
@@ -123,5 +127,13 @@ input[role="switch"]:focus-visible {
 input[role="switch"]:disabled {
   cursor: not-allowed;
   opacity: .58;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .setting-row,
+  input[role="switch"],
+  input[role="switch"]::after {
+    transition: none;
+  }
 }
 </style>

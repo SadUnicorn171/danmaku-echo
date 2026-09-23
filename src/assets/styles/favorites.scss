@@ -175,12 +175,16 @@
   border-radius: 50%;
   background: transparent;
   color: var(--bcp-favorite-muted);
-  transition: background-color 140ms ease, color 140ms ease;
+  transition: background-color 140ms ease, color 140ms ease, transform 140ms ease;
 }
 
 .bcp-favorites-icon-button:hover {
   background: rgb(253 129 1 / 9%);
   color: var(--bcp-favorite-accent);
+}
+
+.bcp-favorites-icon-button:active:not(:disabled) {
+  transform: scale(.94);
 }
 
 .bcp-favorites-icon-button svg {
@@ -1420,6 +1424,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .bcp-favorites-icon-button,
+  .bcp-favorites-item-actions button,
   .bcp-favorites-layer,
   .bcp-favorites-panel,
   .bcp-favorites-radial,

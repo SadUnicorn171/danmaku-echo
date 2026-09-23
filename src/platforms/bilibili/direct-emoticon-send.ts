@@ -23,6 +23,8 @@ export interface BilibiliSendRequestTrace {
   contentType?: string
   apiCode?: number
   apiMessage?: string
+  queryFields?: string[]
+  requestFields?: string[]
 }
 export interface BilibiliSendDiagnostics {
   attemptId?: string
@@ -166,6 +168,9 @@ export async function sendBilibiliRoomEmoticonInPage(options: {
       startedAt: Date.now(),
       durationMs: 0,
       state: 'pending',
+      queryFields: Array.from(target.searchParams.keys()).slice(0, 24),
+      requestFields: init.body instanceof FormData
+        ? Array.from(init.body.keys()).slice(0, 24) : [],
     }
     requests.push(activeRequest)
     try {

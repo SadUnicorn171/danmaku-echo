@@ -129,11 +129,12 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   style.textContent = `
     :host { all: initial; font-family: "Noto Sans SC", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif; }
     *, *::before, *::after { box-sizing: border-box; }
-    button { font-family: inherit; }
-    .launcher { align-items: center; background: rgb(255 255 255 / 96%); border: 1px solid rgb(23 24 29 / 12%); border-radius: 14px; box-shadow: 0 10px 28px rgb(23 24 29 / 20%); color: #ff7a00; cursor: grab; display: none; height: 46px; justify-content: center; padding: 0; pointer-events: auto; position: fixed; touch-action: none; transition: border-color 140ms ease, box-shadow 140ms ease; user-select: none; width: 46px; }
+    button { box-shadow: none; font-family: inherit; }
+    button:focus:not(:focus-visible) { outline: none; }
+    .launcher { align-items: center; background: rgb(255 255 255 / 96%); border: 1px solid rgb(23 24 29 / 12%); border-radius: 14px; color: #ff7a00; cursor: grab; display: none; height: 46px; justify-content: center; padding: 0; pointer-events: auto; position: fixed; touch-action: none; transition: border-color 140ms ease; user-select: none; width: 46px; }
     .launcher.is-visible { display: flex; }
-    .launcher:hover, .launcher[aria-expanded="true"] { border-color: rgb(255 122 0 / 42%); box-shadow: 0 12px 32px rgb(23 24 29 / 25%); }
-    .launcher.is-onboarding, .launcher.is-onboarding:hover { border-color: #ff7a00; box-shadow: 0 0 0 5px rgb(255 255 255 / 94%), 0 0 0 9px rgb(255 122 0 / 72%), 0 14px 34px rgb(17 18 22 / 28%); cursor: default; z-index: 12; }
+    .launcher:hover, .launcher[aria-expanded="true"] { border-color: rgb(255 122 0 / 42%); }
+    .launcher.is-onboarding, .launcher.is-onboarding:hover { border-color: #ff7a00; cursor: default; z-index: 12; }
     .launcher.is-dragging { cursor: grabbing; transition: none; }
     .launcher svg { fill: none; height: 23px; pointer-events: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.65; width: 23px; }
     .launcher svg .is-filled { fill: currentColor; stroke: none; }
@@ -157,58 +158,60 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     .setting-value.is-audience strong { color: #12a96b; font-size: 13px; text-align: right; }
     .open-settings { background: transparent; border: 0; border-top: 1px solid rgb(23 24 29 / 9%); color: #565a66; cursor: pointer; font-size: 11px; margin-top: 12px; padding: 10px 2px 0; text-align: left; width: 100%; }
     .open-settings:hover { color: #ff7a00; }
-    .onboarding { background: rgb(17 18 22 / 28%); backdrop-filter: blur(3px); display: none; inset: 0; pointer-events: auto; position: fixed; z-index: 10; }
+    .onboarding { --onboarding-theme: var(--bcp-selection, var(--bcp-action-start, #fd8101)); --onboarding-tint: color-mix(in srgb, var(--onboarding-theme) 7%, white); --onboarding-line: color-mix(in srgb, var(--onboarding-theme) 20%, white); background: rgb(36 26 20 / 24%); display: none; inset: 0; pointer-events: auto; position: fixed; z-index: 10; }
     .onboarding.is-visible { display: block; }
-    .onboarding-card { animation: onboarding-enter 220ms cubic-bezier(0.22, 1, 0.36, 1); color: #1f2937; pointer-events: auto; position: fixed; width: min(460px, calc(100vw - 32px)); z-index: 1; }
-    .onboarding-body { background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; box-shadow: 0 12px 32px rgb(31 41 55 / 12%); display: flex; flex-direction: column; max-height: calc(100vh - 32px); overflow: auto; position: relative; z-index: 1; }
-    .onboarding-accent { background: var(--bcp-selection, #f97316); border-radius: 999px; height: 4px; left: 50%; position: absolute; top: 8px; transform: translateX(-50%); width: 40px; }
-    .onboarding-arrow { background: #fff; display: block; filter: drop-shadow(1px 1px 1px rgb(31 41 55 / 12%)); height: 16px; pointer-events: none; position: absolute; width: 16px; z-index: 2; }
+    .onboarding-card { animation: onboarding-enter 200ms cubic-bezier(0.22, 1, 0.36, 1); color: #241a14; pointer-events: auto; position: fixed; width: min(460px, calc(100vw - 32px)); z-index: 1; }
+    .onboarding-body { background: #fff; border: 1px solid var(--onboarding-line); border-radius: 16px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); overflow: auto; overscroll-behavior: contain; position: relative; scrollbar-color: var(--onboarding-line) #fff; scrollbar-width: thin; z-index: 1; }
+    .onboarding-body > * { flex-shrink: 0; }
+    .onboarding ::selection { background: var(--onboarding-tint); color: #241a14; }
+    .onboarding-arrow { background: #fff; display: block; height: 16px; pointer-events: none; position: absolute; width: 16px; z-index: 2; }
     .onboarding-card[data-placement='left'] .onboarding-arrow { clip-path: polygon(0 0, 100% 50%, 0 100%); right: -15px; top: var(--bcp-onboarding-arrow-y, 24px); transform: translateY(-50%); }
     .onboarding-card[data-placement='right'] .onboarding-arrow { clip-path: polygon(100% 0, 0 50%, 100% 100%); left: -15px; top: var(--bcp-onboarding-arrow-y, 24px); transform: translateY(-50%); }
     .onboarding-card[data-placement='below'] .onboarding-arrow { clip-path: polygon(0 100%, 50% 0, 100% 100%); left: var(--bcp-onboarding-arrow-x, 24px); top: -15px; transform: translateX(-50%); }
     .onboarding-card[data-placement='above'] .onboarding-arrow { bottom: -15px; clip-path: polygon(0 0, 50% 100%, 100% 0); left: var(--bcp-onboarding-arrow-x, 24px); transform: translateX(-50%); }
-    .onboarding-head { display: flex; flex-direction: column; gap: 6px; padding: 20px; }
-    .onboarding-eyebrow { align-items: center; color: var(--bcp-selection, #f97316); display: flex; font-size: 12px; font-weight: 600; gap: 6px; letter-spacing: 1px; line-height: 18px; }
-    .onboarding-eyebrow-icon { align-items: center; display: flex; flex: 0 0 14px; height: 14px; justify-content: center; }
-    .onboarding-eyebrow-icon svg { fill: none; height: 14px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.75; width: 14px; }
-    .onboarding-eyebrow-icon svg .is-filled { fill: currentColor; stroke: none; }
-    .onboarding h2 { color: #1f2937; font-size: 20px; font-weight: 700; line-height: 28px; margin: 0; }
-    .onboarding-description { color: #6b7280; font-size: 13px; line-height: 21px; margin: 0; }
-    .onboarding-divider { background: #e5e7eb; flex: 0 0 1px; height: 1px; }
-    .onboarding-content { display: flex; flex-direction: column; gap: 16px; padding: 20px; }
-    .onboarding-features { display: flex; flex-direction: column; gap: 10px; }
-    .onboarding-feature { align-items: flex-start; display: flex; gap: 10px; }
-    .onboarding-feature-icon { align-items: center; background: #fff1e6; border-radius: 10px; color: var(--bcp-selection, #f97316); display: flex; flex: 0 0 32px; height: 32px; justify-content: center; }
+    .onboarding-head { align-items: center; display: grid; gap: 12px 20px; grid-template-columns: minmax(0, 1fr) 48px; padding: 22px 26px 16px; }
+    .onboarding h2 { color: #241a14; font-size: 23px; font-weight: 600; line-height: 32px; margin: 0; }
+    .onboarding-anchor-label { color: #706257; display: block; font-size: 12px; line-height: 18px; margin-top: 4px; }
+    .onboarding-radar { color: var(--onboarding-theme); display: flex; }
+    .onboarding-radar svg { fill: none; height: 48px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.2; width: 48px; }
+    .onboarding-radar .is-filled { fill: currentColor; stroke: none; }
+    .onboarding-description { color: #706257; font-size: 13px; grid-column: 1 / -1; line-height: 22px; margin: 0; }
+    .onboarding-content { display: flex; flex-direction: column; gap: 16px; padding: 0 26px 16px; }
+    .onboarding-features { border-top: 1px solid var(--onboarding-line); display: flex; flex-direction: column; gap: 12px; padding-top: 16px; }
+    .onboarding-feature { align-items: flex-start; display: flex; gap: 12px; }
+    .onboarding-feature-icon { align-items: center; color: var(--onboarding-theme); display: flex; flex: 0 0 22px; height: 22px; justify-content: center; }
     .onboarding-feature-icon svg, .onboarding-settings-title svg, .onboarding-note svg, .onboarding-setting-list svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
-    .onboarding-feature-icon svg { height: 16px; stroke-width: 1.8; width: 16px; }
-    .onboarding-feature-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .onboarding-feature-copy strong { color: #1f2937; font-size: 13px; font-weight: 600; line-height: 19px; }
-    .onboarding-feature-copy span { color: #6b7280; font-size: 12px; line-height: 18px; }
-    .onboarding-settings { display: flex; flex-direction: column; gap: 10px; }
-    .onboarding-settings-title { align-items: center; color: #1f2937; display: flex; font-size: 13px; font-weight: 600; gap: 6px; line-height: 19px; margin: 0; }
-    .onboarding-settings-title svg { color: var(--bcp-selection, #f97316); height: 16px; stroke-width: 1.8; width: 16px; }
-    .onboarding-setting-list { display: grid; gap: 10px 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
-    .onboarding-setting-list li { align-items: center; color: #6b7280; display: flex; font-size: 12px; gap: 6px; line-height: 18px; min-width: 0; }
-    .onboarding-setting-list svg { color: var(--bcp-selection, #f97316); flex: 0 0 14px; height: 14px; stroke-width: 1.8; width: 14px; }
-    .onboarding-auto-plus-one { align-items: center; background: #fff8f1; border: 1px solid rgb(249 115 22 / 24%); border-radius: 12px; cursor: pointer; display: flex; gap: 14px; padding: 12px; }
-    .onboarding-auto-plus-one-copy { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
-    .onboarding-auto-plus-one-title { align-items: center; display: flex; flex-wrap: wrap; gap: 7px; }
-    .onboarding-auto-plus-one-title strong { color: #1f2937; font-size: 13px; font-weight: 650; line-height: 19px; }
-    .onboarding-auto-plus-one-title em { background: #fff; border: 1px solid rgb(249 115 22 / 28%); border-radius: 999px; color: #b45309; font-size: 9px; font-style: normal; font-weight: 650; line-height: 15px; padding: 0 6px; }
-    .onboarding-auto-plus-one-copy small { color: #6b7280; font-size: 11px; line-height: 17px; }
-    .onboarding-auto-plus-one input { appearance: none; background: #e5e7eb; border: 1px solid #d1d5db; border-radius: 999px; cursor: pointer; flex: 0 0 38px; height: 22px; margin: 0; position: relative; transition: background-color 140ms ease, border-color 140ms ease; width: 38px; }
-    .onboarding-auto-plus-one input::after { background: #fff; border-radius: 50%; box-shadow: 0 1px 3px rgb(31 41 55 / 24%); content: ''; height: 16px; left: 2px; position: absolute; top: 2px; transition: transform 140ms ease; width: 16px; }
-    .onboarding-auto-plus-one input:checked { background: var(--bcp-selection, #f97316); border-color: var(--bcp-selection, #f97316); }
+    .onboarding-feature-icon svg { height: 20px; stroke-width: 1.7; width: 20px; }
+    .onboarding-feature-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .onboarding-feature-copy strong { font-size: 14px; font-weight: 600; line-height: 22px; }
+    .onboarding-feature-copy span { color: #706257; font-size: 12px; line-height: 20px; }
+    .onboarding-settings { border-top: 1px solid var(--onboarding-line); display: flex; flex-direction: column; gap: 10px; padding-top: 16px; }
+    .onboarding-settings-title { align-items: center; display: flex; font-size: 13px; font-weight: 600; gap: 8px; line-height: 20px; margin: 0; }
+    .onboarding-settings-title svg { color: var(--onboarding-theme); height: 16px; stroke-width: 1.7; width: 16px; }
+    .onboarding-setting-list { display: grid; gap: 8px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
+    .onboarding-setting-list li { align-items: flex-start; color: #706257; display: flex; font-size: 12px; gap: 7px; line-height: 20px; min-width: 0; }
+    .onboarding-setting-list svg { color: var(--onboarding-theme); flex: 0 0 12px; height: 12px; margin-top: 4px; stroke-width: 2; width: 12px; }
+    .onboarding-auto-plus-one { align-items: center; background: var(--onboarding-tint); border-radius: 12px; cursor: pointer; display: flex; gap: 16px; padding: 12px; }
+    .onboarding-auto-plus-one-copy { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
+    .onboarding-auto-plus-one-title { align-items: baseline; display: flex; flex-wrap: wrap; gap: 4px 8px; }
+    .onboarding-auto-plus-one-title strong { font-size: 13px; font-weight: 600; line-height: 20px; }
+    .onboarding-auto-plus-one-title em { color: #706257; font-size: 11px; font-style: normal; line-height: 18px; }
+    .onboarding-auto-plus-one-copy small { color: #706257; font-size: 12px; line-height: 18px; }
+    .onboarding-auto-plus-one input { appearance: none; background: #c5beb8; border: 1px solid #c5beb8; border-radius: 999px; cursor: pointer; flex: 0 0 38px; height: 22px; margin: 0; position: relative; transition: background-color 140ms ease, border-color 140ms ease; width: 38px; }
+    .onboarding-auto-plus-one input::after { background: #fff; border-radius: 50%; content: ''; height: 16px; left: 2px; position: absolute; top: 2px; transition: transform 140ms ease; width: 16px; }
+    .onboarding-auto-plus-one input:checked { background: var(--onboarding-theme); border-color: var(--onboarding-theme); }
     .onboarding-auto-plus-one input:checked::after { transform: translateX(16px); }
-    .onboarding-auto-plus-one input:focus-visible { outline: 3px solid rgb(249 115 22 / 28%); outline-offset: 3px; }
-    .onboarding-note { align-items: flex-start; background: #fff1e6; border-radius: 10px; color: #6b7280; display: flex; font-size: 12px; gap: 10px; line-height: 18px; padding: 12px; }
-    .onboarding-note svg { color: var(--bcp-selection, #f97316); flex: 0 0 16px; height: 16px; margin-top: 1px; stroke-width: 1.8; width: 16px; }
-    .onboarding-actions { display: flex; gap: 12px; justify-content: flex-end; padding: 16px 20px 20px; }
-    .onboarding-actions button { border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600; height: 44px; padding: 0 16px; }
-    .onboarding-open-settings { background: #fff; border: 1px solid #e5e7eb; color: #1f2937; width: 112px; }
-    .onboarding-open-settings:hover { border-color: rgb(249 115 22 / 45%); color: #c4510d; }
-    .onboarding-acknowledge { background: var(--bcp-selection, #f97316); border: 1px solid var(--bcp-selection, #f97316); color: #fff; width: 104px; }
-    .onboarding-acknowledge:hover { filter: brightness(0.95); }
+    .onboarding-auto-plus-one input:focus-visible { outline: 2px solid #241a14; outline-offset: 3px; }
+    .onboarding-note { align-items: flex-start; color: #706257; display: flex; font-size: 12px; gap: 8px; line-height: 20px; }
+    .onboarding-note svg { color: var(--onboarding-theme); flex: 0 0 16px; height: 16px; margin-top: 2px; stroke-width: 1.7; width: 16px; }
+    .onboarding-actions { align-items: center; background: #fff; border-top: 1px solid var(--onboarding-line); bottom: 0; display: flex; gap: 12px; justify-content: space-between; padding: 14px 26px; position: sticky; z-index: 1; }
+    .onboarding-actions button { border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; height: 42px; padding: 0 18px; transition: background-color 140ms ease, transform 140ms ease; }
+    .onboarding-actions button:active { transform: translateY(1px); }
+    .onboarding-open-settings { background: #fff; border: 0; color: #706257; }
+    .onboarding-open-settings:hover { background: var(--onboarding-tint); color: #241a14; }
+    .onboarding-acknowledge { background: var(--onboarding-theme); border: 0; color: #241a14; min-width: 112px; }
+    .onboarding-acknowledge:hover { background: color-mix(in srgb, var(--onboarding-theme) 88%, white); }
+    .onboarding-acknowledge:focus-visible { outline: none; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
     .prompt-list { display: none; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 86px)); pointer-events: none; position: fixed; transform: scale(var(--bcp-repeat-prompt-scale, 1)); transform-origin: left top; width: 360px; }
     .prompt-list.is-visible { display: flex; }
     .prompt { align-items: center; backdrop-filter: blur(12px); background: rgb(255 255 255 / 96%); border: 1px solid rgb(255 122 0 / 28%); border-radius: 13px; box-shadow: 0 12px 34px rgb(23 24 29 / 22%); color: #17181d; display: flex; gap: 12px; padding: 11px 12px; pointer-events: auto; transform-origin: center top; width: 100%; }
@@ -221,21 +224,24 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     .prompt-actions button { background: #f2f3f6; border: 1px solid rgb(23 24 29 / 12%); border-radius: 999px; color: #565a66; cursor: pointer; font-size: 11px; padding: 7px 11px; }
     .prompt-actions button:hover { border-color: rgb(255 122 0 / 28%); }
     .prompt-actions button.is-primary { background: #ff7a00; border-color: #ff7a00; color: #fff; font-weight: 650; }
-    button:focus-visible { outline: 2px solid #ff9e48; outline-offset: 2px; }
+    button:focus-visible { outline: 2px solid currentColor; outline-offset: -4px; }
     @keyframes onboarding-enter {
       from { opacity: 0; transform: translate3d(0, 8px, 0) scale(0.98); }
       to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
     @media (max-width: 480px) {
-      .onboarding-head, .onboarding-content { padding-left: 16px; padding-right: 16px; }
-      .onboarding-setting-list { grid-template-columns: 1fr; }
-      .onboarding-actions { flex-direction: column-reverse; padding: 14px 16px 16px; }
-      .onboarding-actions button { width: 100%; }
+      .onboarding-head { gap: 12px; padding: 20px 18px 16px; }
+      .onboarding h2 { font-size: 21px; line-height: 28px; }
+      .onboarding-content { gap: 18px; padding: 0 18px 18px; }
+      .onboarding-setting-list { grid-template-columns: 1fr; gap: 6px; }
+      .onboarding-actions { gap: 8px; padding: 12px 18px; }
+      .onboarding-actions button { min-width: 0; padding: 0 14px; }
+      .onboarding-acknowledge { flex: 1; }
     }
     @media (prefers-reduced-motion: reduce) {
       .launcher { transition-duration: 0.01ms; }
       .onboarding-card { animation: none; }
-      .onboarding-auto-plus-one input, .onboarding-auto-plus-one input::after { transition-duration: 0.01ms; }
+      .onboarding-actions button, .onboarding-auto-plus-one input, .onboarding-auto-plus-one input::after { transition-duration: 0.01ms; }
     }
   `
 
@@ -283,18 +289,16 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     >
       <span class="onboarding-arrow" aria-hidden="true"></span>
       <div class="onboarding-body">
-        <span class="onboarding-accent" aria-hidden="true"></span>
         <header class="onboarding-head">
-          <span class="onboarding-eyebrow">
-            <span class="onboarding-eyebrow-icon">${RADAR_ICON}</span>
-            <span>这里是弹幕雷达</span>
-          </span>
-          <h2 id="bcp-repeat-onboarding-title">认识弹幕雷达</h2>
+          <div>
+            <h2 id="bcp-repeat-onboarding-title">认识弹幕雷达</h2>
+            <span class="onboarding-anchor-label">这里是弹幕雷达</span>
+          </div>
+          <span class="onboarding-radar" aria-hidden="true">${RADAR_ICON}</span>
           <p id="bcp-repeat-onboarding-description" class="onboarding-description">
             箭头指向的按钮就是弹幕雷达。它会观察最近一分钟内重复出现的文字弹幕，达到设定次数后生成 +1 提示队列。
           </p>
         </header>
-        <span class="onboarding-divider" aria-hidden="true"></span>
         <div class="onboarding-content">
           <div class="onboarding-features">
             <div class="onboarding-feature">
@@ -312,6 +316,16 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
               </span>
             </div>
           </div>
+          <label class="onboarding-auto-plus-one">
+            <span class="onboarding-auto-plus-one-copy">
+              <span class="onboarding-auto-plus-one-title">
+                <strong>自动 +1 雷达弹幕</strong>
+                <em>默认关闭</em>
+              </span>
+              <small>高频弹幕达到门槛后直接发送，仍会遵守发送冷却和平台限制。</small>
+            </span>
+            <input type="checkbox" role="switch" aria-label="开启自动 +1 雷达弹幕">
+          </label>
           <section class="onboarding-settings" aria-labelledby="bcp-repeat-onboarding-settings-title">
             <h3 id="bcp-repeat-onboarding-settings-title" class="onboarding-settings-title">
               ${ONBOARDING_SETTINGS_ICON}
@@ -327,16 +341,6 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
               <li>${ONBOARDING_CHECK_ICON}<span>自动 +1 开关</span></li>
             </ul>
           </section>
-          <label class="onboarding-auto-plus-one">
-            <span class="onboarding-auto-plus-one-copy">
-              <span class="onboarding-auto-plus-one-title">
-                <strong>自动 +1 雷达弹幕</strong>
-                <em>默认关闭</em>
-              </span>
-              <small>高频弹幕达到门槛后直接发送，仍会遵守发送冷却和平台限制。</small>
-            </span>
-            <input type="checkbox" role="switch" aria-label="开启自动 +1 雷达弹幕">
-          </label>
           <div class="onboarding-note">
             ${ONBOARDING_MOVE_ICON}
             <span>以后可以点击雷达按钮查看当前设置，也可以拖动它调整位置。</span>
@@ -739,7 +743,8 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     )
     for (const button of promptList.querySelectorAll<HTMLButtonElement>('[data-plus-one-id]')) {
       const deadline = deadlines.get(button.dataset.plusOneId || '') || now
-      button.textContent = `+1 · ${Math.max(0, Math.ceil((deadline - now) / 1_000))}s`
+      const label = `+1 · ${Math.max(0, Math.ceil((deadline - now) / 1_000))}s`
+      if (button.textContent !== label) button.textContent = label
     }
     for (const suggestion of expired) removeSuggestion(suggestion, 'timeout')
   }

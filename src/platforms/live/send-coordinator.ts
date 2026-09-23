@@ -1,4 +1,7 @@
 import type { PlatformId } from '../../core/types'
+import { recordRuntimeLog } from '../../core/runtime-logger'
+import { sanitizeLogValue } from '../../core/runtime-log'
+import { captureSendFailureEvidence } from '../../core/send-failure-evidence'
 import {
   classifyPlatformSendResponse,
   createPlatformFeedbackProbe,
@@ -41,6 +44,7 @@ export interface SendNetworkObserver {
 }
 
 export interface SendCoordinatorOptions {
+  document?: Document
   feedbackFailureWaitMs?: number
   feedbackSuccessWaitMs?: number
   onBlock?(block: SendBlock, message: string): void
@@ -62,6 +66,7 @@ function randomNonce(): string {
 async function observeNativeSend(platform: PlatformId): Promise<SendNetworkObserver> {
   const nonce = randomNonce()
   let settled = false
+  let latest: NativeSendObservation | null = null
   let resolveResult: (value: NativeSendObservation | null) => void = () => undefined
   const result = new Promise<NativeSendObservation | null>((resolve) => {
     resolveResult = resolve
@@ -71,10 +76,12 @@ async function observeNativeSend(platform: PlatformId): Promise<SendNetworkObser
     settled = true
     clearTimeout(timer)
     window.removeEventListener('message', onMessage)
-    resolveResult(value)
+    resolveResult(value || latest)
   }
   const onMessage = (event: MessageEvent): void => {
     if (event.source !== window || !isNativeSendObservation(event.data, nonce, platform)) return
+    latest = event.data
+    if (latest.pending) return
     finish(event.data)
   }
   const timer = window.setTimeout(() => finish(null), 8_500)
@@ -94,7 +101,7 @@ async function observeNativeSend(platform: PlatformId): Promise<SendNetworkObser
     read: (timeout = 160) =>
       Promise.race([
         result,
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), Math.max(0, timeout))),
+        new Promise<NativeSendObservation | null>((resolve) => setTimeout(() => resolve(latest), Math.max(0, timeout))),
       ]),
   }
 }
@@ -104,6 +111,10 @@ export class SendCoordinator {
   private readonly feedbackSuccessWaitMs: number
   private readonly options: SendCoordinatorOptions
   private readonly protection: SendProtection
+  private attempt: { id: string; at: number; recorded: boolean } | null = null
+  private evidenceWindowAt = 0
+  private evidenceCount = 0
+  private failureContext: { network?: unknown; method?: SendMethod; reason?: string } = {}
 
   constructor(options: SendCoordinatorOptions) {
     this.options = options
@@ -118,16 +129,22 @@ export class SendCoordinator {
 
   beginResult(message: string): SendBlock {
     const block = this.protection.begin(message)
+    if (block.allowed) {
+      this.attempt = { id: randomNonce(), at: Date.now(), recorded: false }
+      this.failureContext = {}
+    }
     if (!block.allowed) this.options.onBlock?.(block, message)
     return block
   }
 
   finish(message: string, success: boolean): void {
+    if (!success) this.recordFailure(this.failureContext.reason || 'send-failed', message)
     this.protection.finish(message, success)
     this.options.onStateChange?.(message)
   }
 
   applyFeedback(feedback: PlatformSendFeedback, message: string): void {
+    this.recordFailure('platform-feedback', message, feedback)
     this.protection.applyPlatformFeedback(feedback, message)
     this.options.onFeedback?.(feedback, message)
     this.options.onStateChange?.(message)
@@ -145,6 +162,45 @@ export class SendCoordinator {
     return observeNativeSend(this.options.platform)
   }
 
+  /** Allows platform-owned fallback paths to attach their existing request trace. */
+  setFailureContext(context: { network?: unknown; method?: SendMethod; reason?: string }): void {
+    if (this.attempt && context.method && context.method !== this.failureContext.method) this.attempt.recorded = false
+    this.failureContext = context
+  }
+
+  private recordFailure(reason: string, message: string, feedback?: PlatformSendFeedback): void {
+    const attempt = this.attempt
+    if (!attempt || attempt.recorded) return
+    attempt.recorded = true
+    const now = Date.now()
+    if (now - this.evidenceWindowAt >= 60_000) {
+      this.evidenceWindowAt = now
+      this.evidenceCount = 0
+    }
+    const capture = this.evidenceCount++ < 3
+    const doc = this.options.document || globalThis.document
+    // Official error envelopes may echo the submitted text. Keep it out of logs.
+    const hideSubmittedText = (value: unknown): unknown => {
+      if (typeof value === 'string') return message ? value.split(message).join('[redacted]') : value
+      if (Array.isArray(value)) return value.map(hideSubmittedText)
+      if (value && typeof value === 'object') return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, hideSubmittedText(item)]),
+      )
+      return value
+    }
+    recordRuntimeLog('error', 'send-failure', {
+      attemptId: attempt.id,
+      platform: this.options.platform,
+      reason,
+      method: this.failureContext.method,
+      elapsedMs: Math.max(0, now - attempt.at),
+      network: hideSubmittedText(sanitizeLogValue(this.failureContext.network || null)),
+      networkObserved: Boolean(this.failureContext.network),
+      feedback: feedback ? hideSubmittedText(sanitizeLogValue({ ...feedback, apiMessage: feedback.message })) : null,
+      pageSnapshot: capture && doc ? 'attached-if-available' : 'rate-limited-or-unavailable',
+    }, capture && doc ? () => captureSendFailureEvidence(attempt.id, attempt.at, doc) : undefined)
+  }
+
   async settle(options: {
     feedbackProbe: PlatformFeedbackProbe
     message: string
@@ -157,6 +213,7 @@ export class SendCoordinator {
       success ? this.feedbackSuccessWaitMs : this.feedbackFailureWaitMs,
     )
     const network = networkObserver ? await networkObserver.read(feedback ? 220 : 160) : null
+    this.failureContext = { ...this.failureContext, method, ...(network ? { network: { ...network, apiMessage: network.message } } : {}) }
     networkObserver?.cancel()
     const networkFeedback =
       network && !network.requestOnly
@@ -182,6 +239,7 @@ export class SendCoordinator {
 
     const networkSummary = network ? formatPlatformSendRequestSummary(network) : ''
     if (!success && networkSummary) {
+      this.failureContext.reason = 'unconfirmed'
       this.finish(message, false)
       this.options.onUnconfirmed?.(networkSummary, message)
       return { failureReason: 'unconfirmed', method, network, success: false }

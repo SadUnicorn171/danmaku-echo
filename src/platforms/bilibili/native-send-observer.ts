@@ -18,6 +18,7 @@ export interface BilibiliNativeSendObservation {
   identity?: string
   message?: string
   method: 'POST'
+  requestFields?: string[]
   nonce: string
   source: typeof BILIBILI_NATIVE_SEND_RESULT_SOURCE
   transport: 'fetch' | 'xhr'
@@ -88,6 +89,7 @@ export function installBilibiliNativeSendObserverInPage(options: {
     if (!(body instanceof FormData)) return {}
     const identity = String(body.get('msg') || '').trim().toLowerCase()
     return {
+      requestFields: Array.from(body.keys()).filter((key) => /^[a-z_][a-z0-9_.-]{0,39}$/i.test(key)).slice(0, 24),
       dmType: String(body.get('dm_type') || ''),
       hasEmoticonOptions: body.has('emoticonOptions'),
       identity: /^room_[1-9]\d{0,19}_[1-9]\d{0,19}$/.test(identity) ? identity : undefined,

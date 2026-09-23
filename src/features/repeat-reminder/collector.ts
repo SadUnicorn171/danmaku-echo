@@ -2,6 +2,13 @@ import type { DanmakuDescriptor } from '../../core/types'
 import type { RepeatReminderObservation } from './types'
 
 export interface RepeatReminderCollector {
+  diagnostics(): {
+    observerCount: number
+    queuedCount: number
+    flushScheduled: boolean
+    rootDiscoveryScheduled: boolean
+    destroyed: boolean
+  }
   destroy(): void
   scan(): void
   setEnabled(enabled: boolean): void
@@ -18,6 +25,7 @@ interface CollectorOptions {
 
 const MAX_QUEUE = 1_000
 const MAX_SCAN_RESULTS = 240
+const FLUSH_BUDGET_MS = 4
 
 function matchesAny(element: Element, selectors: readonly string[]): boolean {
   return selectors.some((selector) => { try { return element.matches(selector) } catch { return false } })
@@ -68,10 +76,13 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
   function flush(): void {
     flushTimer = undefined
     if (!enabled || destroyed) { queued.clear(); return }
-    Array.from(queued.entries()).slice(0, 200).forEach(([element, source]) => {
+    const started = performance.now()
+    let processed = 0
+    for (const [element, source] of queued) {
       queued.delete(element)
       emit(element, source)
-    })
+      if (++processed >= 200 || performance.now() - started >= FLUSH_BUDGET_MS) break
+    }
     if (queued.size) flushTimer = setTimeout(flush, 16)
   }
 
@@ -83,9 +94,12 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
   }
 
   function discoverRoots(root: ParentNode): void {
-    let elements: Element[] = []
-    try { elements = Array.from(root.querySelectorAll('*')).slice(0, 4_000) } catch { return }
-    elements.forEach((element) => { if (element.shadowRoot && observers.size < 40) observe(element.shadowRoot) })
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT)
+    let visited = 0
+    let element: Node | null
+    while (visited++ < 4_000 && observers.size < 40 && (element = walker.nextNode())) {
+      if ((element as Element).shadowRoot) observe((element as Element).shadowRoot!)
+    }
   }
 
   function queueNode(node: Node): void {
@@ -118,6 +132,7 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
     if (observers.has(root)) return
     const observer = new MutationObserver((mutations) => {
       if (!enabled) return
+      if (mutations.some((mutation) => mutation.removedNodes.length > 0)) pruneDetachedRoots()
       mutations.forEach((mutation) => {
         if (mutation.type === 'characterData' || mutation.type === 'childList') nearestCandidate(mutation.target)
         mutation.addedNodes.forEach(queueNode)
@@ -127,17 +142,30 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
     observers.set(root, observer)
   }
 
+  function pruneDetachedRoots(): void {
+    for (const [root, observer] of observers) {
+      if (root instanceof ShadowRoot && !root.host.isConnected) {
+        observer.disconnect()
+        observers.delete(root)
+      }
+    }
+  }
+
   function scanRoot(root: ParentNode): void {
     for (const group of [
       { selectors: options.messageSelectors, source: 'chat' as const },
       { selectors: options.overlaySelectors, source: 'video' as const },
     ]) {
       if (!group.selectors.length) continue
-      let elements: Element[] = []
-      try { elements = Array.from(root.querySelectorAll(group.selectors.join(','))) } catch {
-        group.selectors.forEach((selector) => { try { elements.push(...Array.from(root.querySelectorAll(selector))) } catch { /* Defensive selector. */ } })
+      let elements: ArrayLike<Element> = []
+      try { elements = root.querySelectorAll(group.selectors.join(',')) } catch {
+        const fallback: Element[] = []
+        elements = fallback
+        group.selectors.forEach((selector) => { try { fallback.push(...Array.from(root.querySelectorAll(selector))) } catch { /* Defensive selector. */ } })
       }
-      elements.slice(-MAX_SCAN_RESULTS).forEach((element) => queue(element, group.source))
+      for (let index = Math.max(0, elements.length - MAX_SCAN_RESULTS); index < elements.length; index++) {
+        queue(elements[index]!, group.source)
+      }
     }
   }
 
@@ -178,6 +206,7 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
 
   function scan(): void {
     if (!enabled || destroyed || !document.documentElement) return
+    pruneDetachedRoots()
     if (rootSelectors.length) {
       syncScopedRoots()
       observers.forEach((_observer, root) => {
@@ -191,7 +220,7 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
   }
 
   function start(): void {
-    if (!document.documentElement || destroyed) return
+    if (!enabled || !document.documentElement || destroyed) return
     if (rootSelectors.length) {
       syncScopedRoots()
       startRootTimer()
@@ -202,8 +231,16 @@ export function createRepeatReminderCollector(options: CollectorOptions): Repeat
   }
 
   const runtime: RepeatReminderCollector = {
+    diagnostics: () => ({
+      observerCount: observers.size,
+      queuedCount: queued.size,
+      flushScheduled: flushTimer !== undefined,
+      rootDiscoveryScheduled: rootTimer !== undefined,
+      destroyed,
+    }),
     destroy(): void {
       destroyed = true
+      document.removeEventListener('DOMContentLoaded', start)
       if (flushTimer) clearTimeout(flushTimer)
       stopRootTimer()
       queued.clear()

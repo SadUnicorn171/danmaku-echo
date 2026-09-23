@@ -417,11 +417,13 @@ export function createDouyinDomRenderer(options: DouyinDomRendererOptions): Douy
     state: RendererTrackDomState,
     layout: RendererTrackLayoutSnapshot,
   ): void => {
-    state.actionSide = layout.actionSide
-    state.node.dataset.bcpOverlaySide = layout.actionSide
-    state.actionBar.dataset.bcpOverlaySide = layout.actionSide
-    state.actionBar.style.order = layout.actionSide === 'left' ? '-1' : '1'
-    state.barrage.style.order = '0'
+    if (state.actionSide !== layout.actionSide) {
+      state.actionSide = layout.actionSide
+      state.node.dataset.bcpOverlaySide = layout.actionSide
+      state.actionBar.dataset.bcpOverlaySide = layout.actionSide
+      state.actionBar.style.order = layout.actionSide === 'left' ? '-1' : '1'
+      state.barrage.style.order = '0'
+    }
     state.visualLeft = layout.visualLeft
     if (!state.hovered) {
       if (Math.abs(layout.width - state.visualWidth) > 0.1) {
@@ -433,7 +435,8 @@ export function createDouyinDomRenderer(options: DouyinDomRendererOptions): Douy
         state.visualHeight = layout.height
       }
     }
-    state.node.style.transform = `translate3d(${state.visualLeft}px, ${layout.targetTop}px, 0)`
+    const transform = `translate3d(${state.visualLeft}px, ${layout.targetTop}px, 0)`
+    if (state.node.style.transform !== transform) state.node.style.transform = transform
   }
 
   const takeOverCanvas = (instance: RendererInstance): void => {

@@ -85,6 +85,24 @@ function createHarness() {
 }
 
 describe('LiveContentRuntime', () => {
+  it('keeps one subscription across 20 room switches and removes it after shutdown', () => {
+    const harness = createHarness()
+    harness.runtime.start()
+    const subscriptions: number[] = []
+    try {
+      for (let room = 0; room < 20; room++) {
+        harness.setRoomKey(`bilibili:stress-${room}`)
+        harness.runtime.checkRoom()
+        subscriptions.push(harness.runtimeMessages.listeners.size, harness.storageChanges.listeners.size)
+      }
+      expect(subscriptions).toEqual(Array.from({ length: 40 }, () => 1))
+      expect(harness.resources.createRepeatReminder).toHaveBeenCalledTimes(21)
+      expect(harness.repeatReminder.destroy).toHaveBeenCalledTimes(20)
+    } finally { harness.runtime.destroy() }
+    expect(harness.runtimeMessages.listeners.size).toBe(0)
+    expect(harness.storageChanges.listeners.size).toBe(0)
+  })
+
   afterEach(() => {
     vi.restoreAllMocks()
   })

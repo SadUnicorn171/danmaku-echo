@@ -80,6 +80,7 @@ export function createDouyinSendController(
   options: DouyinSendControllerOptions,
 ): DouyinSendController {
   const coordinator = new SendCoordinator({
+    document: options.document,
     feedbackFailureWaitMs: options.feedbackFailureWaitMs,
     feedbackSuccessWaitMs: options.feedbackSuccessWaitMs,
     onBlock(block, message) {
@@ -286,6 +287,7 @@ export function createDouyinSendController(
     )
     const editor = options.editor.find()
     if (!editor) {
+      coordinator.setFailureContext({ reason: 'editor-not-found' })
       coordinator.finish(message, false)
       options.showToast(t('toastEditorNotFound', options.platformName), 'error')
       return failure(message, payload, {

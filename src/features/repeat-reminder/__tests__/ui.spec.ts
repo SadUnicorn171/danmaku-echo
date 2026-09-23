@@ -23,6 +23,25 @@ const ENABLED_SETTINGS = {
 } as const
 
 describe('repeat reminder UI', () => {
+  it('preserves countdown text nodes until the displayed second changes', () => {
+    vi.useFakeTimers()
+    const ui = createRepeatReminderUi({ dismiss() {}, openSettings() {}, plusOne() {} })
+    ui.applySettings(ENABLED_SETTINGS)
+    ui.setSuggestions([suggestion()])
+    const button = document.querySelector('[data-bcp-repeat-reminder-owned]')!.shadowRoot!.querySelector('[data-plus-one-id]')!
+    const observer = new MutationObserver(() => {})
+    observer.observe(button, { childList: true, characterData: true, subtree: true })
+    try {
+      vi.advanceTimersByTime(750)
+      expect(button.textContent).toBe('+1 · 6s')
+      expect(observer.takeRecords()).toEqual([])
+      vi.advanceTimersByTime(250)
+      expect(button.textContent).toBe('+1 · 5s')
+      expect(observer.takeRecords()).toHaveLength(1)
+    } finally { observer.disconnect(); ui.destroy() }
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
   it('keeps one portal when another runtime starts or a stale portal is reattached', async () => {
     const options = {
       dismiss: vi.fn<() => void>(),
@@ -94,7 +113,7 @@ describe('repeat reminder UI', () => {
       expect(shadow?.querySelector<HTMLElement>('.onboarding-card')?.style.left).not.toBe('')
       expect(shadow?.querySelector('.onboarding-arrow')).not.toBeNull()
       expect(shadow?.querySelector('.launcher')?.classList.contains('is-onboarding')).toBe(true)
-      expect(shadow?.querySelector('.onboarding-accent')).not.toBeNull()
+      expect(shadow?.querySelector('.onboarding-radar')).not.toBeNull()
       expect(shadow?.querySelectorAll('.onboarding-feature')).toHaveLength(2)
       expect(shadow?.querySelectorAll('.onboarding-setting-list li')).toHaveLength(7)
       expect(shadow?.querySelector('.onboarding-note')).not.toBeNull()

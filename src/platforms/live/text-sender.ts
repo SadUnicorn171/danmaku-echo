@@ -26,6 +26,7 @@ export class LiveTextSender {
     if (!runtime.coordinator.begin(message)) return false
     const input = runtime.findInput()
     if (!input) {
+      runtime.coordinator.setFailureContext({ method: 'text', reason: 'editor-not-found' })
       runtime.coordinator.finish(message, false)
       runtime.showToast(t('toastEditorNotFound', runtime.platformName), 'error')
       return false

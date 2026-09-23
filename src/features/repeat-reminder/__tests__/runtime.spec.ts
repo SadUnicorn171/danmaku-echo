@@ -109,22 +109,32 @@ describe('repeat reminder runtime audience refresh', () => {
       roomKey: () => 'douyin:room-one',
     })
     try {
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      const threshold = () => shadow?.querySelector('[data-value="threshold"]')?.textContent
       for (let index = 0; index < 400; index += 1) {
+        // Distinct single-character texts keep this traffic test out of the
+        // shared-bigram similarity path; message and sender counts stay real.
+        const text = String.fromCodePoint(0x4e00 + index)
         runtime.ingest({
           messageId: `flow-${index}`,
           observedAt: Date.now(),
-          parts: [{ text: `普通弹幕${index}`, type: 'text' }],
+          parts: [{ text, type: 'text' }],
           resourceIds: [],
           senderId: `u${index}`,
           source: 'chat',
-          text: `普通弹幕${index}`,
+          text,
         })
       }
-      vi.advanceTimersByTime(35_000)
-      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot
+      vi.advanceTimersByTime(19_000)
+      expect(threshold()).toBe('6 次')
+      vi.advanceTimersByTime(1_000)
+      expect(threshold()).toBe('6 次')
+      vi.advanceTimersByTime(5_000)
+      expect(threshold()).toBe('8 次')
+      vi.advanceTimersByTime(10_000)
       expect(shadow?.querySelector('[data-audience-label]')?.textContent).toBe('弹幕流量')
       expect(shadow?.querySelector('[data-value="audience"]')?.textContent).toContain('条/分')
-      expect(shadow?.querySelector('[data-value="threshold"]')?.textContent).toBe('9 次')
+      expect(threshold()).toBe('9 次')
     } finally {
       runtime.destroy()
     }
