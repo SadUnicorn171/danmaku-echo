@@ -168,7 +168,7 @@ export class DouyuSender implements LivePlatformSender {
     const runtime = this.#runtime
     const asset = payload.assets[0]
     const protectedMessage = String(payload.text || asset?.token || '图片表情')
-    if (!asset || !runtime.coordinator.begin(protectedMessage)) return false
+    if (!asset || !runtime.coordinator.begin(protectedMessage, payload.text)) return false
 
     const input = runtime.findInput()
     if (!input) {

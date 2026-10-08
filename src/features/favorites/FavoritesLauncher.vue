@@ -196,7 +196,7 @@
         :aria-label="state.sort === 'custom' ? t('favoritesFixedOrderAria') : undefined"
       >
         <FavoriteItemRow
-          v-for="(item, index) in state.items"
+          v-for="(item, index) in state.items.slice(0, visibleLimit)"
           :key="item.id"
           :item="item"
           :pending-remove-id="pendingRemoveId"
@@ -219,7 +219,7 @@
 
       <ul v-else-if="!selectedRoom" class="bcp-favorites-groups" role="tabpanel">
         <li
-          v-for="group in visibleGroups"
+          v-for="group in visibleGroups.slice(0, visibleLimit)"
           :key="group.roomKey"
           class="bcp-favorites-group"
         >
@@ -250,7 +250,7 @@
         :aria-label="state.sort === 'custom' ? t('favoritesFixedOrderAria') : undefined"
       >
         <FavoriteItemRow
-          v-for="(item, index) in selectedItems"
+          v-for="(item, index) in selectedItems.slice(0, visibleLimit)"
           :key="`${selectedRoom.roomKey}:${item.id}`"
           :item="item"
           :pending-remove-id="pendingRemoveId"
@@ -273,6 +273,9 @@
 
       <div class="bcp-favorites-divider" aria-hidden="true" />
 
+      <button v-if="!state.loading && listSize > visibleLimit" type="button" class="bcp-favorites-load-more" @click="visibleLimit += 50">
+        {{ t('favoritesLoadMore', String(listSize - visibleLimit)) }}
+      </button>
       <footer class="bcp-favorites-footer">
         <span class="bcp-favorites-shortcut-group">
           <kbd>Alt+Q</kbd>
@@ -375,6 +378,9 @@ const sortRootRef = ref<HTMLElement | null>(null);
 const sortTriggerRef = ref<HTMLButtonElement | null>(null);
 const sortMenuRef = ref<HTMLElement | null>(null);
 const sortOpen = ref(false);
+const visibleLimit = ref(50);
+const listSize = computed(() => props.state.view === "current" ? props.state.items.length
+  : selectedRoom.value ? selectedItems.value.length : visibleGroups.value.length);
 const activeSortIndex = ref(0);
 const pendingRemoveId = ref("");
 const draggingId = ref("");
@@ -611,6 +617,7 @@ function dropFavorite(targetId: string, event: DragEvent): void {
 
 watch(() => [props.state.mode, props.state.view, props.state.search,
   props.state.sort, props.state.selectedRoomKey], () => {
+  visibleLimit.value = 50;
   closeSortMenu(false);
   pendingRemoveId.value = "";
   finishDrag();
@@ -622,3 +629,8 @@ watch(() => props.state.mode, async (mode) => {
   panelRef.value?.focus({ preventScroll: true });
 });
 </script>
+
+<style scoped>
+.bcp-favorites-load-more { display: block; margin: 10px auto; border: 0; padding: 8px 12px; background: transparent; color: inherit; cursor: pointer; font: inherit; font-size: 12px; text-decoration: underline; text-underline-offset: 3px; }
+.bcp-favorites-load-more:focus-visible { outline: 2px solid var(--bcp-action-start, #fd8101); outline-offset: 2px; }
+</style>

@@ -17,6 +17,7 @@
         </svg>
         {{ t("favoritesBackupImport") }}
       </button>
+      <button type="button" :disabled="busy" @click="restoreBackup">{{ t('favoritesBackupRestore') }}</button>
       <input
         ref="fileInput"
         class="favorites-data-file"
@@ -33,8 +34,9 @@
 import { ref } from "vue";
 import {
   exportFavoritesData,
-  importFavoritesData
+  previewFavoritesImport
 } from "../features/favorites/repository";
+import { FAVORITE_WRITE_MESSAGE } from "../features/favorites/types";
 import { t } from "../composables/settings-language";
 
 const emit = defineEmits<{
@@ -89,26 +91,27 @@ async function importBackup(event: Event): Promise<void> {
   busy.value = true;
   try {
     const text = await file.text();
-    let preview: { database?: { items?: unknown[] }; format?: string };
-    try {
-      preview = JSON.parse(text) as typeof preview;
-    } catch {
-      throw new Error(t("favoritesBackupInvalidJson"));
-    }
-    if (preview.format !== "danmaku-echo-favorites" || !Array.isArray(preview.database?.items)) {
-      throw new Error(t("favoritesBackupWrongFormat"));
-    }
-    const count = preview.database.items.length;
-    if (!window.confirm(t("favoritesBackupConfirm", String(count)))) {
-      return;
-    }
-    const imported = await importFavoritesData(localStorageArea(), text);
-    emit("status", t("favoritesBackupImported", String(imported.items.length)), "saved");
+    const preview = await previewFavoritesImport(localStorageArea(), text);
+    if (!window.confirm(t('favoritesBackupDiff', [String(preview.total), String(preview.added), String(preview.changed), String(preview.removed)]))) return;
+    const result = await chrome.runtime.sendMessage({ type: FAVORITE_WRITE_MESSAGE, operation: 'import', backup: text, revision: preview.revision });
+    if (!result?.ok) throw new Error(result?.error || t('favoritesBackupImportFailed'));
+    emit("status", t("favoritesBackupImported", String(result.count)), "saved");
   } catch (error) {
     emit("status", error instanceof Error ? error.message : t("favoritesBackupImportFailed"), "error");
   } finally {
     busy.value = false;
   }
+}
+async function restoreBackup(): Promise<void> {
+  if (!window.confirm(t('favoritesBackupRestoreConfirm'))) return;
+  busy.value = true;
+  try {
+    const result = await chrome.runtime.sendMessage({ type: FAVORITE_WRITE_MESSAGE, operation: 'restore' });
+    if (!result?.ok) throw new Error(result?.error || t('favoritesBackupImportFailed'));
+    emit('status', t('favoritesBackupRestored'), 'saved');
+  } catch (error) {
+    emit('status', error instanceof Error ? error.message : t('favoritesBackupImportFailed'), 'error');
+  } finally { busy.value = false; }
 }
 </script>
 

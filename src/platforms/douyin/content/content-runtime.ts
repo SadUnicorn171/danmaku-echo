@@ -116,6 +116,7 @@ export function createDouyinContentRuntime(
   options: DouyinContentRuntimeOptions,
 ): DouyinContentRuntime {
   let active = false
+  let suspended = false
   let destroyed = false
   let featuresStarted = false
   let heartbeatTimer: ReturnType<typeof setInterval> | 0 = 0
@@ -202,6 +203,7 @@ export function createDouyinContentRuntime(
   }
 
   const onVisibilityChange = (): void => {
+    if (suspended || destroyed) return
     if (options.document.hidden) {
       deactivate()
       return
@@ -212,9 +214,23 @@ export function createDouyinContentRuntime(
     postRendererSettings('document-visible')
   }
 
-  const onPageHide = (): void => {
+  const onPageHide = (event: PageTransitionEvent): void => {
+    if (event.persisted) {
+      suspended = true
+      deactivate()
+      stopTimers()
+      return
+    }
     postRendererSettings('pagehide', false)
     destroy()
+  }
+
+  const onPageShow = (event: PageTransitionEvent): void => {
+    if (!event.persisted || !suspended || destroyed) return
+    suspended = false
+    onVisibilityChange()
+    options.bridge.markUnavailable()
+    options.bridge.beginRecovery()
   }
 
   const onDiagnosticsMessage: RuntimeMessageListener = (message, _sender, sendResponse) => {
@@ -235,7 +251,8 @@ export function createDouyinContentRuntime(
   function attachListeners(): void {
     if (listenersAttached) return
     options.document.addEventListener('visibilitychange', onVisibilityChange)
-    options.window.addEventListener('pagehide', onPageHide, { once: true })
+    options.window.addEventListener('pagehide', onPageHide)
+    options.window.addEventListener('pageshow', onPageShow)
     options.bindings.addDiagnosticsListener(onDiagnosticsMessage)
     options.bindings.addStorageListener(onStorageChanged)
     for (const binding of options.eventBindings ?? []) {
@@ -252,6 +269,7 @@ export function createDouyinContentRuntime(
     options.bindings.removeStorageListener(onStorageChanged)
     options.bindings.removeDiagnosticsListener(onDiagnosticsMessage)
     options.window.removeEventListener('pagehide', onPageHide)
+    options.window.removeEventListener('pageshow', onPageShow)
     options.document.removeEventListener('visibilitychange', onVisibilityChange)
     listenersAttached = false
   }

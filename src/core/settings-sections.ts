@@ -4,6 +4,7 @@ export const SETTINGS_SECTION_IDS = [
   'platform-connections',
   'side-chat-capsule',
   'native-danmaku-capsule',
+  'douyin-native-settings',
   'platform-colors',
   'favorites-guide',
 ] as const

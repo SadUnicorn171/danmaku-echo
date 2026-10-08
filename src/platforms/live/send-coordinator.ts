@@ -31,6 +31,7 @@ export type SendFailureReason =
   | 'unconfirmed'
 
 export interface SendResult {
+  confirmation?: 'platform' | 'page'
   failureReason?: SendFailureReason
   feedback?: PlatformSendFeedback
   method?: SendMethod
@@ -49,10 +50,12 @@ export interface SendCoordinatorOptions {
   feedbackSuccessWaitMs?: number
   onBlock?(block: SendBlock, message: string): void
   onFeedback?(feedback: PlatformSendFeedback, message: string): void
+  onSuccess?(attemptId: string, sentAtSec: number, roomId: string | undefined, text: string, confirmation: 'platform' | 'page'): void
   onStateChange?(message: string): void
   onUnconfirmed?(summary: string, message: string): void
   platform: PlatformId
   protection?: SendProtection
+  roomId?(): string
 }
 
 function randomNonce(): string {
@@ -111,7 +114,7 @@ export class SendCoordinator {
   private readonly feedbackSuccessWaitMs: number
   private readonly options: SendCoordinatorOptions
   private readonly protection: SendProtection
-  private attempt: { id: string; at: number; recorded: boolean } | null = null
+  private attempt: { id: string; at: number; recorded: boolean; roomId?: string; text: string; successRecorded: boolean } | null = null
   private evidenceWindowAt = 0
   private evidenceCount = 0
   private failureContext: { network?: unknown; method?: SendMethod; reason?: string } = {}
@@ -123,23 +126,33 @@ export class SendCoordinator {
     this.feedbackSuccessWaitMs = Math.max(0, options.feedbackSuccessWaitMs ?? 500)
   }
 
-  begin(message: string): boolean {
-    return this.beginResult(message).allowed
+  begin(message: string, text = message): boolean {
+    return this.beginResult(message, text).allowed
   }
 
-  beginResult(message: string): SendBlock {
+  beginResult(message: string, text = message): SendBlock {
     const block = this.protection.begin(message)
     if (block.allowed) {
-      this.attempt = { id: randomNonce(), at: Date.now(), recorded: false }
+      let roomId: string | undefined
+      try { roomId = this.options.roomId?.() } catch { /* Room metadata cannot block sending. */ }
+      this.attempt = { id: randomNonce(), at: Date.now(), recorded: false, roomId, text, successRecorded: false }
       this.failureContext = {}
     }
     if (!block.allowed) this.options.onBlock?.(block, message)
     return block
   }
 
-  finish(message: string, success: boolean): void {
+  finish(message: string, success: boolean, text?: string, confirmation: 'platform' | 'page' = 'page'): void {
     if (!success) this.recordFailure(this.failureContext.reason || 'send-failed', message)
     this.protection.finish(message, success)
+    if (success && this.attempt && !this.attempt.successRecorded) {
+      this.attempt.successRecorded = true
+      try {
+        this.options.onSuccess?.(this.attempt.id, Math.floor(Date.now() / 1_000), this.attempt.roomId, text ?? this.attempt.text, confirmation)
+      } catch {
+        // Statistics must not turn an otherwise successful send into a failure.
+      }
+    }
     this.options.onStateChange?.(message)
   }
 
@@ -207,6 +220,8 @@ export class SendCoordinator {
     method?: SendMethod
     networkObserver?: SendNetworkObserver | null
     success: boolean
+    /** Final editor text when preparation differs from the protection key. */
+    text?: string
   }): Promise<SendResult> {
     const { feedbackProbe, message, method, networkObserver, success } = options
     let feedback = await feedbackProbe.wait(
@@ -244,8 +259,11 @@ export class SendCoordinator {
       this.options.onUnconfirmed?.(networkSummary, message)
       return { failureReason: 'unconfirmed', method, network, success: false }
     }
-    this.finish(message, success)
+    const confirmation = network && !network.pending && !network.requestOnly
+      && (network.code === 0 || network.code === '0') ? 'platform' : 'page'
+    this.finish(message, success, options.text, confirmation)
     return {
+      confirmation: success ? confirmation : undefined,
       failureReason: success ? undefined : 'send-failed',
       method,
       network,

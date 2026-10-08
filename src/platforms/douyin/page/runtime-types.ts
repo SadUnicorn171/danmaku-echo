@@ -180,6 +180,8 @@ export interface RendererInstance {
   animationFrame: RendererAnimationFrameId
   canvas: HTMLCanvasElement
   canvasEverConnected: boolean
+  /** First maintenance observation of a previously mounted Canvas being detached. */
+  detachedAt?: TimestampMilliseconds
   canvasId: number
   channels: RendererChannel[]
   config: RendererConfig
@@ -229,6 +231,7 @@ export type RendererFavoriteRequest = RendererActionRequest<'favorite'>
 
 export interface RendererOrphanInstance {
   barrages: RendererBarrageOptions[]
+  sourceCanvas?: HTMLCanvasElement
   config: Partial<RendererConfig>
   createdAt: TimestampMilliseconds
   id: RendererInstanceId

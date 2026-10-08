@@ -101,6 +101,11 @@ function normalizedManualRepeatReminderSettings(
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
+  douyinNativeSettings: Object.freeze({
+    hideGiftMessages: false,
+    hideLuckyBagCommands: false,
+    blockGiftEffects: false,
+  }),
   enabled: true,
   altClick: true,
   actions: Object.freeze({
@@ -266,10 +271,21 @@ export function normalizeWhitespace(value: unknown): string {
   )
 }
 
+let graphemeSegmenter: Intl.Segmenter | null | undefined
+
 function sliceGraphemes(value: string, limit: number): string {
   if (limit <= 0) return ''
-  if (typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function') {
-    const segments = new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(value)
+  // UTF-16 length is never shorter than grapheme count, so short messages
+  // already fit without constructing a segmenter or copying their contents.
+  if (value.length <= limit) return value
+  if (graphemeSegmenter === undefined) {
+    graphemeSegmenter =
+      typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'function'
+        ? new Intl.Segmenter(undefined, { granularity: 'grapheme' })
+        : null
+  }
+  if (graphemeSegmenter) {
+    const segments = graphemeSegmenter.segment(value)
     const result: string[] = []
     for (const item of segments) {
       if (result.length >= limit) break
@@ -307,6 +323,7 @@ export function isPlausibleMessage(value: unknown, maxLength?: number): boolean 
 
 export function mergeSettings(saved?: unknown): ExtensionSettings {
   const value = isRecord(saved) ? saved : {}
+  const savedDouyinNative = isRecord(value.douyinNativeSettings) ? value.douyinNativeSettings : {}
   const savedPlatforms = isRecord(value.platforms) ? value.platforms : {}
   const savedActions = isRecord(value.actions) ? value.actions : {}
   const savedSideChatCapsule = isRecord(value.sideChatCapsule)
@@ -426,6 +443,11 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
         typeof savedNativeDanmakuCapsule.douyu === 'boolean'
           ? savedNativeDanmakuCapsule.douyu
           : DEFAULT_SETTINGS.nativeDanmakuCapsule.douyu,
+    },
+    douyinNativeSettings: {
+      hideGiftMessages: savedDouyinNative.hideGiftMessages === true,
+      hideLuckyBagCommands: savedDouyinNative.hideLuckyBagCommands === true,
+      blockGiftEffects: savedDouyinNative.blockGiftEffects === true,
     },
     colors: {
       huya: mergeColorSettings(savedColors.huya),

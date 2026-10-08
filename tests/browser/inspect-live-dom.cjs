@@ -33,6 +33,7 @@ const scenarioName = String(
   .replace(/[^a-z0-9._-]+/gi, '-')
   .slice(0, 80)
 const targetParameters = new URL(targetUrl).searchParams
+const realPerformanceMode = process.argv.find((argument) => argument.startsWith('--realperf='))?.slice('--realperf='.length)
 const isMicrosoftEdge = /msedge/i.test(path.basename(edgePath || ''))
 const expectedDouyinReplyMention =
   targetParameters.get('nativefill') === '1'
@@ -278,10 +279,12 @@ async function inspect() {
     }
     // Douyin's HSTS upgrades HTTP fixtures to HTTPS. Serve only this exact
     // fixture navigation through CDP, with content read from the loopback server.
-    if (normalizedInjectPlatform === 'douyin' && (targetParameters.get('autoscale') === '1' || targetParameters.get('startupperf') === '1')
-        && hostResolverRules.includes('MAP live.douyin.com 127.0.0.1')) {
-      const fixtureUrl = new URL(targetUrl)
-      fixtureUrl.hostname = '127.0.0.1'
+    if (normalizedInjectPlatform === 'douyin'
+        && hostResolverRules.includes(`MAP ${new URL(targetUrl).hostname} 127.0.0.1`)) {
+      const fixtureSource = process.argv.find(argument => argument.startsWith('--fixture-source='))?.slice('--fixture-source='.length)
+      const fixtureUrl = new URL(fixtureSource || targetUrl)
+      if (!fixtureSource) fixtureUrl.hostname = '127.0.0.1'
+      if (fixtureUrl.hostname !== '127.0.0.1' || fixtureUrl.protocol !== 'http:') throw new Error('Fixture source must be HTTP loopback')
       const fixtureResponse = await fetch(fixtureUrl)
       if (!fixtureResponse.ok) throw new Error('Local fixture request failed')
       fixtureBody = Buffer.from(await fixtureResponse.arrayBuffer()).toString('base64')
@@ -388,10 +391,10 @@ async function inspect() {
     }
   }
 
-  async function evaluateValue(expression) {
+  async function evaluateValue(expression, contextId = evaluationContextId) {
     const result = await send('Runtime.evaluate', {
       expression,
-      ...(evaluationContextId ? { contextId: evaluationContextId } : {}),
+      ...(contextId ? { contextId } : {}),
       returnByValue: true,
       awaitPromise: true,
     })
@@ -412,10 +415,201 @@ async function inspect() {
     return result.result.value
   }
 
+  if (realPerformanceMode) {
+    if (!['off', 'radar-off', 'radar-on'].includes(realPerformanceMode)) {
+      throw new Error(`Unknown real performance mode: ${realPerformanceMode}`)
+    }
+    if (realPerformanceMode !== 'off') {
+      await evaluateValue(`(async () => {
+        const saved = await chrome.storage.sync.get(['enabled', 'repeatReminder']);
+        await chrome.storage.sync.set({
+          enabled: true,
+          repeatReminder: { ...saved.repeatReminder, enabled: ${realPerformanceMode === 'radar-on'} }
+        });
+        return true;
+      })()`)
+    }
+    await delay(8_000)
+    await send('Performance.enable')
+    await send('HeapProfiler.collectGarbage')
+    const before = {
+      metrics: (await send('Performance.getMetrics')).metrics,
+      heap: await send('Runtime.getHeapUsage'),
+    }
+    const page = await evaluateValue(`(async () => {
+      const longTasks = [];
+      const frames = [];
+      const observer = typeof PerformanceObserver === 'function'
+        ? new PerformanceObserver((list) => list.getEntries().forEach((entry) => longTasks.push(entry.duration)))
+        : null;
+      try { observer?.observe({ entryTypes: ['longtask'] }); } catch {}
+      let lastFrame = 0;
+      let running = true;
+      const frame = (at) => {
+        if (lastFrame) frames.push(at - lastFrame);
+        lastFrame = at;
+        if (running) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+      await new Promise((resolve) => setTimeout(resolve, 15_000));
+      running = false;
+      observer?.disconnect();
+      frames.sort((a, b) => a - b);
+      return {
+        title: document.title.slice(0, 160), url: location.href,
+        readyState: document.readyState,
+        videoElements: document.querySelectorAll('video').length,
+        bodyTextLength: document.body?.innerText?.length || 0,
+        extensionPortal: Boolean(document.querySelector('.bcp-one-portal')),
+        radarHost: Boolean(document.querySelector('[data-bcp-repeat-reminder-owned]')),
+        longTaskCount: longTasks.length,
+        longTaskTotalMs: longTasks.reduce((sum, duration) => sum + duration, 0),
+        frameCount: frames.length,
+        frameP95Ms: frames[Math.floor(frames.length * .95)] || 0,
+      };
+    })()`)
+    await send('HeapProfiler.collectGarbage')
+    const after = {
+      metrics: (await send('Performance.getMetrics')).metrics,
+      heap: await send('Runtime.getHeapUsage'),
+    }
+    const realPagePerformance = { mode: realPerformanceMode, before, after, page }
+    const assertionFailures = [
+      ...(realPerformanceMode !== 'off' && !page.extensionPortal ? ['extension-not-mounted'] : []),
+      ...(realPerformanceMode === 'off' && page.extensionPortal ? ['unexpected-extension'] : []),
+    ]
+    socket?.close()
+    return { realPagePerformance, assertionFailures, extensionProbe, consoleEvents }
+  }
+
+  if (targetParameters.has('pageperf')) {
+    const mode = targetParameters.get('pageperf')
+    if (mode !== 'off') {
+      await evaluateValue(`(async () => {
+        const saved = await chrome.storage.sync.get(['enabled', 'repeatReminder']);
+        await chrome.storage.sync.set({
+          enabled: true,
+          repeatReminder: { ...saved.repeatReminder, enabled: ${mode === 'radar-on'} }
+        });
+        const acknowledge = document.querySelector('[data-bcp-repeat-reminder-owned]')
+          ?.shadowRoot?.querySelector('.onboarding-acknowledge');
+        if (acknowledge instanceof HTMLButtonElement) acknowledge.click();
+        return true;
+      })()`)
+      await delay(500)
+    }
+    await send('Performance.enable')
+    await send('HeapProfiler.collectGarbage')
+    const before = {
+      metrics: (await send('Performance.getMetrics')).metrics,
+      heap: await send('Runtime.getHeapUsage'),
+    }
+    if (process.env.DANMAKU_PAGE_PERF_PROFILE === '1') {
+      await send('Profiler.enable')
+      await send('Profiler.start')
+    }
+    const workload = await evaluateValue(`(async () => {
+      const root = document.querySelector('#chat-room__list');
+      if (!root) throw new Error('Huya chat fixture was not found');
+      const durations = [];
+      const frames = [];
+      const observer = typeof PerformanceObserver === 'function'
+        ? new PerformanceObserver((list) => list.getEntries().forEach((entry) => durations.push(entry.duration)))
+        : null;
+      try { observer?.observe({ entryTypes: ['longtask'] }); } catch {}
+      let lastFrame = 0;
+      let running = true;
+      const frame = (at) => {
+        if (lastFrame) frames.push(at - lastFrame);
+        lastFrame = at;
+        if (running) requestAnimationFrame(frame);
+      };
+      requestAnimationFrame(frame);
+      let created = 0;
+      const timer = setInterval(() => {
+        const row = document.createElement('div');
+        row.className = 'J_msg';
+        row.dataset.pageperfRow = 'true';
+        const name = document.createElement('span');
+        name.className = 'name';
+        name.textContent = '压测用户：';
+        const message = document.createElement('span');
+        message.className = 'msg';
+        message.textContent = '弹幕性能测量 ' + (created % 20);
+        row.append(name, message);
+        root.append(row);
+        if (root.children.length > 600) root.children[0].remove();
+        created++;
+      }, 20);
+      await new Promise((resolve) => setTimeout(resolve, 12_000));
+      clearInterval(timer);
+      running = false;
+      observer?.disconnect();
+      return {
+        created, frames: frames.length,
+        frameP95Ms: frames.sort((a, b) => a - b)[Math.floor(frames.length * .95)] || 0,
+        longTasks: durations.length,
+        longTaskTotalMs: durations.reduce((sum, value) => sum + value, 0),
+        longTaskMaxMs: Math.max(0, ...durations),
+        radarHost: Boolean(document.querySelector('[data-bcp-repeat-reminder-owned]')),
+        extensionPortal: Boolean(document.querySelector('.bcp-one-portal')),
+      };
+    })()`)
+    if (process.env.DANMAKU_PAGE_PERF_PROFILE === '1') {
+      const { profile } = await send('Profiler.stop')
+      if (artifactDirectory) writeFileSync(
+        path.join(artifactDirectory, `${scenarioName}-cpu-profile.json`),
+        JSON.stringify(profile),
+      )
+    }
+    await send('HeapProfiler.collectGarbage')
+    const after = {
+      metrics: (await send('Performance.getMetrics')).metrics,
+      heap: await send('Runtime.getHeapUsage'),
+    }
+    const removedRows = await evaluateValue(`(() => {
+      const rows = document.querySelectorAll('[data-pageperf-row]');
+      rows.forEach((row) => row.remove());
+      return rows.length;
+    })()`)
+    const cleanupWaitMs = Math.max(1_000, Number(process.env.DANMAKU_PAGE_PERF_RETENTION_WAIT_MS) || 1_000)
+    await delay(cleanupWaitMs)
+    await send('HeapProfiler.collectGarbage')
+    const afterCleanup = { heap: await send('Runtime.getHeapUsage') }
+    const pagePerformance = {
+      mode, before, after, afterCleanup, cleanupWaitMs, removedRows, workload,
+      userAgent: await evaluateValue('navigator.userAgent'),
+    }
+    const assertionFailures = [
+      ...(workload.created < 450 ? ['traffic-generation'] : []),
+      ...(mode === 'off' && workload.extensionPortal ? ['unexpected-extension'] : []),
+      ...(mode !== 'off' && !workload.extensionPortal ? ['extension-not-mounted'] : []),
+      ...(mode === 'radar-on' && !workload.radarHost ? ['radar-not-mounted'] : []),
+    ]
+    socket?.close()
+    return { pagePerformance, assertionFailures, extensionProbe, consoleEvents }
+  }
+
   if (targetParameters.get('favoritesdesign') === '1') {
     const favoritesDesign = await require('./inspect-favorites-design.cjs')({ send, evaluateValue, artifactDirectory })
     socket?.close()
     return { favoritesDesign, assertionFailures: favoritesDesign.assertionFailures, extensionProbe, consoleEvents }
+  }
+
+  if (targetParameters.get('nativesettings') === '1') {
+    const isolatedContextId = [...executionContexts].reverse().find(context =>
+      context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))?.id
+    const douyinNativeSettings = await require('./inspect-douyin-native-settings.cjs')({ evaluateValue, isolatedContextId })
+    socket?.close()
+    return { douyinNativeSettings, assertionFailures: douyinNativeSettings.assertionFailures, extensionProbe, consoleEvents }
+  }
+
+  if (targetParameters.get('lifecycle') === '1') {
+    const isolatedContextId = [...executionContexts].reverse().find(context =>
+      context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))?.id
+    const douyinLifecycle = await require('./inspect-douyin-lifecycle.cjs')({ send, evaluateValue, isolatedContextId, spa: targetParameters.get('spaentry') === '1' })
+    socket?.close()
+    return { douyinLifecycle, assertionFailures: douyinLifecycle.assertionFailures, extensionProbe, consoleEvents }
   }
 
   if (targetParameters.get('startupperf') === '1') {
@@ -1548,13 +1742,17 @@ async function inspect() {
         releaseOtherTravel != null &&
         releaseTargetTravel >= -0.5 &&
         releaseTargetTravel <= Math.max(3, releaseOtherTravel * 1.35 + 3)
-      const previousDouyinActionSettings = await evaluateValue("chrome.storage.sync.get('actions')")
+      const douyinStorageContext = extensionOnlyPlatform
+        ? [...executionContexts].reverse().find(context => context.type === 'isolated'
+          && context.origin.startsWith('chrome-extension://'))?.id : 0
+      if (extensionOnlyPlatform && !douyinStorageContext) throw new Error('Douyin extension storage context missing')
+      const previousDouyinActionSettings = await evaluateValue("chrome.storage.sync.get('actions')", douyinStorageContext)
       await evaluateValue(`chrome.storage.sync.set({ actions: {
         plusOne: true,
         reply: true,
         favorite: true,
         copy: true
-      } })`)
+      } }).then(() => true)`, douyinStorageContext)
       await delay(180)
       const copyEnabledState = await readTakeoverState()
       const copyActionAvailable = Boolean(
@@ -1565,7 +1763,7 @@ async function inspect() {
       await evaluateValue(
         `chrome.storage.sync.set({ actions: ${JSON.stringify(
           previousDouyinActionSettings.actions || {},
-        )} })`,
+        )} }).then(() => true)`, douyinStorageContext,
       )
       await delay(100)
       douyinDomRegression = {
@@ -1734,6 +1932,42 @@ async function inspect() {
         resumeSamples,
         afterClick,
         afterDisable,
+      }
+
+      if (extensionOnlyPlatform) {
+        const isolated = [...executionContexts].reverse().find(
+          (context) => context.type === 'isolated' && context.origin.startsWith('chrome-extension://'),
+        )
+        const result = isolated && await send('Runtime.evaluate', {
+          contextId: isolated.id,
+          expression: `(async () => {
+            const indexKey = 'danmakuEchoSendStatisticsIndexV1';
+            const dayPrefix = 'danmakuEchoSendStatisticsDayV1:';
+            for (let attempt = 0; attempt < 30; attempt++) {
+              const index = (await chrome.storage.local.get(indexKey))[indexKey];
+              const keys = (index?.days || []).map(day => dayPrefix + day);
+              if (keys.length) {
+                const days = await chrome.storage.local.get(keys);
+                const events = keys.flatMap(key => days[key]?.events || []);
+                for (const value of Object.values(days)) {
+                  if (value?.schemaVersion !== 2) continue;
+                  const chunkKeys = Array.from({ length: Math.ceil(value.total / 128) }, (_, i) => 'danmakuEchoSendStatisticsChunkV2:' + value.date + ':' + i);
+                  const chunks = await chrome.storage.local.get(chunkKeys);
+                  const eventKeys = Object.values(chunks).flat().map(id => 'danmakuEchoSendStatisticsEventV2:' + value.date + ':' + id);
+                  events.push(...Object.values(await chrome.storage.local.get(eventKeys)));
+                }
+                if (events.some(event =>
+                    event.platform === 'douyin' && typeof event.roomId === 'string'
+                    && Number.isInteger(event.sentAtSec))) return true;
+              }
+              await new Promise(resolve => setTimeout(resolve, 50));
+            }
+            return false;
+          })()`,
+          awaitPromise: true,
+          returnByValue: true,
+        })
+        douyinDomRegression.sendStatisticsRecorded = result?.result?.value === true
       }
 
       await evaluateValue(`(() => {
@@ -2846,6 +3080,37 @@ async function inspect() {
     sideChatRegression.assertionFailures = sideChatAssertions.filter(
       (key) => sideChatRegression[key] !== true,
     )
+    if (extensionOnlyPlatform) {
+      sideChatRegression.sendStatisticsRecorded = await evaluateValue(`(async () => {
+        const indexKey = 'danmakuEchoSendStatisticsIndexV1';
+        const dayPrefix = 'danmakuEchoSendStatisticsDayV1:';
+        for (let attempt = 0; attempt < 30; attempt++) {
+          const index = (await chrome.storage.local.get(indexKey))[indexKey];
+          const keys = (index?.days || []).map(day => dayPrefix + day);
+          if (keys.length) {
+            const days = await chrome.storage.local.get(keys);
+            const events = keys.flatMap(key => days[key]?.events || []);
+            for (const value of Object.values(days)) {
+              if (value?.schemaVersion !== 2) continue;
+              const chunkKeys = Array.from({ length: Math.ceil(value.total / 128) }, (_, i) => 'danmakuEchoSendStatisticsChunkV2:' + value.date + ':' + i);
+              const chunks = await chrome.storage.local.get(chunkKeys);
+              const eventKeys = Object.values(chunks).flat().map(id => 'danmakuEchoSendStatisticsEventV2:' + value.date + ':' + id);
+              events.push(...Object.values(await chrome.storage.local.get(eventKeys)));
+            }
+            if (events.some(event => event.platform === ${JSON.stringify(normalizedInjectPlatform)}
+                && typeof event.roomId === 'string' && Number.isInteger(event.sentAtSec)
+                && event.text === ${JSON.stringify(sideChatRegression.favoriteSentValue)}
+                && typeof event.text === 'string' && event.text.length > 0
+                && !Object.hasOwn(event, 'payload') && !Object.hasOwn(event, 'assets'))) return true;
+          }
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+        return false;
+      })()`)
+      if (!sideChatRegression.sendStatisticsRecorded) {
+        sideChatRegression.assertionFailures.push('sendStatisticsRecorded')
+      }
+    }
   }
 
   let nativeEmojiRegression = null
@@ -4422,7 +4687,7 @@ async function inspect() {
       repeatReminder: { enabled: true, mode: 'auto', promptScalePercent: 100 }
     }); return true; })()`);
     for (const [screenWidth, screenHeight, percent] of [
-      [3860, 2160, 100], [1930, 1080, 50], [7720, 4320, 200],
+      [3840, 2160, 100], [1920, 1080, 65], [2560, 1440, 87], [7680, 4320, 200],
     ]) {
       await send('Emulation.setDeviceMetricsOverride', {
         width: 1280, height: 720, deviceScaleFactor: 1, mobile: false, screenWidth, screenHeight,
@@ -4659,7 +4924,7 @@ async function inspect() {
   value.nativeEmojiRegression = nativeEmojiRegression
   value.sideChatRegression = sideChatRegression
   value.bilibiliRichRegression = bilibiliRichRegression
-  if (hasDouyinFixture && douyinDomRegression) {
+  if ((hasDouyinFixture || normalizedInjectPlatform === 'douyin') && douyinDomRegression) {
     const failures = []
     ;[
       'ready',
@@ -4703,6 +4968,9 @@ async function inspect() {
     ].forEach((key) => {
       if (douyinDomRegression[key] !== true) failures.push(key)
     })
+    if (extensionOnlyPlatform && douyinDomRegression.sendStatisticsRecorded !== true) {
+      failures.push('sendStatisticsRecorded')
+    }
     if (lateDouyinHook) {
       ;[
         'lateCanvasVisibleBeforeClean',
@@ -4747,6 +5015,8 @@ inspect()
       ? {
           favoritesDesign: result.favoritesDesign,
           startupPerformance: result.startupPerformance,
+          pagePerformance: result.pagePerformance,
+          realPagePerformance: result.realPagePerformance,
           runtimePerformance: result.runtimePerformance,
           assertionFailures: result.assertionFailures,
           bilibiliRichRegression: result.bilibiliRichRegression,
@@ -4756,6 +5026,8 @@ inspect()
           executionContexts: result.executionContexts,
           extensionProbe: result.extensionProbe,
           douyinDomRegression: result.douyinDomRegression,
+          douyinNativeSettings: result.douyinNativeSettings,
+          douyinLifecycle: result.douyinLifecycle,
           douyinRichRegression: result.douyinRichRegression,
           nativeEmojiRegression: result.nativeEmojiRegression,
           sideChatRegression: result.sideChatRegression,

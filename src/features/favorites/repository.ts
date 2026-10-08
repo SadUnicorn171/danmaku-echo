@@ -249,6 +249,9 @@ export function normalizeFavoriteTags(value: unknown): string[] {
 function normalizeDatabase(value: unknown): FavoritesDatabase {
   if (!value || typeof value !== "object") return emptyDatabase();
   const source = value as Partial<FavoritesDatabase>;
+  if (source.schemaVersion !== undefined && ![1, FAVORITES_SCHEMA_VERSION].includes(source.schemaVersion)) {
+    throw new Error("收藏数据版本较新或不受支持，已保留原始数据，请更新扩展");
+  }
   const items = Array.isArray(source.items) ? source.items.flatMap((raw) => {
     if (!raw || typeof raw !== "object") return [];
     const candidate = raw as Partial<FavoriteDanmaku>;
@@ -271,15 +274,18 @@ function normalizeDatabase(value: unknown): FavoritesDatabase {
       updatedAt: Number(candidate.updatedAt) || now
     } satisfies FavoriteDanmaku];
   }) : [];
-  const roomKeys = new Set(items.flatMap((item) => [
-    ...item.origins.map((origin) => origin.roomKey),
-    ...Object.entries(item.roomStats)
-      .filter(([, stats]) => stats.addedToRoomAt)
-      .map(([roomKey]) => roomKey)
-  ]));
-  roomKeys.forEach((roomKey) => {
-    items
-      .filter((item) => belongsToStatsRoom(item, roomKey))
+  const rooms = new Map<string, FavoriteDanmaku[]>();
+  for (const item of items) {
+    const keys = new Set([...item.origins.map((origin) => origin.roomKey),
+      ...Object.entries(item.roomStats).filter(([, stats]) => stats.addedToRoomAt).map(([key]) => key)]);
+    for (const key of keys) {
+      const group = rooms.get(key) || [];
+      group.push(item);
+      rooms.set(key, group);
+    }
+  }
+  rooms.forEach((group, roomKey) => {
+    group
       .sort((first, second) => {
         const firstOrder = Number(first.roomStats[roomKey]?.customOrder) || Number.MAX_SAFE_INTEGER;
         const secondOrder = Number(second.roomStats[roomKey]?.customOrder) || Number.MAX_SAFE_INTEGER;
@@ -422,10 +428,32 @@ export async function exportFavoritesData(area: StorageAreaLike): Promise<Favori
   };
 }
 
-export async function importFavoritesData(
-  area: StorageAreaLike,
-  value: unknown
-): Promise<FavoritesDatabase> {
+export async function previewFavoritesImport(area: StorageAreaLike, value: unknown) {
+  const current = (await storageGet(area)).database;
+  const incoming = parseFavoritesImport(value);
+  const previous = new Map(current.items.map((item) => [item.id, item]));
+  const added = incoming.items.filter((item) => !previous.has(item.id)).length;
+  const changed = incoming.items.filter((item) => previous.has(item.id)
+    && JSON.stringify(previous.get(item.id)) !== JSON.stringify(item)).length;
+  const ids = new Set(incoming.items.map((item) => item.id));
+  return { added, changed, removed: current.items.filter((item) => !ids.has(item.id)).length,
+    total: incoming.items.length, revision: current.revision };
+}
+
+export async function restoreFavoritesBeforeImport(area: StorageAreaLike): Promise<FavoritesDatabase> {
+  const stored = await new Promise<Record<string, unknown>>((resolve, reject) => {
+    area.get([FAVORITES_IMPORT_BACKUP_STORAGE_KEY], (value) => {
+      const error = globalThis.chrome?.runtime?.lastError;
+      if (error) reject(new Error(error.message));
+      else resolve(value);
+    });
+  });
+  const previous = storedDatabase(stored[FAVORITES_IMPORT_BACKUP_STORAGE_KEY]);
+  if (!previous) throw new Error("没有可恢复的导入前备份");
+  return importFavoritesData(area, { format: 'danmaku-echo-favorites', database: previous });
+}
+
+function parseFavoritesImport(value: unknown): FavoritesDatabase {
   let parsed = value;
   if (typeof value === "string") {
     try {
@@ -434,6 +462,9 @@ export async function importFavoritesData(
       throw new Error("备份文件不是有效的 JSON");
     }
   }
+  if (isRecord(parsed) && parsed.schemaVersion !== undefined && ![1, FAVORITES_SCHEMA_VERSION].includes(Number(parsed.schemaVersion))) {
+    throw new Error("收藏备份版本不受支持，请更新扩展");
+  }
   if (!isRecord(parsed) || parsed.format !== "danmaku-echo-favorites"
       || !Object.hasOwn(parsed, "database")) {
     throw new Error("不是弹幕回声收藏备份文件");
@@ -441,6 +472,14 @@ export async function importFavoritesData(
   const incoming = storedDatabase(parsed.database);
   if (!incoming) throw new Error("收藏备份内容损坏或格式不完整");
 
+  return incoming;
+}
+
+export async function importFavoritesData(
+  area: StorageAreaLike,
+  value: unknown
+): Promise<FavoritesDatabase> {
+  const incoming = parseFavoritesImport(value);
   const current = (await storageGet(area)).database;
   incoming.revision = Math.max(current.revision, incoming.revision) + 1;
   incoming.updatedAt = Date.now();
@@ -612,6 +651,22 @@ export function createFavoritesRepository(area: StorageAreaLike) {
     },
     get recoveredFromBackup(): boolean {
       return recoveredFromBackup;
+    },
+    importData(value: unknown, expectedRevision: number): Promise<FavoritesDatabase> {
+      return enqueue(async () => {
+        await loadLatest();
+        if (database.revision !== expectedRevision) throw new Error("收藏已变化，请重新预览后导入");
+        database = await importFavoritesData(area, value);
+        notify();
+        return database;
+      });
+    },
+    restoreBeforeImport(): Promise<FavoritesDatabase> {
+      return enqueue(async () => {
+        database = await restoreFavoritesBeforeImport(area);
+        notify();
+        return database;
+      });
     },
     async load(): Promise<FavoritesDatabase> {
       return enqueue(async () => {

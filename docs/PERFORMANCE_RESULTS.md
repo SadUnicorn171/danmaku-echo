@@ -142,3 +142,38 @@ npm run test:browser -- --browser=chrome --scenario=bilibili-startup --artifact-
 `scripts/benchmark-startup.cjs` 可运行完整 48 次对照，但要求先保留 `test-results/performance/baseline-extension`；不要用当前构建覆盖该目录后再声称存在前后对照。更换基线时同时更新其构建 SHA-256 和来源记录。
 
 每次复现应写入新的产物目录，保留所有 attempt、失败原因和未经筛选的统计。运行器会逐场景落盘，但主机重启留下的部分 summary 不是完整套件通过证明。
+
+## 8. 2026-09-23 后续测量与修复
+
+本节更新上述第 6 节的 Bilibili 已知失败状态，并记录新增的整页 fixture 基线。环境为 Chrome / Edge 153 的独立临时 profile、无 GPU 的无头模式；每档只运行一次，数值用于定位热点，不代表真实直播间的 FPS 或统计显著的收益。原始产物位于本地 `test-results/goal-pageperf-verified/`、`goal-pageperf-optimized/`、`goal-pageperf-final/`、`goal-pageperf-profile/`，不纳入扩展包。
+
+- Bilibili 发送后曾在 80–1,600ms 内反复失焦，抢走新回复草稿的焦点。回复操作现在取消前一次发送的延迟关闭任务；`bilibili-side` 在 Chrome / Edge 均由仅 `replyInputFocused` 失败变为通过。关闭快捷输入的页面行为移入 `src/platforms/bilibili/input-focus.ts`，侧聊和全屏场景在两个浏览器均通过。
+- 新增手动 `page-performance-off`、`page-performance-radar-off`、`page-performance-radar-on` 场景。每档在虎牙模拟页生成 600 条聊天 DOM，持续 12 秒；收集 CDP `TaskDuration` / `ScriptDuration`、长任务、帧间隔及强制 GC 后的页面 isolate 堆；移除生成节点后再采一次堆。三档均保留扩展关闭 / 雷达关闭 / 雷达开启的明确标记。
+- Chrome 雷达开启档的 CPU profile 中，短弹幕的 `sliceGraphemes()` 自身采样约 555ms，雷达关闭档约 517ms。`parseMessageText()` 现在对 UTF-16 长度不超过限制的文本直接返回，长文本才复用一个 `Intl.Segmenter`。UTF-16 长度不会小于字素数，因此短文本路径不改变 Emoji 截断语义；原有组合 Emoji 契约测试继续通过。
+
+| 浏览器 / 雷达状态 | 优化前脚本耗时 | 优化后脚本耗时 | 最终复测脚本耗时 | 最终复测长任务 / 帧间隔 P95 |
+| --- | ---: | ---: | ---: | ---: |
+| Chrome / 关 | 1,062ms | 488ms | 571ms | 0 / 16.8ms |
+| Chrome / 开 | 1,246ms | 581ms | 683ms | 0 / 16.7ms |
+| Edge / 关 | 973ms | 624ms | 687ms | 0 / 16.7ms |
+| Edge / 开 | 1,380ms | 752ms | 836ms | 0 / 16.7ms |
+
+最终复测的扩展关闭脚本耗时为 Chrome 95ms、Edge 148ms；开启扩展后的绝对开销不能全部归于雷达，因为共同的悬停、候选解析和 UI 也在运行。最终复测全部六档都生成并清理 600 条节点。雷达开启档清理后 1 秒的堆约 2.63 MiB，高于运行前约 1.89 MiB。
+
+继续等待 70 秒发现：没有新弹幕时，检测器原先只在下一条输入或读取建议时清理过期项，60 秒窗口内容会滞留。现在复用已有的每秒切房检查清理到期索引，输入路径不额外重复清理。两浏览器各一次相同负载的清理后堆：Chrome 2,601,868 → 2,489,028 字节，Edge 2,600,008 → 2,486,796 字节。剩余内存仍包含最长 10 分钟的消息 ID 去重记录及其它运行时状态；单次 GC 样本不能证明所有 DOM 引用已释放，也没有完成真实直播间保留链分析。
+
+对动态 DOM 扫描，当前 30,000 节点采集 fixture 的三轮 P95 在 Chrome 为 2.0–2.9ms、Edge 为 2.6–2.8ms，每次仍发出预期的 240 条。CPU profile 的 `querySelectorAll` 自身采样约 53–58ms / 12 秒，明显低于短文本分段热点。本轮没有收紧选择器或改变 Shadow Root 搜索范围，以免漏掉平台重建的聊天区。雷达每秒切房检查与抖音 500ms 维护任务保留：前者同步人数来源并清理静默到期项，后者负责 Worker / Canvas 恢复、心跳和 SPA；目前没有显示这些周期是主要热点的证据。
+
+四平台、两浏览器的本地启动场景全部通过，首次 portal 挂载为 82–156ms；导航后 2.5 秒内脚本耗时为 49–134ms、V8 编译耗时为 10–19ms。这些指标包含 fixture 和运行期工作，不能单独归属扩展解析。现有数据不足以证明按平台拆分 bundle 会改善启动体验，因此没有调整 manifest 注入顺序或构建入口。
+
+另外在公开的 `https://live.bilibili.com/1` 做了一轮只读 Chrome 真实页采样。三档都显示页面加载完成且有 1 个视频节点；扩展开启时 portal 已挂载。各档在页面加载并预热后观察 15 秒：
+
+| 真实页 Chrome 单次样本 | 脚本耗时 | 任务耗时 | 帧间隔 P95 | 长任务 |
+| --- | ---: | ---: | ---: | ---: |
+| 扩展关闭 | 119ms | 759ms | 16.8ms | 0 |
+| 扩展开启、雷达关闭 | 125ms | 713ms | 16.7ms | 0 |
+| 扩展开启、雷达开启 | 139ms | 760ms | 16.7ms | 0 |
+
+此页无头运行且关闭 GPU，页面内容与视频负载会随时间变化；三档各一次不能估算扩展的真实 CPU 差值，也不能把帧间隔等同于用户看到的播放 FPS。原始记录在本地 `test-results/goal-real-page/`。没有登录、点击发送或写入直播站点。
+
+复现：先执行 `npm run build`，再分别运行 `npm run test:browser -- --scenario=page-performance-off`、`page-performance-radar-off`、`page-performance-radar-on`；这些场景是本地可选测试，不进入 CI。设 `DANMAKU_PAGE_PERF_PROFILE=1` 可在产物目录额外保存 CPU profile；设 `DANMAKU_PAGE_PERF_RETENTION_WAIT_MS=70000` 可在清理节点后等待超过雷达窗口再采 GC 堆。真实页采样可用 `tests/browser/inspect-live-dom.cjs` 的 `--realperf=off|radar-off|radar-on` 参数，输入公开 URL、浏览器路径与独立临时 profile，并禁用 fixture 的 host 映射。完整 `npm run check`、四平台关键侧聊与 Bilibili 全屏浏览器回归均通过；真人交互、GPU 视频播放与多轮真实房间对照仍需单独验收。

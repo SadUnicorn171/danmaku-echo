@@ -52,6 +52,8 @@ function createHarness(options: HarnessOptions = {}) {
   const canceledIntents: string[] = []
   const toasts: string[] = []
   const failures: SendResult[] = []
+  const confirmed: { id: string; roomId?: string; second: number; text: string }[] = []
+  let roomId = 'old-room'
   button.addEventListener('click', () => {
     buttonClicks += 1
   })
@@ -93,16 +95,19 @@ function createHarness(options: HarnessOptions = {}) {
       normalizeRichPayload(value, (text) => String(text ?? '').trim(), 1_000),
     normalizeWhitespace: (value) => String(value ?? '').replace(/\s+/g, ' ').trim(),
     observeNetwork: () => Promise.resolve(createNetworkObserver(options.network ?? null)),
+    onConfirmedSend: (id, second, room, text) => confirmed.push({ id, second, roomId: room, text }),
     onFailure: (_message, _payload, result) => failures.push(result),
     platformName: '抖音直播',
     protection,
     query: (selectors, root = document) =>
       Array.from(root.querySelectorAll(selectors.join(','))),
+    roomId: () => roomId,
     sendDelayMs: 0,
     showToast: (message) => toasts.push(message),
   })
   return {
     canceledIntents,
+    confirmed,
     controller,
     failures,
     get buttonClicks() {
@@ -115,6 +120,7 @@ function createHarness(options: HarnessOptions = {}) {
       return released
     },
     toasts,
+    setRoomId(value: string) { roomId = value },
     written,
   }
 }
@@ -126,14 +132,18 @@ describe('DouyinSendController', () => {
 
   it('sends ordinary text through the discovered nearby button', async () => {
     const harness = createHarness()
-
-    const result = await harness.controller.send('普通弹幕')
+    const pending = harness.controller.send('普通弹幕')
+    harness.setRoomId('new-room')
+    const result = await pending
 
     expect(result).toMatchObject({ method: 'text', success: true })
     expect(harness.written).toEqual(['普通弹幕'])
     expect(harness.buttonClicks).toBe(1)
     expect(harness.enterPresses).toBe(0)
     expect(harness.released).toBe(1)
+    expect(harness.confirmed).toEqual([{
+      id: expect.any(String), roomId: 'old-room', second: Math.floor(Date.now() / 1_000), text: '普通弹幕',
+    }])
   })
 
   it.each([
@@ -147,6 +157,20 @@ describe('DouyinSendController', () => {
 
     expect(result).toMatchObject({ method: 'native-emoji', success: true })
     expect(harness.written).toEqual([text])
+    expect(harness.confirmed[0]?.text).toBe(text)
+  })
+
+  it('records the final bracket text rebuilt from older rich payloads without their resources', async () => {
+    const harness = createHarness()
+    const asset = { keys: ['emoji:smile'], src: 'https://example.com/smile.png', token: '[微笑]' }
+    const payload: RichPayload = {
+      text: '你好', plainText: '你好', assets: [asset],
+      parts: [{ type: 'text', text: '你好' }, { type: 'emoji', asset }],
+    }
+    expect((await harness.controller.send(payload.text, payload)).success).toBe(true)
+    expect(harness.written).toEqual(['你好[微笑]'])
+    expect(harness.confirmed[0]?.text).toBe('你好[微笑]')
+    expect(harness.confirmed[0]).not.toHaveProperty('assets')
   })
 
   it('does not require an image URL or token when the complete bracket text exists', async () => {
@@ -196,6 +220,7 @@ describe('DouyinSendController', () => {
 
     expect(limited).toMatchObject({ failureReason: 'platform-feedback', success: false })
     expect(blocked).toMatchObject({ failureReason: 'cooldown', success: false })
+    expect(harness.confirmed).toEqual([])
     expect(harness.toasts.some((message) => message.includes('发送太快'))).toBe(true)
     expect(harness.toasts.some((message) => message.includes('live.douyin.com/send'))).toBe(true)
   })

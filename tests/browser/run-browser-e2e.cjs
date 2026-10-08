@@ -1,5 +1,7 @@
 "use strict";
 
+const { requiredResultFailures } = require('./required-result.cjs');
+
 const { spawn } = require("node:child_process");
 const {
   existsSync,
@@ -26,6 +28,14 @@ const requestedScenario = String(
 );
 
 const scenarios = [
+  { name: "douyin-lifecycle", host: "live.douyin.com", platform: "douyin", query: "platform=douyin&lifecycle=1&skipSide=1", standardOrigin: true },
+  { name: "douyin-spa-startup", host: "www.douyin.com", platform: "douyin", query: "platform=douyin&lifecycle=1&spaentry=1&skipSide=1", standardOrigin: true },
+  { name: "douyin-native-settings", host: "live.douyin.com", platform: "douyin", query: "platform=douyin&nativesettings=1&skipSide=1" },
+  ...["off", "radar-off", "radar-on"].map((mode) => ({
+    name: `page-performance-${mode}`, host: "www.huya.com", platform: "huya",
+    query: `platform=huya&pageperf=${mode}&skipSide=1`, timeout: 120_000,
+    manualOnly: true, pagePerformanceMode: mode,
+  })),
   { name: "favorites-design", host: "www.huya.com", platform: "huya", query: "platform=huya&favoritesdesign=1&skipSide=1", manualOnly: true },
   ...[
     ["bilibili", "live.bilibili.com"], ["douyu", "www.douyu.com"],
@@ -317,9 +327,10 @@ async function runScenario(browser, fixturePort, scenario, attempt) {
     "MAP live.bilibili.com 127.0.0.1",
     "MAP www.douyu.com 127.0.0.1",
     "MAP live.douyin.com 127.0.0.1",
+    "MAP www.douyin.com 127.0.0.1",
     "EXCLUDE localhost",
   ].join(", ");
-  const targetUrl = `http://${scenario.host}:${fixturePort}/?${scenario.query}&manual=1`;
+  const targetUrl = `${scenario.standardOrigin ? `https://${scenario.host}` : `http://${scenario.host}:${fixturePort}`}/?${scenario.query}&manual=1`;
   const artifactName = `${browser.name}-${scenario.name}-attempt-${attempt}`;
   for (const suffix of [
     ".json",
@@ -360,14 +371,15 @@ async function runScenario(browser, fixturePort, scenario, attempt) {
         targetUrl,
         profile,
         String(cdpPort),
-        extensionPath,
+        scenario.pagePerformanceMode === "off" ? "none" : extensionPath,
         "2500",
         "none",
         hostRules,
-        `${scenario.platform}-extension`,
+        scenario.pagePerformanceMode === "off" ? scenario.platform : `${scenario.platform}-extension`,
         "--compact",
         `--artifact-dir=${artifactDirectory}`,
         `--scenario=${artifactName}`,
+        ...(scenario.standardOrigin ? [`--fixture-source=http://127.0.0.1:${fixturePort}/?${scenario.query}&manual=1`] : []),
       ],
       scenario.timeout || 60_000,
     );
@@ -415,7 +427,7 @@ async function main() {
         if (startupFailure) {
           result = await runScenario(browser, fixturePort, scenario, 2);
         }
-        const assertionFailures = parsedAssertionFailures(result.parsed);
+        const assertionFailures = [...parsedAssertionFailures(result.parsed), ...requiredResultFailures(scenario, result.parsed)];
         const passed = result.code === 0
           && !result.timedOut
           && Boolean(result.parsed)

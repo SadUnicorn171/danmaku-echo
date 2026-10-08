@@ -1,7 +1,7 @@
 import type { InterfaceScaleSettings } from './types'
 import { normalizeCapsuleScalePercent } from './repeat-reminder-settings'
 
-export const REFERENCE_SCREEN_WIDTH = 3860
+export const REFERENCE_SCREEN_WIDTH = 3840
 export const REFERENCE_SCREEN_HEIGHT = 2160
 
 export interface ScreenResolution {
@@ -34,5 +34,10 @@ export function resolveInterfaceScalePercent(
     (width * pixelRatio) / REFERENCE_SCREEN_WIDTH,
     (height * pixelRatio) / REFERENCE_SCREEN_HEIGHT,
   )
-  return normalizeCapsuleScalePercent(base * ratio)
+  const scaled = normalizeCapsuleScalePercent(base * ratio)
+  // Keep the reference display unchanged. Smaller displays retain 30% more
+  // of the current effective size, without overtaking the configured base.
+  return ratio < 1
+    ? normalizeCapsuleScalePercent(Math.min(base, scaled * 1.3))
+    : scaled
 }

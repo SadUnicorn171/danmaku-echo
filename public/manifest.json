@@ -10,6 +10,20 @@
     "48": "assets/icons/icon-48.png",
     "128": "assets/icons/icon-128.png"
   },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "assets/danmaku-echo-icon.png"
+      ],
+      "matches": [
+        "*://live.bilibili.com/*",
+        "*://*.douyu.com/*",
+        "*://*.huya.com/*",
+        "*://live.douyin.com/*",
+        "*://www.douyin.com/*"
+      ]
+    }
+  ],
   "permissions": [
     "storage",
     "scripting"
@@ -40,7 +54,7 @@
     {
       "matches": [
         "*://live.douyin.com/*",
-        "*://www.douyin.com/follow/live/*"
+        "*://www.douyin.com/*"
       ],
       "js": [
         "src/douyin-page-hook.js"

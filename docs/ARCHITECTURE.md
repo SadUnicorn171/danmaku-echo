@@ -62,6 +62,9 @@ isolated world  ⇄  类型化 window.postMessage 协议  ⇄  MAIN world
 
 抖音页面 Hook 旁路观察 Worker/MessagePort 已经解码的 Renderer 消息，不拦截
 WebSocket，也不替换官方 Worker。只有安全接管条件成立后才隐藏官方 Canvas；失效时必须恢复。
+MAIN hook 在 `www.douyin.com/*` 提前安装以覆盖 SPA 缓存方法，但直播路由之外不处理 Renderer 命令；
+隔离世界的业务 UI 仍只在直播路由加载。首次挂载、短暂脱离、路由竞争和 BFCache 的恢复约束见
+[抖音首次进入与停顿排查](DOUYIN_STARTUP_AND_MOTION.md)。
 
 ## Service Worker
 
@@ -113,6 +116,10 @@ WebSocket，也不替换官方 Worker。只有安全接管条件成立后才隐�
 - `LivePlatformSender`：文字、富消息、收藏重发和收藏前规范化
 - `SendCoordinator`：误触、重复、并发、冷却、网络观察和平台反馈
 - `LiveContentRuntime`：设置监听、页面/全屏/可见性事件、房间切换和资源销毁
+
+Bilibili 发送后关闭官方快捷输入框的 DOM 交互位于
+`platforms/bilibili/input-focus.ts`。`content-app.ts` 保留发送/回复的焦点所有权切换，
+新回复会取消前一次发送留下的延迟失焦回调。
 
 `content-app.ts` 仍包含较多装配闭包和兼容胶水。新代码应优先扩展上述模块或平台目录，
 不应把已迁出的状态机重新放回入口装配文件。
@@ -189,6 +196,8 @@ Bilibili 和虎牙以 selector adapter 为基础，并由平台模块补充候�
 - 无可靠人数/贵宾数时，以有预热和迟滞的最近弹幕流量调整阈值
 - 在页面内维护提示队列、静默期、倒计时和可选的受保护自动 `+1`
 
+自动 `+1` 的待发送队列受平台 queueLimit 限制，按房间和生命周期代次校验，并在发送前再次检查过期时间。切房、关闭雷达/自动发送或销毁会清空待发送项并取消等待计时；已交给平台发送器的操作无法撤回，不会自动重发失败消息。
+
 它不持久化弹幕内容，不在 Service Worker 聚合，不生成热词、问题、时间线或摘要，也不使用
 本地模型或云端分析。关闭雷达或刷新/切房会清理当前计数。
 
@@ -214,6 +223,7 @@ Bilibili 和虎牙以 selector adapter 为基础，并由平台模块补充候�
 - `editor-controller.ts`、`send-controller.ts`：官方编辑器与受保护发送
 - `own-message-controller.ts`：本人消息意图和双处框选
 - `radar-collector.ts`：侧聊与 Renderer 雷达消息的过滤和去重
+- `native-settings-controller.ts`：按用户偏好调整官方送礼信息、福袋口令和礼物特效开关；只操作已确认状态的原生控件，由同一 runtime 启停并清理观察器和临时悬停
 - `page-bridge.ts`：隔离世界唯一跨 world 通道
 
 不要重新在 `douyin-content.ts` 注册平行监听器或复制这些状态。
@@ -290,18 +300,23 @@ scroll、resize、hashchange 和 popstate。切房时先释放瞬时资源和 fe
 当前只使用两类 Chrome Storage：
 
 - `chrome.storage.sync`：扩展开关、平台设置、颜色、尺寸、雷达配置及设置页语言偏好（默认中文）
-- `chrome.storage.local`：收藏、雷达首次说明确认标记、抖音表情目录缓存、脱敏运行日志及发送失败附件
+- `chrome.storage.local`：收藏、雷达首次说明确认标记、抖音表情目录缓存、脱敏运行日志及发送失败附件，以及按 UTC 日期分片的插件发送统计
 
 雷达计数、提示队列、发送关联、观众 frame 缓存和实时诊断缓冲只存在于页面或 Service Worker
 短期内存中，不使用 `chrome.storage.session`，也不会跨刷新恢复。
 
 修改 schema 时允许旧字段缺失并补默认值，不得破坏已有收藏和用户设置。
 
+设置通过 `core/settings-persistence.ts` 向后台提交叶子字段补丁，后台串行读取原始对象合并，只规范化修改的字段并保留未知字段。收藏导入、恢复与普通收藏写入共用后台 repository 队列；预览导入以 revision 防止覆盖预览后的变更，未来未知 schema 拒绝写入。
+
+插件发送统计在 Service Worker 中串行追加、清理，兼容 V1 日数组，新格式使用 V2 日汇总、每块 128 个 ID 与独立事件。旧日数组在当日下一次追加时升级并备份。成功判定按秒记录平台、房间、纯文本正文和可选的确认依据，不保存富内容资源。设置页按 UTC 汇总，详情分页筛选，导出与清理遵循筛选条件；后台不可用时允许只读，不从页面直接写入。现有数据结构、旧版兼容边界和后端接入建议见 [DATA_MODEL_AND_BACKEND_PLAN.md](DATA_MODEL_AND_BACKEND_PLAN.md)。
+
 发送协调器在失败时通过现有 runtime logger 保存请求摘要及可选的 `evidence` 附件。
 `core/send-failure-evidence.ts` 负责有界 DOM 结构采集、白名单重校验和导出 HTML；旧日志可缺少附件。
 后台沿用 schema-v1 串行写入、去重、总容量限制和按接收时间过期。相邻、已到达的追加请求可
 合为一次存储操作，逐条应用容量淘汰；导出/清空是顺序屏障，成功响应必须等待实际持久化，
 不使用后台定时器延迟落盘。导出时才将结构转成 HTML，不会在后台解析或执行网页代码。
+设置页可按最近一条 `send-failure` 的 attemptId 导出关联日志，仍沿用相同的脱敏和附件规则。
 详情见 `TROUBLESHOOTING.md`，性能对照见 `PERFORMANCE_RESULTS.md`。
 
 ---
@@ -338,6 +353,7 @@ type-check → lint → build → manifest/architecture/CI/release validation
 放在 `tests/contracts`，静态 DOM 样本放在 `tests/fixtures`，本地浏览器工具放在
 `tests/browser`。`test:regression` 通过目录发现器自动执行全部 `*.test.cjs|mjs|js` 契约文件，
 `validate-test-layout.cjs` 会拒绝根目录散落文件、未知分类和手工维护的长测试清单。
+浏览器运行器还校验场景要求的结果块、断言数组、扩展注入和 fixture 页面就绪状态；缺失结果不能作为通过。抖音本地 HTTP fixture 的 HSTS 升级通过精确匹配导航的 CDP 响应模拟处理，真实站点不使用该逻辑；存储操作必须在扩展隔离环境执行。
 
 Coverage 对 `src/core/**/*.ts`、`src/features/**/*.ts` 和 `src/platforms/**/*.ts` 使用宽范围收集，
 只排除类型文件、收藏 UI 入口以及两个抖音 composition root；`src/entries` 由启动/源码契约验证，

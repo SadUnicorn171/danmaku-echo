@@ -1,4 +1,7 @@
+import { createSettingsWriter, SETTINGS_PATCH_MESSAGE } from '../core/settings-persistence';
 import { startRuntimeLogService } from '../core/runtime-log-store';
+import { createSendStatisticsStore } from '../features/send-statistics/store';
+import { SEND_STATISTICS_MESSAGE, isConfirmedSend, type SendStatisticsRequest } from '../features/send-statistics/types';
 import type { DouyinRuntimeRequest, PlatformId } from "../core/types";
 import {
   isBilibiliDirectEmoticonSendRequest,
@@ -36,11 +39,13 @@ import {
 } from "../platforms/douyin/emoji-catalog";
 
 startRuntimeLogService();
+const writeSettings = createSettingsWriter(chrome.storage.sync);
 
 const DOUYIN_LIVE_PATTERN = /^https:\/\/(?:live\.douyin\.com\/|www\.douyin\.com\/follow\/live(?:\/|[?#]|$))/i;
 const recentRouteInjections = new Map<number, { at: number; url: string }>();
 const pendingDouyinRuntimeEnsures = new Map<string, Promise<{ contentInjected: boolean }>>();
 const favoritesRepository = createFavoritesRepository(chrome.storage.local);
+const sendStatistics = createSendStatisticsStore(chrome.storage.local);
 let favoriteWriteQueue: Promise<void> = Promise.resolve();
 const frameAudienceCache = new Map<number, { expiresAt: number; metric: LiveAudienceMetric }>();
 const DOUYIN_EMOJI_CATALOG_CACHE_KEY = "danmakuEchoDouyinEmojiCatalogV1";
@@ -298,6 +303,50 @@ function isDouyinRuntimeRequest(value: unknown): value is DouyinRuntimeRequest {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) => {
+  if (message && typeof message === 'object' && (message as { type?: unknown }).type === SETTINGS_PATCH_MESSAGE) {
+    if (sender.id !== chrome.runtime.id) { sendResponse({ ok: false }); return false; }
+    void writeSettings((message as { changes: Parameters<typeof writeSettings>[0] }).changes)
+      .then(() => sendResponse({ ok: true }), () => sendResponse({ ok: false }));
+    return true;
+  }
+  if (message && typeof message === 'object' && (message as { type?: unknown }).type === SEND_STATISTICS_MESSAGE) {
+    const request = message as Partial<SendStatisticsRequest>;
+    const extensionPage = sender.id === chrome.runtime.id
+      && sender.url?.startsWith(chrome.runtime.getURL(''));
+    if (request.action === 'append' && isConfirmedSend(request.event)) {
+      const senderUrl = sender.url || sender.tab?.url;
+      const event = request.event;
+      if (sender.id !== chrome.runtime.id || !sender.tab?.id
+        || !senderMatchesPlatform(senderUrl, event.platform)
+        || !senderMatchesPlatform(sender.tab.url, event.platform)
+        || Math.abs(Date.now() / 1_000 - event.sentAtSec) > 60) {
+        sendResponse({ ok: false, error: 'invalid-send-statistics-sender' });
+        return false;
+      }
+      sendStatistics.append(event).then(
+        () => sendResponse({ ok: true }),
+        () => sendResponse({ ok: false, error: 'send-statistics-storage-unavailable' }),
+      );
+      return true;
+    }
+    if (!extensionPage) {
+      sendResponse({ ok: false, error: 'invalid-send-statistics-sender' });
+      return false;
+    }
+    const operation = request.action === 'read' ? sendStatistics.read()
+      : request.action === 'export' ? sendStatistics.export(request.filter)
+      : request.action === 'clear' ? sendStatistics.clear(request.filter) : null;
+    if (!operation) {
+      sendResponse({ ok: false, error: 'invalid-send-statistics-action' });
+      return false;
+    }
+    operation.then(
+      (data) => sendResponse({ ok: true, data }),
+      (error: unknown) => sendResponse({ ok: false, error: error instanceof Error
+        && /^(invalid|missing)-send-statistics-/.test(error.message) ? error.message : 'send-statistics-storage-unavailable' }),
+    );
+    return true;
+  }
   if (isDouyinEmojiCatalogRequest(message)) {
     const senderUrl = sender.url || sender.tab?.url;
     if (!senderMatchesPlatform(senderUrl, "douyin")) {
@@ -344,6 +393,18 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     }
     sendResponse({ metric: cached.metric, ok: true } satisfies LiveAudienceFrameResponse);
     return false;
+  }
+  if (message && typeof message === 'object' && (message as { type?: unknown }).type === FAVORITE_WRITE_MESSAGE
+    && ['import', 'restore'].includes(String((message as { operation?: unknown }).operation))) {
+    if (sender.id !== chrome.runtime.id || !sender.url?.startsWith(chrome.runtime.getURL(''))) {
+      sendResponse({ ok: false, error: 'invalid-favorite-sender' }); return false;
+    }
+    const request = message as { operation: string; backup?: unknown; revision: number };
+    const task = request.operation === 'import'
+      ? favoritesRepository.importData(request.backup, request.revision) : favoritesRepository.restoreBeforeImport();
+    void task.then((database) => sendResponse({ ok: true, count: database.items.length }),
+      (error: unknown) => sendResponse({ ok: false, error: String(error instanceof Error ? error.message : error) }));
+    return true;
   }
   if (isFavoriteWriteRequest(message)) {
     const senderUrl = sender.url || sender.tab?.url;

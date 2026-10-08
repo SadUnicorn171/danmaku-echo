@@ -76,6 +76,7 @@ export interface DouyinPageRuntimeDiagnosticsSnapshot {
 }
 
 export interface DouyinPageRuntime {
+  checkRoute(): void
   destroy(): boolean
   diagnostics(): DouyinPageRuntimeDiagnosticsSnapshot
   isActive(): boolean
@@ -218,7 +219,7 @@ export function createDouyinPageRuntime<Instance extends DouyinPageRuntimeInstan
     options.diagnostics.record('page-runtime-visible')
   }
 
-  const stopActiveResources = (reason: string): void => {
+  const stopActiveResources = (reason: string, retainHooks = false): void => {
     if (maintenanceTimer) options.target.clearInterval(maintenanceTimer)
     maintenanceTimer = 0
     if (active) {
@@ -230,8 +231,12 @@ export function createDouyinPageRuntime<Instance extends DouyinPageRuntimeInstan
     suspendInstances(reason)
     options.trackController.destroy()
     options.bridge.destroy()
-    options.workerHook.destroy()
-    options.canvasHook.destroy()
+    // A frozen page keeps bound native-method references. Unpatching and then
+    // installing a new wrapper would leave those references without observers.
+    if (!retainHooks) {
+      options.workerHook.destroy()
+      options.canvasHook.destroy()
+    }
   }
 
   const onPageHide = (event: PageTransitionEvent): void => {
@@ -239,7 +244,7 @@ export function createDouyinPageRuntime<Instance extends DouyinPageRuntimeInstan
     if (event.persisted) {
       suspended = true
       options.diagnostics.record('page-runtime-suspended', { reason: 'pagehide-persisted' })
-      stopActiveResources('pagehide-persisted')
+      stopActiveResources('pagehide-persisted', true)
       return
     }
     runtime.destroy()
@@ -265,6 +270,9 @@ export function createDouyinPageRuntime<Instance extends DouyinPageRuntimeInstan
   }
 
   const runtime: DouyinPageRuntime = {
+    checkRoute() {
+      if (active && !destroyed) handleRoute()
+    },
     destroy() {
       if (destroyed) return false
       options.diagnostics.record('page-runtime-destroyed', { generation }, 'info')

@@ -9,7 +9,7 @@
 | `content.ts` | 虎牙、斗鱼、Bilibili；`document_idle`，Bilibili 使用 `all_frames` | 扩展隔离世界 | 页面 DOM、`chrome.storage`、平台设置、指针和全屏事件 | 通用操作胶囊、回复草稿、收藏、受保护发送、轻量雷达采集 | `pagehide`；页面隐藏时释放瞬时资源 |
 | `douyin-bootstrap.ts` | `live.douyin.com/*` 与 `www.douyin.com/*`；`document_start` | 扩展隔离世界 | 当前 URL、SPA 路由变化、page hook 的 `ready` 消息 | 向 Service Worker 请求确保抖音运行时，向 page hook 发送 `ping` | `pagehide`；页面隐藏时停止轮询和待处理重试 |
 | `douyin-content.ts` | 抖音直播路由；`document_start` 或由 Service Worker 补注入 | 扩展隔离世界 | 侧聊 DOM、设置、扩展 API、page hook 协议消息 | 扩展 UI、官方编辑器操作、收藏/雷达、本人消息意图和 Renderer 操作结果 | `pagehide`；SPA 切房、页面隐藏或设置关闭时释放对应资源 |
-| `douyin-page-hook.ts` | 抖音直播路由；`document_start` 或由 Service Worker 补注入 | 页面 `MAIN` world | Canvas、Worker/MessagePort 已解码消息、content 协议消息 | 安全 DOM Renderer、单条悬停、Renderer 操作请求、雷达只读消息 | Canvas 脱离、路由变化、心跳超时、Renderer 失败或页面卸载 |
+| `douyin-page-hook.ts` | `live.douyin.com/*` 与 `www.douyin.com/*`；`document_start`，可由 Service Worker 恢复 | 页面 `MAIN` world | Canvas、Worker/MessagePort 已解码消息、content 协议消息 | 直播路由内的安全 DOM Renderer、单条悬停、Renderer 操作请求、雷达只读消息 | 持续 Canvas 脱离、路由变化、心跳超时、Renderer 失败或页面卸载；BFCache 保留 hook 身份 |
 | `service-worker.ts` | Manifest V3 后台按事件唤醒 | 扩展后台 | runtime message、发送者标签页/frame、扩展存储 | 抖音运行时注入、表情目录、收藏写入、Bilibili 后备发送和人数 frame 汇总 | 由浏览器管理生命周期；所有状态必须可重建或有界 |
 
 当前抖音隔离世界入口已完成分层：`douyin-content.ts` 只执行平台/重复加载检查并创建、启动运行时；`platforms/douyin/content/content-app.ts` 负责依赖装配；`content-runtime.ts` 统一拥有设置、SPA、可见性、监听器、计时器及逆序销毁。业务解析、发送、悬停、本人消息和雷达采集继续由各自控制器负责。
@@ -64,6 +64,8 @@ Manifest document_start
 约束：
 
 - `douyin-bootstrap.ts` 只负责路由检测、注入恢复、有限重试和 ready 探测，不承载弹幕业务。
+- MAIN hook 在抖音首页提前安装，避免 SPA 提前缓存原生方法导致后续观察失效；content UI 仍只在直播路由装配。bootstrap 必须同时确认 MAIN ready 和完整注入成功。
+- content 与 MAIN 在 BFCache 隐藏时暂停资源、返回时重新握手；MAIN 保留 hook 包装函数身份，普通卸载再解除。Canvas 首次挂载与短暂重新挂载分别保留身份和有界宽限；新房间命令先处理路由再创建实例。详见[首次进入与停顿排查](DOUYIN_STARTUP_AND_MOTION.md)。
 - MAIN world 可以观察页面 Canvas、Worker 和 MessagePort，但不得读取扩展私有存储或调用收藏仓库。
 - 隔离世界可以使用扩展 API 并共享页面 DOM，但不得假定能直接访问页面创建的 Worker 对象。
 - 两个 world 之间只通过 `window.postMessage` 的版本化协议通信。

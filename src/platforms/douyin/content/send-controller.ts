@@ -34,9 +34,11 @@ export interface DouyinSendControllerOptions {
   onDebug?(type: string, details: unknown, level: DouyinSendDebugLevel): void
   onFailure?(message: string, payload: RichPayload, result: SendResult): void
   onSuccess?(message: string, payload: RichPayload, result: SendResult): void
+  onConfirmedSend?(attemptId: string, sentAtSec: number, roomId: string | undefined, text: string, confirmation: 'platform' | 'page'): void
   platformName: string
   protection: SendProtection
   query(selectors: readonly string[], root?: Document | Element | ShadowRoot): Element[]
+  roomId?(): string
   sendDelayMs?: number
   showToast(message: string, tone: 'error' | 'info' | 'success' | 'warning'): void
 }
@@ -91,6 +93,7 @@ export function createDouyinSendController(
       showPlatformFeedback(feedback)
     },
     onStateChange: options.onCooldownChange,
+    onSuccess: options.onConfirmedSend,
     onUnconfirmed(summary) {
       options.showToast(
         t('toastPlatformSendUnconfirmed', [options.platformName, summary]),
@@ -99,6 +102,7 @@ export function createDouyinSendController(
     },
     platform: 'douyin',
     protection: options.protection,
+    roomId: options.roomId,
   })
   const sendDelayMs = Math.max(0, options.sendDelayMs ?? 80)
 
@@ -354,6 +358,7 @@ export function createDouyinSendController(
         method: prepared.method,
         networkObserver,
         success: true,
+        text: prepared.text,
       })
       if (!settled.success) return failure(message, payload, settled, 'warning')
       options.onSuccess?.(message, payload, settled)

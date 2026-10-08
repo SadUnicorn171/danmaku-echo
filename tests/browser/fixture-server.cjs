@@ -1,6 +1,10 @@
 "use strict";
 
 const http = require("node:http");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
+const douyinNativeSettingsHtml = readFileSync(path.join(__dirname, '../fixtures/douyin-native-settings.html'), 'utf8');
+const douyinLifecycleHtml = readFileSync(path.join(__dirname, '../fixtures/douyin-lifecycle.html'), 'utf8');
 
 const port = Number(process.env.BCP_FIXTURE_PORT || 18888);
 const html = String.raw`<!doctype html>
@@ -1188,7 +1192,7 @@ const server = http.createServer((request, response) => {
   } else if (hostname === "live.douyin.com"
       || (hostname === "www.douyin.com" && requestUrl.pathname.startsWith("/follow/live"))
       || requestedPlatform === "douyin") {
-    response.end(douyinHtml);
+    response.end(requestUrl.searchParams.get('lifecycle') === '1' ? douyinLifecycleHtml : requestUrl.searchParams.get('nativesettings') === '1' ? douyinNativeSettingsHtml : douyinHtml);
   } else {
     response.end(html);
   }

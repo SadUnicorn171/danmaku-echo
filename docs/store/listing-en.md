@@ -6,7 +6,7 @@ Danmaku Echo provides consistent danmaku actions on Huya, Bilibili, Douyin, and 
 
 ## Interface sizing and diagnostics
 
-Automatic interface sizing adapts capsules and radar controls to screen resolution using a 3860×2160 reference, with a manual option that preserves existing sizes. Automatic radar thresholds still allow manual duration, queue-limit, and prompt-size adjustments.
+Automatic interface sizing adapts capsules and radar controls to screen resolution while keeping controls easier to click on smaller displays. A manual option preserves existing sizes. Automatic radar thresholds still allow manual duration, queue-limit, and prompt-size adjustments.
 
 Sanitized warnings, errors, and diagnostic context are stored locally by default, capped at 500 entries and about 1 MB, with seven-day retention enforced on reads/writes. Users can export JSON or clear logs in General settings. Bilibili room-emote failures include correlated request stages and error metadata without request/response bodies or credentials. Logs do not upload automatically.
 

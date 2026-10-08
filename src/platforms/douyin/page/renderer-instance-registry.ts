@@ -14,6 +14,7 @@ import type {
 const DEFAULT_MOUNT_GRACE = 8_000
 const DEFAULT_ORPHAN_TTL = 12_000
 const DEFAULT_RECOVERY_DELAY = 120
+const DETACH_GRACE = 500
 
 export type RendererRegistryEventType =
   | 'canvas-claim-rejected'
@@ -34,7 +35,7 @@ export interface RendererRegistryEvent {
 export interface RendererInstanceRegistryOptions {
   canvasHook: Pick<
     DouyinCanvasHook,
-    'canvasId' | 'findUnclaimedCanvas' | 'isDanmakuCanvas' | 'markerFor'
+    'canvasId' | 'canvasForOffscreen' | 'findUnclaimedCanvas' | 'isDanmakuCanvas' | 'markerFor'
   >
   clearInstance(instance: RendererInstance, reason: string): void
   clearTimeout?: (timer: RendererTimerId) => void
@@ -275,11 +276,17 @@ export function createRendererInstanceRegistry(
     const key = instanceKey(id)
     if (!key) return
     let orphan = orphans.get(key)
+    const firstObservation = !orphan
     if (!orphan) {
       orphan = { barrages: [], config: {}, createdAt: now(), id: key }
       orphans.set(key, orphan)
     }
     if (method === 'createInstance' || method === 'updateConfig') {
+      if (method === 'createInstance') {
+        orphan.sourceCanvas = options.canvasHook.canvasForOffscreen(
+          params.offscrrenCanvas ?? params.offscreenCanvas,
+        ) ?? undefined
+      }
       const source = method === 'createInstance' && params.config
         ? params.config
         : params
@@ -300,11 +307,11 @@ export function createRendererInstanceRegistry(
     ) {
       orphan.barrages.push(params)
     }
-    emit(
-      'orphan-observed',
-      { barrageCount: orphan.barrages.length, instanceId: key, method },
-      'warn',
-    )
+    // Startup bursts must not persist one warning per barrage while the same
+    // Canvas is still mounting. Recovery/expiry provides the terminal event.
+    if (firstObservation) {
+      emit('orphan-observed', { barrageCount: orphan.barrages.length, instanceId: key, method }, 'warn')
+    }
     scheduleRecovery()
   }
 
@@ -342,9 +349,11 @@ export function createRendererInstanceRegistry(
           emit('orphan-expired', { instanceId: id }, 'warn')
           continue
         }
-        const canvas = options.canvasHook.findUnclaimedCanvas(claimedCanvases())
-        if (!canvas) continue
-        const instance = create(id, canvas, orphan.config, true)
+        const canvas = orphan.sourceCanvas ?? options.canvasHook.findUnclaimedCanvas(claimedCanvases())
+        if (!canvas || !options.canvasHook.isDanmakuCanvas(canvas)) continue
+        // A create command observed before mount still has complete provenance.
+        // Only a guessed/late-injected Canvas needs the clean-sync safety window.
+        const instance = create(id, canvas, orphan.config, !orphan.sourceCanvas)
         if (!instance) continue
         orphan.barrages.forEach((barrage) => options.onBarrage(instance, barrage))
         recoveredCount += 1
@@ -363,8 +372,16 @@ export function createRendererInstanceRegistry(
       let detachedCount = 0
       const currentTime = now()
       for (const [id, instance] of instances) {
-        if (instance.canvas.isConnected) continue
+        if (instance.canvas.isConnected) {
+          instance.canvasEverConnected = true
+          instance.detachedAt = undefined
+          continue
+        }
         if (!instance.canvasEverConnected && currentTime < instance.mountGraceUntil) continue
+        if (instance.canvasEverConnected) {
+          instance.detachedAt ??= currentTime
+          if (currentTime - instance.detachedAt < DETACH_GRACE) continue
+        }
         const config = { ...instance.config }
         remove(id, 'canvas-detached')
         rememberOrphan(id, 'updateConfig', config)

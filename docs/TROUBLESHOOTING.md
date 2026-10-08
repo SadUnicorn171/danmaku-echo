@@ -12,6 +12,10 @@
 
 JSON 顶层包含 schemaVersion、exportedAt 和 entries。每条记录包含 id、at（Unix 毫秒时间）、level、source、message、details 和 context。同一次失败可能同时产生页面与后台记录，通过关联编号和时间判断，不应直接当成多次发送。
 
+如只需要最近一次发送失败，可使用「最近发送失败」按钮，按最近一条 `send-failure` 的 `details.attemptId` 筛选相同编号的记录；没有记录时会提示而不下载空文件。涉及更早阶段或其他关联编号时仍使用完整日志导出。
+
+发送统计与诊断日志独立：统计保存发送正文的纯文本，日志继续脱敏。统计页出现最近保存异常提示时，可以先导出可读数据；存储完全不可写时异常标记也可能无法保存。筛选作用于明细、导出和清理，不改变全历史汇总；后台暂时不可用时可以读取、导出，清理必须由后台串行执行。详情参见 [数据结构与后端接入分析](DATA_MODEL_AND_BACKEND_PLAN.md)。
+
 ## 发送失败现场附件
 
 `send-failure` 记录用于关联一次通过发送协调器的 `+1`、普通发送或收藏重发失败。`details.attemptId`
@@ -78,12 +82,16 @@ npm run package 2>&1 | Tee-Object -FilePath package.log
 
 ## 本地自动回归
 
+抖音首次进入不生效、切房后暂停数秒的问题，参见[首次进入与弹幕停顿排查](DOUYIN_STARTUP_AND_MOTION.md)，其中记录了可复现原因、修复和真实页面待验范围。
+
 以下浏览器场景使用本地模拟页面，不需要真实发送弹幕：
 
 ~~~powershell
 npm run test:browser -- --browser=chrome --scenario=bilibili-precise-logs
 npm run test:browser -- --browser=chrome --scenario=bilibili-auto-scale
 npm run test:browser -- --browser=chrome --scenario=douyin-auto-scale
+npm run test:browser -- --browser=all --scenario=douyin-lifecycle
+npm run test:browser -- --browser=all --scenario=douyin-spa-startup
 ~~~
 
 bilibili-precise-logs 模拟签名准备请求失败，经过真实的 content → background → MAIN world → storage.local 链路，并验证最终发送接口没有调用。它验证诊断与注入隔离，不代表真实平台账号权限或发送成功。更多边界见[入口架构](ENTRY_RUNTIME_ARCHITECTURE.md)和[真实页面回归记录](ENTRY_REFACTOR_REGRESSION.md)。

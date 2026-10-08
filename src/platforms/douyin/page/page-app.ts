@@ -1,4 +1,5 @@
 import { boxEdges, normalizeText, numberOr, plausibleText } from '../barrage-model'
+import { detectPlatform } from '../../../core/shared'
 import { registerDouyinEmojiCatalog } from '../emoji-token'
 import type { DouyinContentToPageMessage, DouyinRequestId } from '../protocol'
 import { prepareDouyinBarrage, type PreparedBarrage } from './barrage-content'
@@ -23,7 +24,6 @@ import {
 import type {
   AnimationFrameMilliseconds,
   RendererBarrageOptions,
-  RendererConfig,
   RendererFailureReason,
   RendererInstance,
   TimestampMilliseconds,
@@ -323,13 +323,20 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
     instance.animationFrame = 0
     if (
       !instance.active ||
-      !(instance.canvas instanceof HTMLCanvasElement) ||
-      !instance.canvas.isConnected
+      !(instance.canvas instanceof HTMLCanvasElement)
     ) {
+      return
+    }
+    if (!instance.canvas.isConnected) {
+      domRenderer.restoreCanvas(instance, 'canvas-detached')
+      // A transient React reparent must not kill the frame loop until the next
+      // five-second heartbeat. The registry cancels this loop if detach persists.
+      instance.animationFrame = requestAnimationFrame((timestamp) => modelFrame(instance, timestamp))
       return
     }
     const rect = instance.canvas.getBoundingClientRect()
     if (rect.width < 20 || rect.height < 20) {
+      domRenderer.restoreCanvas(instance, 'canvas-not-visible')
       instance.animationFrame = requestAnimationFrame((timestamp) =>
         modelFrame(instance, timestamp),
       )
@@ -338,7 +345,7 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
     const { requeued } = channelScheduler.synchronize(instance, rect)
     requeued.forEach((track) => domRenderer.removeTrack(track))
     if (requeued.length && !instance.pushTimer) {
-      instance.pushTimer = setTimeout(() => assignPendingTracks(instance), 0)
+      instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), 0)
     }
     const deltaTime = frameDelta(instance.lastFrameAt, frameTime)
     instance.lastFrameAt = frameTime
@@ -364,6 +371,8 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
   }
 
   function assignPendingTracks(instance: RendererInstance): void {
+    // Heartbeats may resume an instance before its queued retry has fired.
+    if (instance.pushTimer) window.clearTimeout(instance.pushTimer)
     instance.pushTimer = 0
     if (!(instance.canvas instanceof HTMLCanvasElement)) {
       return
@@ -375,14 +384,14 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
         instance.active &&
         Date.now() < instance.mountGraceUntil
       ) {
-        instance.pushTimer = setTimeout(() => assignPendingTracks(instance), CANVAS_MOUNT_RETRY)
+        instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), CANVAS_MOUNT_RETRY)
       }
       return
     }
     instance.canvasEverConnected = true
     const rect = instance.canvas.getBoundingClientRect()
     if (rect.width < 20 || rect.height < 20) {
-      instance.pushTimer = setTimeout(() => assignPendingTracks(instance), 300)
+      instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), 300)
       return
     }
     const result = channelScheduler.assign(instance, rect, Date.now())
@@ -410,7 +419,7 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
       startAnimation(instance)
     }
     if (result.remaining) {
-      instance.pushTimer = setTimeout(() => assignPendingTracks(instance), 300)
+      instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), 300)
     }
   }
 
@@ -505,7 +514,7 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
       }
       assignPendingTracks(instance)
     } else if (!instance.pushTimer) {
-      instance.pushTimer = setTimeout(() => assignPendingTracks(instance), 300)
+      instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), 300)
     }
     return true
   }
@@ -579,17 +588,13 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
     instance.lastFrameAt = 0
   }
 
-  function looksLikeDanmakuConfig(
-    config: Partial<RendererConfig>,
-    canvas: HTMLCanvasElement,
-  ): boolean {
-    return (
-      canvasHook.isDanmakuCanvas(canvas) ||
-      (config && numberOr(config.channelHeight, 0) > 0 && numberOr(config.duration, 0) > 0)
-    )
-  }
-
   function handleRendererCommand(command: DouyinRendererCommand): void {
+    // Process a navigation before its first new-room command, not on a later
+    // maintenance tick that would otherwise reset the freshly created instance.
+    pageRuntime.checkRoute()
+    // The hook is installed before SPA code can cache native postMessage.
+    // Outside a live route it only passes through native calls.
+    if (detectPlatform(location.hostname, location.pathname) !== 'douyin') return
     const id = String(command.instanceId)
     if (command.type === 'create-instance') {
       const mappedCanvas = canvasHook.canvasForOffscreen(command.offscreen)
@@ -601,7 +606,7 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
       if (
         !(canvas instanceof HTMLCanvasElement) ||
         !id ||
-        !looksLikeDanmakuConfig(command.config, canvas)
+        !canvasHook.isDanmakuCanvas(canvas)
       ) {
         instanceRegistry.rememberOrphan(id, 'createInstance', command.params)
         return
@@ -761,7 +766,7 @@ export function createDouyinPageAppRuntime(): DouyinPageRuntime {
       if (!channelScheduler.isEmpty(instance)) startAnimation(instance)
     },
     onRetryPending: (instance, delay) => {
-      instance.pushTimer = setTimeout(() => assignPendingTracks(instance), delay)
+      instance.pushTimer = window.setTimeout(() => assignPendingTracks(instance), delay)
     },
     onStarted: () => postReady(0),
     onSuspendInstance: (instance, reason) => {

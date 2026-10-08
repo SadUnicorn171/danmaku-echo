@@ -340,7 +340,7 @@ describe('Douyin MAIN world page runtime', () => {
     expect(harness.counters).toMatchObject({ relayout: 1, relayoutError: 1 })
   })
 
-  it('suspends and safely restarts hooks once across a BFCache round trip', () => {
+  it('retains hook identity while suspending other resources across a BFCache round trip', () => {
     const harness = createHarness()
     harness.runtime.start()
 
@@ -348,9 +348,9 @@ describe('Douyin MAIN world page runtime', () => {
     expect(harness.runtime.diagnostics()).toMatchObject({ active: false, suspended: true })
     expect(harness.counters).toMatchObject({
       bridgeDestroy: 1,
-      canvasDestroy: 1,
+      canvasDestroy: 0,
       trackDestroy: 1,
-      workerDestroy: 1,
+      workerDestroy: 0,
     })
 
     window.dispatchEvent(pageTransition('pageshow', true))

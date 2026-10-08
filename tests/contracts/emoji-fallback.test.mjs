@@ -144,6 +144,9 @@ test("all three live adapters use the shared lossless Emoji fallback", () => {
 
 test("Bilibili uses its native editor and Emoji panel", () => {
   const contentSource = readFileSync(resolve(root, "src", "entries", "content-app.ts"), "utf8");
+  const inputFocusSource = readFileSync(
+    resolve(root, "src", "platforms", "bilibili", "input-focus.ts"), "utf8"
+  );
   const senderSource = readFileSync(
     resolve(root, "src", "platforms", "bilibili", "sender.ts"),
     "utf8"
@@ -194,7 +197,8 @@ test("Bilibili uses its native editor and Emoji panel", () => {
   assert.doesNotMatch(contentSource, /requestBilibiliSend/);
   assert.doesNotMatch(contentSource, /BILIBILI_DIRECT_EMOTICON_SEND_MESSAGE/);
   assert.doesNotMatch(contentSource, /BILIBILI_INSTALL_NATIVE_SEND_OBSERVER/);
-  assert.match(contentSource, /editor === input && fullscreenActive\(\) && playerCoversViewport/);
+  assert.match(contentSource, /dismissBilibiliQuickInput\(\s*input,/);
+  assert.match(inputFocusSource, /editor === input && fullscreenActive\(\) && playerCoversViewport/);
   const repositorySource = readFileSync(
     resolve(root, "src", "features", "favorites", "repository.ts"),
     "utf8"

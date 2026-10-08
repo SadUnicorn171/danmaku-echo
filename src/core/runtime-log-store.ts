@@ -119,14 +119,19 @@ export function createRuntimeLogStore(storage: Storage, now = Date.now) {
         return appendBatch.done
       })
     },
-    export() {
+    export(latestFailure = false) {
       return serial(async () => {
         const entries = bound(await read())
         await storage.set({ [LOG_STORAGE_KEY]: { schemaVersion: 1, entries } })
         return {
           schemaVersion: 1,
           exportedAt: new Date(now()).toISOString(),
-          entries: entries.map(({ evidence, ...entry }) => ({
+          entries: (latestFailure ? (() => {
+            const failed = [...entries].reverse().find((entry) => entry.message === 'send-failure');
+            const details = failed?.details as { attemptId?: string } | undefined;
+            return details?.attemptId ? entries.filter((entry) =>
+              (entry.details as { attemptId?: string } | undefined)?.attemptId === details.attemptId) : [];
+          })() : entries).map(({ evidence, ...entry }) => ({
             ...entry,
             ...(evidence ? { evidence: exportSendFailureEvidence(evidence) } : {}),
           })),
@@ -168,7 +173,7 @@ export function startRuntimeLogService(): void {
         tabId: sender.tab?.id,
         frameId: sender.frameId,
       })
-    } else if (extensionPage && message.action === 'export') operation = store.export()
+    } else if (extensionPage && message.action === 'export') operation = store.export(message.latestFailure === true)
     else if (extensionPage && message.action === 'clear') operation = store.clear()
     else {
       respond({ ok: false, error: 'invalid-log-action' })

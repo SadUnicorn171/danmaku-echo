@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <title>抖音首次进入与动画恢复回归</title>
+  <link rel="icon" href="data:," />
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: white;
+    }
+    #player,
+    #host,
+    canvas {
+      width: 800px;
+      height: 450px;
+    }
+    #player {
+      position: relative;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+  <div id="player"><div id="host" class="CanvasDanmakuPlugin"></div></div>
+  <script>
+    const channel = new MessageChannel()
+    // SPA applications can retain this reference before entering a live room.
+    const cachedPost = channel.port1.postMessage.bind(channel.port1)
+    const fixture = (window.__douyinLifecycle = {
+      id: '',
+      canvas: null,
+      nativeCommands: 0,
+      heartbeatBlocked: false,
+    })
+    channel.port2.onmessage = () => {
+      fixture.nativeCommands++
+    }
+    fixture.post = (method, params = {}, transfer = []) =>
+      cachedPost({ _uniqueId: fixture.id, method, params }, transfer)
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (
+          fixture.heartbeatBlocked &&
+          event.data?.type === 'renderer-settings' &&
+          event.data?.reason === 'heartbeat'
+        )
+          event.stopImmediatePropagation()
+      },
+      true,
+    )
+    fixture.enter = (room) => {
+      const path = location.hostname === 'www.douyin.com' ? '/follow/live/' : '/'
+      history.pushState({}, '', path + room + location.search)
+    }
+    fixture.spawn = (id, beforeMount = false) => {
+      if (fixture.id) fixture.post('destroy')
+      fixture.id = id
+      const host = document.querySelector('#host')
+      host.replaceChildren()
+      const node = (fixture.canvas = document.createElement('canvas'))
+      node.width = 800
+      node.height = 450
+      if (!beforeMount) host.append(node)
+      const offscreenCanvas = node.transferControlToOffscreen()
+      fixture.post(
+        'createInstance',
+        {
+          offscreenCanvas,
+          barrages: [],
+          config: {
+            width: 800,
+            height: 450,
+            channelHeight: 40,
+            duration: 30000,
+            fontSize: 20,
+            devicePixelRatio: 1,
+            gap: 20,
+          },
+        },
+        [offscreenCanvas],
+      )
+      for (let i = 0; i < 3; i++)
+        fixture.post('addBarrage', {
+          id: id + '-' + i,
+          startTime: Date.now(),
+          reserveDuration: 5000,
+          content: [{ type: 'text', text: '生命周期回归弹幕 ' + i, fontSize: 20, color: '#fff' }],
+        })
+      if (beforeMount) host.append(node)
+    }
+    fixture.sample = () => {
+      const layer = document.querySelector(
+        '.bcp-douyin-dom-layer[data-instance="' + fixture.id + '"]',
+      )
+      return {
+        id: fixture.id,
+        layerVisible: Boolean(layer && !layer.hidden),
+        canvasHidden: fixture.canvas?.style.visibility === 'hidden',
+        tracks: [...(layer?.querySelectorAll('.bcp-douyin-dom-track') || [])].map(
+          (node) => new DOMMatrixReadOnly(getComputedStyle(node).transform).m41,
+        ),
+        nativeCommands: fixture.nativeCommands,
+      }
+    }
+  </script>
+</html>

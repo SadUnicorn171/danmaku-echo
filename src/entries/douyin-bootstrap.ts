@@ -32,6 +32,7 @@ import {
     instanceCount: number;
     lastError: string;
     pageReady: boolean;
+    runtimeReady: boolean;
     pageVersion: string;
     routeChanges: RouteChange[];
     routeGeneration: number;
@@ -64,6 +65,7 @@ import {
     href: location.href,
     attempts: [],
     pageReady: false,
+    runtimeReady: false,
     pageVersion: "",
     instanceCount: 0,
     routeGeneration: 0,
@@ -110,6 +112,7 @@ import {
     if (!LIVE_ROUTE_PATTERN.test(location.href)) {
       return;
     }
+    const generation = routeGeneration;
     const entry: InjectionAttempt = {
       attempt,
       at: Date.now(),
@@ -125,6 +128,9 @@ import {
     try {
       chrome.runtime.sendMessage(request, (response: unknown) => {
         const error = chrome.runtime.lastError;
+        if (generation !== routeGeneration || request.href !== location.href) {
+          return;
+        }
         if (error) {
           debug.lastError = error.message || String(error);
           entry.response = { ok: false, error: debug.lastError };
@@ -136,6 +142,7 @@ import {
           }
           console.debug("[Danmaku Echo][Douyin bootstrap] injection request", entry);
         }
+        debug.runtimeReady = Boolean(entry.response?.ok);
         syncMarker();
         pingPage(attempt);
       });
@@ -189,6 +196,7 @@ import {
     debug.href = location.href;
     debug.routeGeneration = generation;
     debug.pageReady = false;
+    debug.runtimeReady = false;
     debug.routeChanges.push({
       at: Date.now(),
       href: location.href,
@@ -203,7 +211,7 @@ import {
         if (generation !== routeGeneration || !LIVE_ROUTE_PATTERN.test(location.href)) {
           return;
         }
-        if (!debug.pageReady || index === 0) {
+        if (!debug.pageReady || !debug.runtimeReady || index === 0) {
           requestInjection(index + 1);
         }
       }, delay);
@@ -257,11 +265,17 @@ import {
     }
     startRoutePoll();
     checkRoute("document-visible");
-    if (LIVE_ROUTE_PATTERN.test(location.href) && !debug.pageReady) {
+    if (LIVE_ROUTE_PATTERN.test(location.href) && (!debug.pageReady || !debug.runtimeReady)) {
       scheduleLiveRuntime("document-visible-retry");
     }
   });
-  window.addEventListener("pagehide", releaseRouteResources, { once: true });
+  window.addEventListener("pagehide", releaseRouteResources);
+  window.addEventListener("pageshow", (event: PageTransitionEvent) => {
+    if (!event.persisted) return;
+    startRoutePoll();
+    checkRoute("pageshow");
+    scheduleLiveRuntime("pageshow-retry");
+  });
   startRoutePoll();
   syncMarker();
 })();

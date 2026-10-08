@@ -44,7 +44,7 @@ function trackedHook(events: DouyinCanvasTransferEvent[]): DouyinCanvasHook {
 }
 
 describe('DouyinCanvasHook', () => {
-  it('passes ordinary Canvas transfers through without tracking them', () => {
+  it('retains weak transfer identity but does not recognize or emit events for ordinary Canvas', () => {
     const events: DouyinCanvasTransferEvent[] = []
     const hook = trackedHook(events)
     const canvas = document.createElement('canvas')
@@ -55,7 +55,8 @@ describe('DouyinCanvasHook', () => {
 
     expect(nativeCalls).toEqual([canvas])
     expect(events).toEqual([])
-    expect(hook.canvasForOffscreen(offscreen)).toBeNull()
+    expect(hook.canvasForOffscreen(offscreen)).toBe(canvas)
+    expect(hook.isDanmakuCanvas(canvas)).toBe(false)
     expect(hook.diagnostics()).toMatchObject({
       ignoredTransferCount: 1,
       installed: true,

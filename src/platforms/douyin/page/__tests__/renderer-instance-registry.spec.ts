@@ -33,6 +33,7 @@ function createHarness(now: () => number = () => 1_000): RegistryHarness {
   const canvasIds = new WeakMap<HTMLCanvasElement, number>()
   let nextCanvasId = 1
   const canvasHook: RendererInstanceRegistryOptions['canvasHook'] = {
+    canvasForOffscreen: () => null,
     canvasId: (element) => {
       let id = canvasIds.get(element)
       if (!id) {
@@ -74,6 +75,14 @@ beforeEach(() => {
 })
 
 describe('Douyin Renderer instance registry', () => {
+  it('emits one diagnostic for a mounting instance instead of one per incoming barrage', () => {
+    const harness = createHarness()
+    for (let index = 0; index < 50; index++) {
+      harness.registry.rememberOrphan('mounting', 'addBarrage', { content: [{ type: 'text', text: '普通测试弹幕' }] })
+    }
+    expect(harness.events.filter(event => event.type === 'orphan-observed')).toHaveLength(1)
+    harness.registry.destroyAll('test-end')
+  })
   it('creates and retrieves a fully initialized instance', () => {
     const harness = createHarness()
     const target = canvas(1280, 720)
@@ -151,6 +160,8 @@ describe('Douyin Renderer instance registry', () => {
     const replacement = canvas()
     document.body.append(replacement)
     time = 700
+    expect(harness.registry.sweepDetached()).toBe(0)
+    time = 1_300
     expect(harness.registry.sweepDetached()).toBe(1)
     expect(harness.registry.get('renderer-remount')).toBeUndefined()
     expect(harness.registry.orphanCount()).toBe(1)

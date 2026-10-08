@@ -346,6 +346,9 @@ test("Douyin bootstrap requests the full runtime after an SPA live-route entry",
     "utf8"
   );
   const sent = [];
+  let failInjection = false;
+  let deferInjection = false;
+  const deferredInjections = [];
   const timers = [];
   const intervals = [];
   const clearedIntervals = [];
@@ -357,7 +360,8 @@ test("Douyin bootstrap requests the full runtime after an SPA live-route entry",
         lastError: null,
         sendMessage(message, callback) {
           sent.push(message);
-          callback({ ok: true });
+          if (deferInjection) deferredInjections.push(callback);
+          else callback({ ok: !failInjection });
         }
       }
     },
@@ -414,9 +418,50 @@ test("Douyin bootstrap requests the full runtime after an SPA live-route entry",
   assert.equal(sent[0].type, "danmaku-echo.ensure-douyin-runtime");
   assert.equal(sent[0].href, location.href);
 
+  // MAIN-world ready does not prove that isolated-world injection succeeded.
+  sent.length = 0;
+  timers.length = 0;
+  failInjection = true;
+  location.href = "https://www.douyin.com/follow/live/234567";
+  intervals[0].callback();
+  const retries = timers.slice().sort((left, right) => left.delay - right.delay);
+  retries[0].callback();
+  listeners.get("window:message")({ source: context.window, data: {
+    source: "danmaku-echo-douyin-page", type: "ready", requestId: 9000001,
+    version: "fixture", instanceCount: 0, orphanCount: 0, rendererEnabled: false,
+  } });
+  failInjection = false;
+  retries.slice(1).forEach(({ callback }) => callback());
+  assert.equal(sent.filter(message => message.type === "danmaku-echo.ensure-douyin-runtime").length, 2);
+
+  // A success from the previous room must not suppress this room's retry.
+  deferInjection = true;
+  timers.length = 0;
+  location.href = "https://www.douyin.com/follow/live/345678";
+  intervals[0].callback();
+  timers[0].callback();
+  deferInjection = false;
+  failInjection = true;
+  timers.length = 0;
+  sent.length = 0;
+  location.href = "https://www.douyin.com/follow/live/456789";
+  intervals[0].callback();
+  timers[0].callback();
+  listeners.get("window:message")({ source: context.window, data: {
+    source: "danmaku-echo-douyin-page", type: "ready", requestId: 9000001,
+    version: "fixture", instanceCount: 0, orphanCount: 0, rendererEnabled: false,
+  } });
+  deferredInjections[0]({ ok: true });
+  failInjection = false;
+  timers.slice(1).forEach(({ callback }) => callback());
+  assert.equal(sent.filter(message => message.type === "danmaku-echo.ensure-douyin-runtime").length, 2);
+
   context.document.hidden = true;
   listeners.get("document:visibilitychange")();
   assert.deepEqual(clearedIntervals, [1]);
+  context.document.hidden = false;
+  listeners.get("window:pageshow")({ persisted: true });
+  assert.equal(intervals.length, 2, "BFCache return must restart the route detector");
 });
 
 test("rejects obvious system rows", () => {

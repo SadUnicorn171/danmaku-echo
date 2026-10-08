@@ -362,6 +362,7 @@ src/platforms/douyin/
 │  ├─ send-controller.ts
 │  ├─ own-message-controller.ts
 │  ├─ radar-collector.ts
+│  ├─ native-settings-controller.ts
 │  └─ ...
 └─ page/
    ├─ runtime-types.ts
@@ -399,6 +400,41 @@ entries/douyin-page-hook.ts
 保存、取消、过期和一次性消费由 `page/own-message-matcher.ts` 负责；有界事件、计数、错误脱敏
 和低频调试 marker 由 `page/diagnostics-controller.ts` 负责；Hook、bridge、轨道控制器、实例维护、
 心跳、路由、全屏、可见性和页面退出由 `page/page-runtime.ts` 统一持有。
+
+### 原生观看设置
+
+设置页「抖音直播净化」提供三个独立自动设置：关闭送礼信息、关闭福袋口令、开启屏蔽礼物特效。
+`content/native-settings-controller.ts` 只在总开关、抖音平台和相应选项均开启时工作，默认不启用。
+它定位官方 `danmaku-setting-icon` / `gift-setting` 附近的菜单，分别按精确标签和
+`effect-switch` 查找开关，确认状态后才点击；不改弹幕总开关、礼物声音或快捷键送礼。
+
+状态优先读取 checkbox、ARIA 或 `data-state`；用户提供的原生 DOM 没有语义状态时，
+才检查 `_h3OuAw5` / `FCG9Aotc` 以及一致的 `G9q7tTop` / `frP5WL3d` 激活标记。
+结构不明、禁用或点击无响应时停止尝试，输出每项一次的诊断事件；不盲目反转开关。
+同一控件只点击一次，每项连续替换但未成功的尝试最多三次。
+
+菜单延迟挂载时尝试一次临时悬停，通过局部 DOM 变更处理新控件，完成后撤销临时悬停；
+1.2 秒期限仅用于清理悬停，不作为状态同步等待。页面新增节点用于发现新设置入口，
+控件状态仅在对应菜单范围观察；无全页定时扫描。接入现有 SPA、可见性和销毁生命周期。
+官方若不接受模拟悬停，用户仍可手动悬停对应图标让菜单挂载。
+
+关闭扩展选项只停止自动设置，不恢复之前的官方值；抖音可能记住这些原生状态，需在官方菜单恢复。
+`douyinNativeSettings` 保存在 `chrome.storage.sync`，旧数据缺失或类型不合法的字段补为 `false`，
+叶子字段补丁保留其他偏好及未知字段。不新增权限、网络请求或 page bridge 协议。
+
+本地浏览器场景 `douyin-native-settings` 使用用户提供结构验证默认值、独立开关、延迟菜单、
+重复变更、控件替换、切房和停用；不代表当前官方页面、登录状态或特效实际渲染已验收。
+
+2026-09-29 本次验证（Linux，本地构建 `build/extension`）：
+
+- `npm run check` 通过：109 个单元测试文件、596 项测试、137 项契约测试。
+- Chrome 153.0.8010.52 / Edge 153.0.4234.48 的 `douyin-native-settings`、`settings-zh`、
+  `settings-en` 均通过，共六个浏览器场景。使用临时浏览器配置，无真实直播间或账号操作。
+- 首轮新场景因 compact 报告遗漏结果块被完整性检查判失败；补齐输出后重新执行两浏览器通过，
+  未放宽产品断言。首次报告保留于 `test-results/douyin-native-settings/native/`，最终报告位于
+  `native-report-fixed/`、`settings-zh/`、`settings-en/` 同级目录，各自含 `summary.json`。
+- 当前真实站点的菜单结构、全屏和 `www.douyin.com` SPA 仍需实机验收；SPA 路由与退出逻辑已由
+  控制器单元测试覆盖。本轮未重跑或修复历史 `douyin-side` 场景的其他渲染/发送断言。
 
 ---
 

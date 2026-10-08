@@ -21,7 +21,7 @@
   <body>
     <main>
       <h1>Danmaku Echo</h1>
-      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-09-23</p>
+      <p class="meta">隐私政策 / Privacy Policy · 生效日期 / Effective: 2026-09-27</p>
       <nav aria-label="Languages"><a href="#zh-cn">中文</a><a href="#english">English</a></nav>
 
       <section id="zh-cn" lang="zh-CN">
@@ -29,6 +29,7 @@
         <p>Danmaku Echo 不收集、出售或与第三方共享个人数据。高频 +1 提醒只在当前直播页面内存中统计最近一分钟的相同文字，不持久化或传输分析数据。</p>
         <h3>本地数据</h3>
         <p>扩展设置由浏览器的 <code>storage.sync</code> 保存，是否跨设备同步由浏览器账户和浏览器设置决定。弹幕收藏和弹幕雷达首次说明的布尔确认标记保存在 <code>storage.local</code>；确认标记不包含弹幕或账号信息。高频 +1 提醒的计数仅存在于当前页面内存中，刷新或关闭页面后清除。卸载扩展或清除扩展数据可能删除设置、收藏和确认标记。</p>
+        <p>插件判定成功的发送会在 <code>storage.local</code> 保存秒级时间、平台、房间标识和弹幕纯文本（含 Unicode Emoji 和可用的表情文字名称），用于本地发送统计。不保存图片、表情资源、页面 HTML 或请求体，不自动上传；仅记录插件发送，不保存直播间弹幕流。记录保留至用户在设置页清空或删除扩展数据，设置页提供 JSON 导出；旧统计中未保存的正文无法恢复。</p>
         <h3>页面访问与权限</h3>
         <p>扩展仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面识别弹幕，并通过网站现有的官方输入框和交互控件执行用户明确发起的 +1 或回复操作。<code>scripting</code> 权限用于抖音直播单页路由恢复、受保护的 B 站房间表情后备发送，以及用户主动发送后最多 8 秒的一次性结果观察。虎牙、斗鱼的雷达规模信号只读取当前直播页已显示的贵宾数，不请求、换算或回退到直播热度。提示只保留请求方法、去除查询参数后的路径、HTTP 状态、业务码和官方错误文案；可另保留耗时、参数名、请求格式与 Content-Type 等诊断摘要；原始请求体不会传出或保存，凭据请求头、Cookie、密码、CSRF、签名和登录令牌也不会传出或保存。</p>
         <h3>高频 +1 提醒</h3>
@@ -47,6 +48,7 @@
         <p>Danmaku Echo does not collect, sell, or share personal data. Frequent-message +1 reminders count identical text only in current-page memory and do not persist or transmit analysis data.</p>
         <h3>Local data</h3>
         <p>Extension preferences use <code>storage.sync</code>. Favorites and one Boolean acknowledging the first radar introduction use <code>storage.local</code>; the acknowledgement contains no danmaku or account data. Frequent-message counts exist only in current-page memory and clear on refresh or close. Uninstalling the extension or clearing its data may remove settings, favorites, and the acknowledgement.</p>
+        <p>Sends considered successful by the extension are saved in <code>storage.local</code> with second-level timestamps, platform, room identifier, and plain message text, including Unicode emoji and available textual emoji names. These local statistics exclude images, emoji resources, page HTML, and request bodies, and are not uploaded automatically. Only extension sends are recorded, not the live chat stream. Records remain until cleared in settings or extension data is deleted; settings provides JSON export. Text absent from older records cannot be recovered.</p>
         <h3>Site access and permissions</h3>
         <p>The extension recognizes danmaku only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages. It uses official editors for user-initiated actions. <code>scripting</code> restores the Douyin runtime, supports the guarded Bilibili room-emote fallback, and runs a one-shot send-result observer for at most eight seconds after a user action. Huya and Douyu radar scaling reads only the guest count already displayed on the current live page; it does not request, convert, or fall back to popularity. Toasts retain only the method, endpoint without query parameters, HTTP status, platform code, and native error text. Diagnostics may also retain timing, parameter names, formats and Content-Type. Raw request bodies and credential headers are never exported or stored; cookies, passwords, CSRF values, signatures, and login tokens are likewise never exported or stored.</p>
         <h3>Frequent-message +1 reminder</h3>

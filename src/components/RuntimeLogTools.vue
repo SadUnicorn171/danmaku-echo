@@ -5,9 +5,10 @@
       <p>{{ t('runtimeLogDescription') }}</p>
     </div>
     <div class="runtime-log-actions">
-      <button type="button" :disabled="busy" @click="exportLogs">
+      <button type="button" :disabled="busy" @click="exportLogs()">
         {{ t('runtimeLogExport') }}
       </button>
+      <button type="button" :disabled="busy" @click="exportLogs(true)">{{ t('runtimeLogExportLatest') }}</button>
       <button type="button" :disabled="busy" @click="clearLogs">{{ t('runtimeLogClear') }}</button>
     </div>
   </div>
@@ -20,16 +21,17 @@ import { t } from '../composables/settings-language'
 
 const emit = defineEmits<{ status: [message: string, kind: 'error' | 'saved'] }>()
 const busy = ref(false)
-async function request(action: 'export' | 'clear') {
-  const response = await globalThis.chrome?.runtime?.sendMessage({ type: LOG_MESSAGE, action })
+async function request(action: 'export' | 'clear', latestFailure = false) {
+  const response = await globalThis.chrome?.runtime?.sendMessage({ type: LOG_MESSAGE, action, ...(latestFailure ? { latestFailure: true } : {}) })
   if (!response?.ok) throw new Error('runtime-log-unavailable')
   return response.data
 }
-async function exportLogs(): Promise<void> {
+async function exportLogs(latestFailure = false): Promise<void> {
   busy.value = true
   let url = ''
   try {
-    const bundle = await request('export')
+    const bundle = await request('export', latestFailure)
+    if (latestFailure && !bundle.entries.length) { emit('status', t('runtimeLogNoSendFailure'), 'saved'); return }
     url = URL.createObjectURL(
       new Blob([JSON.stringify(bundle, null, 2)], { type: 'application/json' }),
     )

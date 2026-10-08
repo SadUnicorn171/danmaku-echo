@@ -11,7 +11,7 @@
 
 ![Version](https://img.shields.io/badge/version-2.3.3-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
-![License](https://img.shields.io/badge/license-GPL--3.0--or--later-green)
+![License](https://img.shields.io/badge/license-MIT-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
 
 ## 中文
@@ -39,9 +39,9 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 轻量弹幕雷达
 
-启用后，直播页右上角会显示一个可拖动的轻量雷达图标。点击图标可查看当前档位、触发次数、提示停留时间、队列上限和提示缩放，或进入扩展主页设置；它不会展开旧版分析侧栏。扩展只在当前直播页统计最近 60 秒的普通文字弹幕，达到门槛后加入“暂不 / +1”提示队列。首次使用时，雷达完成加载便会显示一次性说明卡片，无需等待高频弹幕触发；动态箭头会直接指向雷达图标，卡片会根据图标所在位置自动显示在左、右、上或下方。引导打开期间，新产生的高频内容只在内存中等待，不创建或播放队列动画，确认引导后才显示并重新获得完整倒计时。引导页提供“自动 +1 雷达弹幕”开关并明确标注默认关闭；用户也可以在扩展主页的弹幕雷达设置中随时开关。完整重复短语、全半角标点和高置信近似文本会归入同一个相似簇，但各原文仍独立计数，不会因为合并而提前达到门槛；队列只显示簇内次数最多、同次数时最近出现的原文。数字、URL、否定词、英文实体或 Emoji 不同的文本不会近似合并。队列默认最多保留 3 条并按触发时间倒序显示，超出上限时直接舍弃最旧内容。侧边聊天与画面中的同一条消息会在 3 秒内合并一次，同一来源中的真实重复消息仍会正常累加。图片表情不参与自动提示，避免错误重发。
+开启后，直播页会显示雷达图标。雷达统计最近一分钟内重复出现的文字弹幕，达到设定次数后显示“暂不 / +1”提示；图片表情不参与统计。首次使用时会显示简短说明。
 
-每条提示默认保留 10 秒，`+1` 后方会独立逐秒倒数。用户点击“暂不”或 `+1` 后，该弹幕会强制静默 40 秒，期间即使频率继续增加也绝不会重新提示；40 秒结束后才恢复正常判断。提示未被操作并自动超时时会强制静默 30 秒，静默结束后还必须比隐藏时新增“当前雷达触发次数的一半（向上取整）”才可重新唤醒，例如触发次数为 5 时需再出现 3 次、为 8 时需再出现 4 次。开启自动 +1 后，新达到门槛的队列数据会直接进入受保护的发送流程而不显示待操作卡片；多条自动发送会串行执行，并继续遵守平台反馈、发送冷却以及同一弹幕 40 秒静默规则。首次说明框打开期间会暂停倒计时，确认后重新获得完整停留时间。新提示会淡入，已有提示平滑让位，点击或超时后快速淡出；系统开启“减少动态效果”时会自动跳过这些动画。雷达默认使用“自动”档：B 站与抖音以 6 次为基础，虎牙与斗鱼以 8 次为基础，并结合最近弹幕量和可读取的直播间人数动态调整。观众数分档已细分：默认基础值下，3000 人为 6 次、1 万人为 8 次、2 万人为 9 次，超过 2 万后继续逐档提高。B 站会从聊天 iframe 汇总 `房间观众`（包括 `1万+`、`2万+` 等紧凑格式），抖音读取页面公开在线人数；虎牙与斗鱼只读取页面贵宾榜中的 `贵宾(数量)`，使用独立的贵宾数分档，不读取、换算或回退到直播热度。无法读取人数时，自动档会在样本充分后按最近弹幕流量分档。自动档仅自动调整触发次数；提示时间、队列上限和提示大小在两个档位下均可按平台修改并保存。切换到“手动”档后，各平台使用保存的固定触发次数，不再根据人数或弹幕量改变门槛。触发次数可设为 2–99 次、提示时间为 1–60 秒、队列上限为 1–10 条，提示队列可缩放为 50%–200%。任意不同内容刚达到阈值时都会立即进入队列，不需要超过已有弹幕的累计次数；因队列溢出被舍弃的旧内容在本直播间会话中不会回归，切换直播间、关闭雷达或刷新页面后才重置。点击 `+1` 会直接复用现有平台发送流程、冷却保护和官方失败反馈；点击“暂不”只关闭对应提示。斗鱼同一条画面弹幕如果由多个并列正文片段组成，`+1`、复制、收藏和雷达会按页面顺序合并完整内容，不再只取第一段。在扩展主页关闭“弹幕雷达”后，会立即停止统计、清空当前计数并隐藏雷达图标和提示。该功能没有热词、问题识别、时间线、摘要、模型、云端分析或会话存储。斗鱼采集只观察结构和文本变化，不监听或修改弹幕运动属性。
+可按平台选择自动或手动触发次数，并设置提示时长、队列上限和提示大小。点击“暂不”或“+1”后，该弹幕会暂时停止重复提示。也可开启“自动 +1”，让达到条件的弹幕通过平台发送流程自动发送；此选项默认关闭。关闭雷达后会停止统计并隐藏图标和提示。
 
 ### 胶囊与雷达大小
 
@@ -49,43 +49,25 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 界面自动大小、雷达自动触发和自动 +1 是三个独立开关。默认使用手动大小，升级保留原设置；自动触发不会锁定提示停留时间、队列上限或提示大小。
 
-### 抖音 DOM 接管说明
+### 抖音直播
 
-此版本为抖音视频弹幕启用独立的安全 DOM 接管。扩展旁路读取官方 Worker 已解码的 `addBarrage` 数据，保留原消息投递和原生 Worker，然后按同一弹道模型渲染可交互的真实 DOM 弹幕；不拦截 WebSocket、不解析私有协议，也不复制 Canvas 像素。
-
-每条 DOM 弹幕拥有独立状态。鼠标进入时只冻结当前条目的可视位置；`+1` 发送成功或鼠标移出后，会从悬停位置按原速度继续移动，不再快速追赶后台轨迹，因此不会产生弹射感。操作胶囊不会覆盖弹幕正文：弹幕尚未完全进入画面或右侧空间不足时显示在左侧，只有完整进入且空间充足后才显示在右侧。
-
-抖音主站会从普通页面通过 SPA 无刷新进入直播间，因此扩展在 `www.douyin.com/*` 仅常驻一个轻量 URL 启动器；路由进入 `/follow/live/*` 时才补注入页面钩子、设置通道和样式。直接打开 `live.douyin.com/*` 仍从 `document_start` 启动。若钩子较晚才认领到现有 Canvas，则会等待官方 `clear` 后的新弹幕或安全过期窗口，避免隐藏尚未同步的原生内容。
-
-只有当首批 DOM 节点已经连接时，扩展才使用 `visibility: hidden` 隐藏原生 Canvas；Worker 继续在后台运行。设置关闭、心跳超时、渲染异常、Canvas 移除、切房、停止或销毁实例时会立即恢复 Canvas。抖音右侧聊天区仍使用独立的 DOM 消息适配与官方发送流程。
+抖音直播间支持对侧边聊天消息和视频弹幕使用 +1、回复和收藏；首次进入直播间、站内切换直播间时无需手动刷新。
 
 ### 核心功能
 
-- 最近一分钟内相同文字弹幕达到自定义次数后，会显示带可配置倒计时的 +1 提示。
-- 鼠标悬停弹幕时显示 `+1` 按钮，点击后自动发送相同内容。
-- 点击“回复”会自动填入 `@发送者 `，聚焦官方输入框并等待用户继续输入，不会自动发送。
-- 点击“收藏”会把文字、Unicode Emoji、平台图片表情和混排内容完整保存到浏览器本地，不会把图片表情降级成替代文字。
-- 可在设置中独立显示或隐藏 `+1`、回复、收藏和复制；复制默认关闭，其余三项默认开启，并始终至少保留一个胶囊操作。
-- `+1` 发送具有连续点击、并发和同内容 3 秒冷却保护；平台返回发言频率、重复发送、禁言等限制时，会优先显示官方文案，并附带脱敏后的请求路径、HTTP 状态或业务码，而不是统一提示“发送失败”。
-- B 站房间图片表情优先点击官方表情面板；若面板无法唯一定位且弹幕带有可信的 `room_<房间>_<资源>` 标识，则在确认资源所属房间与当前直播间一致后使用直发后备路径。
-- 收藏跨直播间可用且本房优先；收藏页支持拖拽设置持久化的“轮盘顺序”，快捷轮盘取本房该顺序的前 6 条，短按 `Alt + Q` 打开列表、长按呼出轮盘，全屏模式同样可用。
-- 回复会按显示模式选择输入面：普通模式写入侧边聊天框，全屏模式优先写入播放器快捷回复栏。
-- 四个平台的弹幕正文、间隔和操作胶囊组成连续悬停区域；鼠标穿过两者之间的空隙不会让弹幕短暂恢复移动。
-- 虎牙、哔哩哔哩与斗鱼的视频弹幕悬停后暂停，完全移出连续操作区域后从原位置继续移动。
-- 斗鱼播放器自带的 `+1`、回复与收藏胶囊默认关闭，可在“原生胶囊”设置页中恢复显示。
-- 抖音视频弹幕由安全 DOM 层连续渲染，单条悬停暂停并从原位原速续行；胶囊根据弹幕进入状态和可用空间显示在左侧或右侧。
-- 四个平台的视频弹幕胶囊使用一致的按钮和分隔线宽度，并在弹幕尚未完全进入或右侧空间不足时切换到左侧，避免遮挡正文。
-- 避免相邻或重叠的后续弹幕抢占当前选择。
-- 过滤清晰度、设置菜单等播放器控件，只识别真实弹幕。
-- 支持文字、Emoji 和最长 1000 个 Unicode 字符的弹幕识别；实际发送长度仍受平台规则限制。
-- 抖音 DOM 弹幕会根据官方数据还原文字、描边、颜色与表情，并将表情映射回官方发送文本。
-- 支持抖音首次进入直播间、SPA 切房和 Worker/OffscreenCanvas 弹幕，无需二次刷新页面。
-- 自动适配原生全屏，并在发送后释放官方输入框焦点。
-- 提供 `Alt + 单击` 通用回退操作，应对直播站点类名调整。
-- 可分别为虎牙、哔哩哔哩、抖音和斗鱼设置 `+1` 按钮、选中高亮、提示浮层及状态颜色；留空时使用内置默认值。
-- 设置通过 `chrome.storage.sync` 保存；收藏和脱敏运行日志保存在本机。
+- 在四个平台支持的侧边聊天消息和视频弹幕上使用 `+1`、回复、收藏和复制。
+- `+1` 发送相同弹幕，并提供连续点击、并发及同内容 3 秒冷却保护；平台限流、重复发送或禁言时显示可取得的官方提示。
+- 回复会填入 `@发送者 ` 并聚焦输入框；后续内容和发送由用户决定。
+- 收藏支持文字、Emoji、平台图片表情及混排内容，可跨直播间查看、搜索、加标签和排序。
+- 短按 `Alt + Q` 打开收藏面板，长按打开快捷轮盘；也可用数字键发送收藏。
+- 弹幕雷达统计最近一分钟内重复的文字弹幕，可自定义触发次数、提示时间和队列大小，并可选择自动 +1。
+- 设置中可按平台启用操作按钮、独立显示或隐藏各项操作，并切换中英文界面；弹幕操作支持网页和原生全屏。
+- 抖音直播设置可分别切换送礼信息、福袋口令和屏蔽礼物特效。
+- 发送统计按秒记录成功发送弹幕的平台、房间和纯文本内容，可在设置页查看、筛选和导出。
 
 ### 安装
+
+推荐优先通过浏览器官方扩展商店安装并接收更新：Chrome 用户前往 [Chrome 网上应用店中的弹幕回声](https://chromewebstore.google.com/detail/ndhdmieaeklfmfjjkpoiklhibmnjnmkp?utm_source=item-share-cb)，Edge 用户前往 [Microsoft Edge 加载项中的弹幕回声](https://microsoftedge.microsoft.com/addons/detail/%E5%BC%B9%E5%B9%95%E5%9B%9E%E5%A3%B0-danmaku-echo/nbpefkbpbcnkeelaamjnfdeiplnghodl)。如果无法访问商店，可使用下方 GitHub Release 安装方式。
 
 #### 从 Release 安装
 
@@ -110,27 +92,12 @@ npm run build
 
 ### 使用方法
 
-1. 登录受支持平台并进入直播间。
-2. 将鼠标移到右侧聊天消息或视频画面弹幕上。
-3. 点击出现的 `+1` 按钮。
-4. 扩展会写入官方输入框并触发官方发送流程。B 站房间图片表情仅在官方面板定位失败且唯一资源标识与当前真实房间一致时使用接口后备发送。
+1. 打开支持平台的直播间，将鼠标移到侧边聊天消息或视频弹幕上。
+2. 点击弹出的 `+1`、回复、收藏或复制按钮。回复会填入 `@发送者 ` 并聚焦输入框，不会自动发送；复制按钮可在设置中开启。
+3. 短按 `Alt + Q` 打开收藏面板，长按打开快捷轮盘；在面板中也可用数字键 `1–9` 发送收藏。
+4. 点击浏览器工具栏中的扩展图标管理总开关和平台开关；打开扩展设置可调整操作按钮、弹幕雷达及其他选项。设置页可随时切换中英文。
 
-如需回复，点击同一操作条中的“回复”；扩展会填入 `@发送者 ` 并把光标放到官方输入框末尾，后续内容与发送动作由用户完成。
-普通模式使用侧边聊天框；进入全屏后使用播放器内可见的快捷回复栏。
-
-如需收藏，点击操作条中的“收藏”。短按 `Alt + Q` 打开本房收藏列表；“其他直播间”和“全部”会先显示直播间名称，点击任意直播间后进入它的弹幕选择页。列表支持搜索正文和标签、按发送次数/时间正序/时间倒序/轮盘顺序排序、置顶、编辑标签、数字键 `1–9` 快速发送、加入本房和删除。选择“轮盘顺序”后，可拖动左侧手柄重排，也可使用上移/下移按钮；新顺序会自动保存，并决定快捷轮盘展示的前 6 条。长按 `Alt + Q` 约 0.18 秒会在鼠标位置打开圆形轮盘，移动指针选择后松开即可发送，移回中心或按 `Esc` 取消。
-
-四个平台的侧边聊天栏弹幕胶囊默认关闭，可在“聊天栏胶囊”设置页中分别启用。胶囊可包含 `+1`、回复、收藏和复制；四项可在设置中独立开关，复制默认关闭，且最少保留一项。该设置只影响侧边聊天消息，视频画面弹幕仍由全局功能开关控制。
-
-视频弹幕胶囊会自动选择左右位置：弹幕尚未完全进入直播画面，或右侧放不下完整胶囊时，胶囊显示在弹幕左侧；只有弹幕完整进入且右侧空间充足时才显示在右侧。弹幕、两者之间的透明间隔和胶囊属于同一个连续悬停区域，移动鼠标操作按钮时不会发生短暂续行或位置跳动。
-
-斗鱼播放器原生的 `+1`、回复和收藏胶囊也默认关闭，并有独立开关；开启后可能与扩展提供的视频弹幕快捷操作同时显示。
-
-点击浏览器工具栏中的扩展图标，可以总开关扩展并分别启用平台。在常规设置中可以关闭默认开启的 `Alt + 单击通用回退`：按住 Alt 单击扩展能识别的弹幕时，会尝试直接执行受发送保护约束的 `+1`；无法识别弹幕时不会发送。
-
-设置页侧栏提供独立的「中文 / English」按钮，默认中文，点击后立即切换设置页语言并保存选择。直播页提示及浏览器管理的扩展名称仍沿用浏览器语言机制。
-
-抖音调试：在直播页按 `Ctrl + Alt + D`，扩展会把启动链路、Canvas 实例、DOM 接管状态、活动节点数、回退原因和最近事件输出到开发者工具控制台。日志前缀为 `[Danmaku Echo]`。
+按住 `Alt` 单击可识别的弹幕也能快速执行 `+1`；此快捷操作默认开启，可在常规设置中关闭。
 
 ### 运行日志与故障排查
 
@@ -222,11 +189,9 @@ build/extension/              可加载、可发布的生成产物（不提交�
 
 ### 开源协议
 
-本项目使用 [GNU General Public License v3.0 or later](LICENSE) 发布。
+本项目使用 [MIT License](LICENSE) 发布。你可以自由使用、复制、修改、合并、发布、分发、再许可或销售本项目及其副本；分发时须保留版权声明和许可声明。
 
 Copyright © 2026 sadUnicorn.
-
-这是一份强著佐权许可证：如果你公开发布、分发或提供本项目的修改版、移植版或其他衍生作品，必须继续使用 GPL-3.0-or-later，并向接收者提供完整的对应源代码和许可证文本。GPL 不要求未向他人分发的私人修改必须公开。
 
 ### 参与贡献
 
@@ -263,9 +228,9 @@ Short-press `Alt + Q` in a live room to open the fixed panel, where search, send
 
 ### Lightweight danmaku radar
 
-When enabled, a draggable lightweight radar icon appears on the live page. Clicking it shows the active mode, trigger count, prompt duration, queue limit, prompt scale, and a shortcut to extension settings without restoring the old analytics sidebar. The extension groups matching plain-text messages seen during the last 60 seconds and adds them to a newest-first **Dismiss / +1** queue at the active automatic or manual threshold. On first use, a one-time guide opens as soon as the enabled radar finishes loading instead of waiting for a frequent-message queue. Its directional arrow and card placement follow the icon on any side of the viewport. Queue content that arrives while the guide is open waits in memory without creating or animating prompt cards, then receives a full countdown after acknowledgement. The guide offers an Automatic +1 switch, which is off by default, and explains the mode, four-platform thresholds, prompt duration, queue limit, and prompt scale controls. Choosing **Got it** or opening settings stores only a local acknowledgement, so the guide does not appear again. A chat/video mirror is merged within three seconds, while legitimate repetitions from one source still count. Image emotes are excluded to avoid incorrect resends.
+When enabled, the radar icon tracks repeated text messages from the last minute and shows a **Dismiss / +1** prompt when they reach the configured threshold. Image emotes are excluded. A short guide appears on first use.
 
-Prompts remain visible for ten seconds by default, with an independent live countdown beside +1. Clicking Dismiss or +1 suppresses the message for 40 seconds. A timeout suppresses it for 30 seconds and then requires additional occurrences equal to half the current threshold, rounded up. Opting into Automatic +1 sends newly triggered items serially through the protected send flow. The default **Automatic** mode adapts its trigger count from recent danmaku volume and a public room-size signal when available. Bilibili and Douyin start from 6; Huya and Douyu start from 8 and use their displayed guest counts without estimating from popularity. When room size is unavailable, Automatic mode falls back to stable recent danmaku-volume bands after enough samples. Both modes let you edit and save prompt duration, queue limit, and prompt scale independently for each platform. **Manual** mode also uses each platform’s saved fixed trigger count. Trigger counts support 2–99, prompt duration 1–60 seconds, queue limits 1–10, and prompt scaling 50%–200%. The countdown pauses while the first-use introduction is open and restarts with its full duration after confirmation. Queue overflow retires the oldest message for the current room session; switching rooms, disabling the radar, or refreshing resets this state. The +1 button uses the existing platform send path, cooldown protection, and official failure feedback. Disabling **Danmaku radar** immediately stops counting, clears the current count, and hides both the icon and prompts. There are no hot words, question analysis, timelines, summaries, models, cloud analysis, or message-content persistence. Douyu collection observes only structural and text mutations and never controls danmaku motion.
+Choose automatic or manual thresholds for each platform, and set the prompt duration, queue limit, and size. Dismissing a prompt or using +1 temporarily silences that message. You can also enable **Automatic +1** to send qualifying messages through the platform's send flow; this option is off by default. Turning the radar off stops counting and hides its icon and prompts.
 
 ### Capsule and radar size
 
@@ -273,41 +238,25 @@ General settings provides independent Automatic and Manual interface sizing. Aut
 
 Manual sizing is the default and preserves existing settings on upgrade. Interface sizing, automatic radar thresholds, and Automatic +1 are independent controls. Automatic thresholds leave duration, queue limit, and prompt size editable.
 
-### Douyin DOM takeover
+### Douyin live rooms
 
-This release introduces a dedicated safe DOM takeover for Douyin's on-video danmaku. The extension observes already-decoded `addBarrage` instructions sent to the official Worker, preserves their original delivery and the native Worker, and renders interactive DOM danmaku from the same lane model. It does not intercept WebSockets, decode private protocols, or copy Canvas pixels.
-
-Every DOM barrage has independent interaction state. Hover freezes only that node's visible position. After a successful `+1` or pointer leave, it resumes from the held position at its original speed instead of rapidly catching up to the background trajectory, eliminating the slingshot effect. The action capsule never covers the message: it stays on the left while the barrage is entering or lacks right-side space, and moves to the right only after the message is fully visible and the complete capsule fits.
-
-Douyin can enter a live room from an ordinary page through SPA navigation, so only a lightweight URL bootstrap stays on `www.douyin.com/*`; it injects the page hook, settings channel, and styles when the route enters `/follow/live/*`. Direct `live.douyin.com/*` loads still start at `document_start`. If a late hook recovers an existing Canvas, takeover waits for an official `clear` plus new barrages or a safe expiry window so unsynchronized native content is never hidden.
-
-The native Canvas is hidden with `visibility: hidden` only after the first DOM nodes are connected, while the Worker keeps running in the background. Disabling settings, a heartbeat timeout, renderer failure, Canvas removal, room navigation, stop, or destroy restores the Canvas immediately. Douyin's side chat keeps its separate DOM-message adapter and official send path.
+Use +1, Reply, and Favorite on supported side-chat messages and on-video danmaku. First entry and in-site room changes work without a manual refresh.
 
 ### Features
 
-- Prompts whether to +1 when identical text reaches a custom occurrence threshold, with a configurable auto-hide countdown.
-- Shows a `+1` action when a danmaku is hovered and sends the same content automatically.
-- The Reply action inserts `@sender `, focuses the official editor, and waits for user input without sending automatically.
-- The Favorite action stores plain text, Unicode emoji, platform image emotes, and mixed content locally.
-- +1 sending includes repeated-click, concurrent-send, and a three-second same-message cooldown. Native rate-limit, duplicate-message, and moderation feedback is shown with a sanitized endpoint, HTTP status, or platform code when available instead of being collapsed into a generic failure.
-- Favorites work across rooms with current-room priority; the panel provides a persistent draggable **Wheel order**, and the radial menu uses its first six current-room entries. Short-press `Alt + Q` for the panel or hold it for the radial menu, including in fullscreen.
-- Reply targets the side-chat editor in normal mode and the visible in-player quick editor in fullscreen mode.
-- Treats the barrage, the visual gap, and its capsule as one continuous hover target on all four platforms, so crossing the gap never briefly resumes movement.
-- Pauses Huya, Bilibili, and Douyu on-video danmaku on hover, then resumes it from the held position only after the pointer leaves the complete interaction region.
-- Keeps Douyu's native **+1**, **Reply**, and **Favorite** capsule off by default, with an independent switch under the Native capsule settings page.
-- Continuously renders Douyin danmaku in a safe DOM layer with per-item hover pause, same-speed resume from the held position, and a correctly bound left-or-right action capsule.
-- Uses equal action and divider widths on every platform and moves the capsule to the left while a barrage is entering or cannot fit the complete capsule on its right, preventing message overlap.
-- Keeps adjacent or overlapping danmaku from stealing the current selection.
-- Rejects player controls such as quality and settings menus.
-- Recognizes text, emoji, and messages up to 1,000 Unicode characters; the platform's own sending limit still applies.
-- Reconstructs Douyin text, outlines, colors, and emoji from official danmaku data and maps emoji back to official send tokens.
-- Supports first room entry, SPA room changes, and Worker/OffscreenCanvas danmaku on Douyin without a second refresh.
-- Supports native fullscreen and releases official editor focus after sending.
-- Includes an `Alt + click` fallback for future site markup changes.
-- Provides independent Huya, Bilibili, Douyin, and Douyu colors for the `+1` action, selection highlight, overlays, and status feedback; blank values keep the built-in defaults.
-- Stores settings with `chrome.storage.sync`; favorites and sanitized runtime logs stay local.
+- Use +1, Reply, Favorite, and Copy on supported side-chat messages and on-video danmaku across all four platforms.
+- +1 sends the same danmaku with repeated-click, concurrent-send, and three-second same-message cooldown protection. Native platform feedback is shown for rate limits, duplicates, and mutes when available.
+- Reply fills in `@sender ` and focuses the official editor. The user decides what to add and when to send.
+- Favorites support text, emoji, platform image emotes, and mixed content; browse them across rooms, search, tag, and sort them.
+- Short-press `Alt + Q` to open the favorites panel or hold it to open the radial menu. Number keys can also send favorites.
+- The danmaku radar counts repeated text from the last minute. Configure its threshold, display time, and queue size, and optionally enable automatic +1.
+- Enable action buttons per platform, show or hide each action, and switch the settings interface between Chinese and English. Danmaku actions work in web and native fullscreen.
+- Douyin settings include separate switches for gift messages, lucky-bag phrases, and blocking gift effects.
+- Send statistics record the successful send time to the second, platform, room, and plain-text content. View, filter, and export them in Settings.
 
 ### Installation
+
+For the recommended installation and automatic updates, install the extension from its official store listing: [Danmaku Echo on the Chrome Web Store](https://chromewebstore.google.com/detail/ndhdmieaeklfmfjjkpoiklhibmnjnmkp?utm_source=item-share-cb) or [Danmaku Echo on Microsoft Edge Add-ons](https://microsoftedge.microsoft.com/addons/detail/%E5%BC%B9%E5%B9%95%E5%9B%9E%E5%A3%B0-danmaku-echo/nbpefkbpbcnkeelaamjnfdeiplnghodl). If you cannot access the stores, use the GitHub Release instructions below.
 
 #### From a release
 
@@ -332,22 +281,12 @@ npm run build
 
 ### Usage
 
-1. Sign in to a supported platform and open a live room.
-2. Hover a side-chat message or an on-video danmaku.
-3. Click the displayed `+1` button.
-4. The extension fills the official editor and triggers the platform's official send flow.
+1. Open a live room on a supported platform and hover a side-chat message or on-video danmaku.
+2. Choose **+1**, **Reply**, **Favorite**, or **Copy** from the action buttons. Reply fills in `@sender ` and focuses the editor without sending; Copy can be enabled in Settings.
+3. Short-press `Alt + Q` to open favorites, or hold it to open the radial menu. Use number keys `1–9` to send favorites from the panel.
+4. Use the toolbar popup to enable the extension and individual platforms. Open Settings to configure actions, the danmaku radar, and other options; switch the settings language between Chinese and English there.
 
-Use the toolbar popup to enable or disable the extension and toggle individual platforms. The **Alt + click fallback** is enabled by default and can be changed in General settings. Holding Alt while clicking a danmaku the extension recognizes attempts an immediate, send-protected +1; unrecognized content is not sent.
-
-The settings sidebar has a separate **中文 / English** button. Settings default to Chinese, change immediately on click, and remember the selection. Live-page messages and the browser-managed extension name continue to follow the browser language.
-
-Click **Favorite** in a danmaku action bar to store it. Short-press `Alt + Q` for the current-room list; search, number-key sending, other-room browsing, add-to-room, deletion, and **Wheel order** editing are available there. Select **Wheel order**, then drag a handle or use the move buttons to persist the order; the radial menu displays its first six current-room entries. Hold `Alt + Q` for about 0.18 seconds to open the cursor-centered radial menu, point to an item, and release to send; move back to the center or press `Esc` to cancel.
-
-The side-chat action capsule is disabled by default on all four platforms. Enable each platform independently under **Settings → Chat capsule**. The capsule can contain **+1**, **Reply**, **Favorite**, and **Copy**; each action is independently configurable, Copy defaults off, and at least one action remains enabled. These switches affect side-chat messages only, while on-video danmaku continues to follow the global action settings.
-
-On-video capsules choose their side automatically. A capsule stays to the left while its barrage is still entering the player or when the full capsule cannot fit on the right; it moves right only after the barrage is fully visible and enough space is available. The barrage, gap, and capsule form one continuous hover region, preventing momentary resume or position jumps while moving to an action button.
-
-For Douyin diagnostics, press `Ctrl + Alt + D` in a live room. Startup, Canvas instances, DOM-takeover state, active-node counts, fallback reasons, and recent events are written to DevTools with the `[Danmaku Echo]` prefix.
+You can also hold `Alt` and click a recognized danmaku for a quick +1. This shortcut is enabled by default and can be turned off in General settings.
 
 ### Runtime logs and troubleshooting
 
@@ -439,11 +378,9 @@ Live platforms regularly change their markup. The extension combines platform se
 
 ### License
 
-Released under the [GNU General Public License v3.0 or later](LICENSE).
+Released under the [MIT License](LICENSE). You may use, copy, modify, merge, publish, distribute, sublicense, and sell copies of the project, provided that the copyright and permission notices are included with distributed copies.
 
 Copyright © 2026 sadUnicorn.
-
-This is a strong copyleft license. If you publish, convey, or distribute a modified, ported, or otherwise derivative version, you must license the entire covered work under GPL-3.0-or-later and provide recipients with the complete corresponding source code and license text. Private modifications that are not conveyed to others do not have to be published under the GPL.
 
 ### Contributing
 

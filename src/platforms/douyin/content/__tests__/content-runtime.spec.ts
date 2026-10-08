@@ -139,6 +139,23 @@ afterEach(() => {
 })
 
 describe('DouyinContentRuntime', () => {
+  it('resumes the same content runtime after a BFCache return', async () => {
+    vi.useFakeTimers()
+    const harness = createHarness()
+    await harness.runtime.start()
+    try {
+      window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true }))
+      expect(harness.bridge.destroy).not.toHaveBeenCalled()
+      expect(harness.features.destroy).not.toHaveBeenCalled()
+      expect(vi.getTimerCount()).toBe(0)
+      window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+      expect(harness.controllers[0].start).toHaveBeenCalledTimes(2)
+      expect(harness.features.start).toHaveBeenCalledOnce()
+      expect(harness.storageListener()).toBeTypeOf('function')
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(harness.calls).toContain('bridge.heartbeat')
+    } finally { harness.runtime.destroy() }
+  })
   it('does not accumulate timers or extension listeners across 20 SPA rooms', async () => {
     vi.useFakeTimers()
     const harness = createHarness()

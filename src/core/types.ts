@@ -58,7 +58,14 @@ export interface ActionSettings {
   reply: boolean
 }
 
+export interface DouyinNativeSettings {
+  hideGiftMessages: boolean
+  hideLuckyBagCommands: boolean
+  blockGiftEffects: boolean
+}
+
 export interface ExtensionSettings {
+  douyinNativeSettings: DouyinNativeSettings
   actions: ActionSettings
   altClick: boolean
   colors: Record<PlatformId, ColorSettings>

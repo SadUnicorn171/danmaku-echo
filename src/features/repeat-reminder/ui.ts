@@ -9,6 +9,7 @@ import type { RepeatReminderSuggestion } from './types'
 interface RepeatReminderUiOptions {
   automaticPlusOne?(suggestion: RepeatReminderSuggestion): void
   dismiss(suggestion: RepeatReminderSuggestion): void
+  launcherLogoUrl?: string
   onboardingStorage?: {
     acknowledge(): Promise<void>
     isAcknowledged(): Promise<boolean>
@@ -136,8 +137,7 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     .launcher:hover, .launcher[aria-expanded="true"] { border-color: rgb(255 122 0 / 42%); }
     .launcher.is-onboarding, .launcher.is-onboarding:hover { border-color: #ff7a00; cursor: default; z-index: 12; }
     .launcher.is-dragging { cursor: grabbing; transition: none; }
-    .launcher svg { fill: none; height: 23px; pointer-events: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.65; width: 23px; }
-    .launcher svg .is-filled { fill: currentColor; stroke: none; }
+    .launcher-logo { height: 30px; object-fit: contain; pointer-events: none; user-select: none; width: 30px; -webkit-user-drag: none; }
     .launcher-badge { align-items: center; background: #ff4747; border: 2px solid #fff; border-radius: 999px; color: #fff; display: none; font: 700 9px/1 ui-monospace, Consolas, monospace; height: 18px; justify-content: center; min-width: 18px; padding: 0 4px; pointer-events: none; position: absolute; right: -5px; top: -5px; }
     .launcher.has-alert .launcher-badge { display: flex; }
     .settings { backdrop-filter: blur(12px); background: rgb(255 255 255 / 97%); border: 1px solid rgb(23 24 29 / 12%); border-radius: 16px; box-shadow: 0 14px 36px rgb(23 24 29 / 22%); color: #17181d; display: none; padding: 14px; pointer-events: auto; position: fixed; width: 248px; }
@@ -252,7 +252,10 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   launcher.title = '弹幕雷达'
   launcher.setAttribute('aria-label', '打开弹幕雷达设置，可拖动')
   launcher.setAttribute('aria-expanded', 'false')
-  launcher.innerHTML = `${RADAR_ICON}<span class="launcher-badge" aria-hidden="true"></span>`
+  launcher.innerHTML = '<img class="launcher-logo" alt="" aria-hidden="true" draggable="false"><span class="launcher-badge" aria-hidden="true"></span>'
+  if (options.launcherLogoUrl) {
+    launcher.querySelector<HTMLImageElement>('.launcher-logo')!.src = options.launcherLogoUrl
+  }
   const launcherBadge = launcher.querySelector<HTMLElement>('.launcher-badge')!
 
   const settingsPanel = document.createElement('section')

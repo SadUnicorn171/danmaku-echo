@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" />
+  <title>抖音原生设置回归夹具</title>
+  <style>
+    body {
+      margin: 40px;
+      font: 16px sans-serif;
+    }
+    section {
+      padding: 20px;
+      border: 1px solid #ddd;
+    }
+    .row {
+      display: flex;
+      gap: 20px;
+      margin: 12px;
+    }
+    ._h3OuAw5 {
+      width: 36px;
+      height: 20px;
+      border-radius: 12px;
+      background: #777;
+      cursor: pointer;
+    }
+    .FCG9Aotc {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: white;
+      transform: translate(2px, 2px);
+    }
+    .G9q7tTop {
+      background: #fe2c55;
+    }
+    .frP5WL3d {
+      transform: translate(18px, 2px);
+    }
+  </style>
+  <main id="native"></main>
+  <script>
+    // Native DOM/state follows the user's supplied markup; no production test hook.
+    const fixture = (window.__nativeSettingsFixture = { clicks: [], enters: 0, leaves: 0 })
+    const control = (key, on) =>
+      `<div data-fixture-setting="${key}" class="_h3OuAw5 ${on ? 'G9q7tTop' : ''} hkTSP43k"><div class="FCG9Aotc ${on ? 'frP5WL3d' : ''}"></div></div>`
+    const danmakuRows =
+      () => `<div class="row"><span>送礼信息</span><div>${control('gift', true)}</div></div>
+    <div class="row"><span>福袋口令</span><div>${control('lucky', true)}</div></div>
+    <div data-e2e="danmaku-switch">${control('danmaku', true)}</div>`
+    const giftRows =
+      () => `<div class="row"><span>屏蔽礼物特效</span><div data-e2e="effect-switch">${control('effect', false)}</div></div>
+    <div data-e2e="gift-audio-switch">${control('audio', true)}</div>
+    <div data-e2e="gift-shortcut-key-switch">${control('shortcut', true)}</div>`
+    fixture.reset = (lazy = false) => {
+      document.querySelector('#native').innerHTML =
+        '<section><div data-e2e="danmaku-setting-icon">弹幕设置</div></section><section><div data-e2e="gift-setting">礼物设置</div></section>'
+      document.querySelectorAll('#native section').forEach((root, index) => {
+        const mount = () => {
+          if (root.querySelector('.panel')) return
+          const panel = document.createElement('div')
+          panel.className = 'panel'
+          panel.innerHTML = index ? giftRows() : danmakuRows()
+          panel.querySelectorAll('[data-fixture-setting]').forEach((node) =>
+            node.addEventListener('click', () => {
+              const on = node.classList.toggle('G9q7tTop')
+              node.firstElementChild.classList.toggle('frP5WL3d', on)
+              fixture.clicks.push(node.dataset.fixtureSetting)
+            }),
+          )
+          root.append(panel)
+        }
+        root.firstElementChild.addEventListener('mouseover', () => {
+          fixture.enters++
+          queueMicrotask(mount)
+        })
+        root.firstElementChild.addEventListener('mouseleave', () => {
+          fixture.leaves++
+        })
+        if (!lazy) mount()
+      })
+    }
+    fixture.read = () =>
+      Object.fromEntries(
+        [...document.querySelectorAll('[data-fixture-setting]')].map((node) => [
+          node.dataset.fixtureSetting,
+          node.classList.contains('G9q7tTop'),
+        ]),
+      )
+    fixture.reset()
+  </script>
+</html>

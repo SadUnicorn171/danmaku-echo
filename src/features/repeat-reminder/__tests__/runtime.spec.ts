@@ -14,7 +14,7 @@ afterEach(() => {
 describe('repeat reminder runtime audience refresh', () => {
   it('applies editable prompt preferences in auto mode and resizes without changing the threshold', () => {
     vi.useFakeTimers()
-    const display = { width: 3860, height: 2160 }
+    const display = { width: 3840, height: 2160 }
     vi.stubGlobal('screen', display)
     vi.stubGlobal('devicePixelRatio', 1)
     document.body.innerHTML = '<div data-e2e="live-room-audience">4,974</div>'
@@ -47,11 +47,11 @@ describe('repeat reminder runtime audience refresh', () => {
       expect(shadow.querySelector('[data-value="duration"]')?.textContent).toBe('23 秒')
       expect(shadow.querySelector('[data-value="queue"]')?.textContent).toBe('7 条')
       expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('1.2')
-      display.width = 1930
+      display.width = 1920
       display.height = 1080
       window.dispatchEvent(new Event('resize'))
-      expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('0.6')
-      expect(launcher.style.transform).toBe('scale(0.5)')
+      expect(promptList.style.getPropertyValue('--bcp-repeat-prompt-scale')).toBe('0.78')
+      expect(launcher.style.transform).toBe('scale(0.65)')
       expect(shadow.querySelector('[data-value="threshold"]')?.textContent).toBe('7 次')
       settings.interfaceScale.mode = 'manual'
       runtime.applySettings(settings)
@@ -354,9 +354,43 @@ describe('repeat reminder runtime audience refresh', () => {
     }
   })
 
+  it.each(['room', 'toggle', 'expired', 'destroy'])('cancels queued automatic sends after %s', async (change) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_800_000_000_000)
+    let room = 'douyin:one'
+    let finishFirst!: () => void
+    const plusOne = vi.fn<(text: string) => Promise<void>>()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve }))
+      .mockResolvedValue(undefined)
+    const settings = mergeSettings({ repeatReminder: {
+      autoPlusOne: true, mode: 'manual', manual: { douyin: { threshold: 2, queueLimit: 3 } },
+    } })
+    const runtime = createRepeatReminderRuntime({ initialSettings: settings, platform: 'douyin', plusOne, roomKey: () => room })
+    const trigger = (text: string) => {
+      for (let i = 0; i < 2; i++) runtime.ingest({ messageId: `${text}-${i}`, observedAt: Date.now(),
+        parts: [{ type: 'text', text }], resourceIds: [], senderId: `sender-${i}`, source: 'chat', text })
+    }
+    try {
+      trigger('苹果甜甜')
+      await vi.advanceTimersByTimeAsync(0)
+      trigger('月亮弯弯')
+      if (change === 'room') room = 'douyin:two'
+      if (change === 'toggle') {
+        runtime.applySettings(mergeSettings({ ...settings, repeatReminder: { ...settings.repeatReminder, autoPlusOne: false } }))
+        runtime.applySettings(settings)
+      }
+      if (change === 'expired') await vi.advanceTimersByTimeAsync(61_000)
+      if (change === 'destroy') runtime.destroy()
+      finishFirst()
+      await vi.advanceTimersByTimeAsync(2_000)
+      expect(plusOne.mock.calls.map(([text]) => text)).toEqual(['苹果甜甜'])
+    } finally { runtime.destroy() }
+  })
+
   it('persists an Automatic +1 opt-in made directly from the first-use guide', async () => {
-    const syncSet = vi.fn<(value: unknown) => Promise<void>>().mockResolvedValue(undefined)
+    const syncSet = vi.fn<(value: unknown) => Promise<unknown>>().mockResolvedValue({ ok: true })
     vi.stubGlobal('chrome', {
+      runtime: { sendMessage: syncSet },
       storage: {
         local: {
           get: vi.fn<() => Promise<Record<string, boolean>>>().mockResolvedValue({}),
@@ -378,7 +412,7 @@ describe('repeat reminder runtime audience refresh', () => {
       })
       shadow?.querySelector<HTMLInputElement>('.onboarding-auto-plus-one input')?.click()
       expect(syncSet).toHaveBeenCalledExactlyOnceWith({
-        repeatReminder: expect.objectContaining({ autoPlusOne: true }),
+        type: 'danmaku-echo.settings-patch', changes: [{ path: ['repeatReminder', 'autoPlusOne'], value: true }],
       })
     } finally {
       runtime.destroy()

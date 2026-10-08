@@ -127,7 +127,7 @@ if (!douyinContentScript || (douyinContentScript.js || []).includes("src/content
 }
 
 const douyinPageHook = manifest.content_scripts.find((entry) =>
-  hasAllMatches(entry, douyinLiveMatches)
+  hasAllMatches(entry, douyinSpaBootstrapMatches)
   && (entry.js || []).includes("src/douyin-page-hook.js")
 );
 if (!douyinPageHook || douyinPageHook.run_at !== "document_start"

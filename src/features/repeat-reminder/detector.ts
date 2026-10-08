@@ -117,6 +117,10 @@ export class RepeatReminderDetector {
     this.threshold = normalizeRepeatReminderThreshold(threshold)
   }
 
+  expire(now = Date.now()): void {
+    this.prune(now)
+  }
+
   forgetText(value: unknown): string[] {
     const key = normalizeRepeatReminderText(value)
     if (!key) return []

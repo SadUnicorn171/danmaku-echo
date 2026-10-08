@@ -104,11 +104,14 @@ export function createDouyinCanvasHook(options: DouyinCanvasHookOptions = {}): D
 
   const owner: CanvasPatchOwner = {
     observeTransfer(canvas, offscreen) {
+      // React may transfer a detached, still unmarked Canvas before mounting it.
+      // Keep only its weak identity here; callers must validate the live marker
+      // before creating an instance or changing visibility.
+      offscreenSources.set(offscreen, canvas)
       if (!isDanmakuCanvas(canvas)) {
         state.ignoredTransferCount += 1
         return
       }
-      offscreenSources.set(offscreen, canvas)
       state.transferCount += 1
       state.lastTransferAt = Date.now()
       options.onTransfer?.({

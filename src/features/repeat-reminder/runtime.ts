@@ -1,3 +1,4 @@
+import { saveSettingsPatch } from '../../core/settings-persistence'
 import { resolveInterfaceScalePercent, screenResolution } from '../../core/interface-scale'
 import type { DanmakuDescriptor, ExtensionSettings, PlatformId } from '../../core/types'
 import { repeatReminderPlatformSettings } from '../../core/repeat-reminder-settings'
@@ -85,7 +86,10 @@ export function createRepeatReminderRuntime(
   let trafficFallConfirmations = 0
   let trafficFallTarget = 0
   let destroyed = false
-  let automaticPlusOneChain = Promise.resolve()
+  let automaticGeneration = 0
+  let automaticSending = false
+  let cancelAutomaticWait: (() => void) | undefined
+  const automaticQueue: { text: string; room: string; expiresAt: number; generation: number }[] = []
   let lastAutomaticPlusOneAt = Number.NEGATIVE_INFINITY
   let effectiveThreshold = initialEffectiveThreshold()
   const detector = new RepeatReminderDetector(effectiveThreshold)
@@ -102,6 +106,7 @@ export function createRepeatReminderRuntime(
 
   const ui = createRepeatReminderUi({
     automaticPlusOne: queueAutomaticPlusOne,
+    launcherLogoUrl: globalThis.chrome?.runtime?.getURL?.('assets/danmaku-echo-icon.png'),
     onboardingStorage: {
       acknowledge: acknowledgeRepeatReminderOnboarding,
       isAcknowledged: hasAcknowledgedRepeatReminderOnboarding,
@@ -122,24 +127,43 @@ export function createRepeatReminderRuntime(
     setAutoPlusOne: updateAutoPlusOne,
   })
 
+  function cancelAutomaticSends(): void {
+    automaticGeneration++
+    automaticQueue.length = 0
+    cancelAutomaticWait?.()
+    cancelAutomaticWait = undefined
+  }
+
   function queueAutomaticPlusOne(suggestion: RepeatReminderSuggestion): void {
     selection.dismiss(suggestion)
-    const text = suggestion.text
-    automaticPlusOneChain = automaticPlusOneChain
-      .catch(() => undefined)
-      .then(async () => {
-        if (destroyed || !enabled() || !settings.repeatReminder.autoPlusOne) return
+    if (automaticQueue.some((task) => task.text === suggestion.text)) return
+    if (automaticQueue.length >= platformSettings().queueLimit) automaticQueue.shift()
+    automaticQueue.push({ text: suggestion.text, room: options.roomKey(),
+      expiresAt: Date.now() + Math.min(60_000, suggestion.windowMs), generation: automaticGeneration })
+    void drainAutomaticSends()
+  }
+
+  async function drainAutomaticSends(): Promise<void> {
+    if (automaticSending) return
+    automaticSending = true
+    try {
+      while (automaticQueue.length) {
+        const task = automaticQueue.shift()!
+        const valid = () => !destroyed && enabled() && settings.repeatReminder.autoPlusOne
+          && task.generation === automaticGeneration && task.room === options.roomKey()
+          && Date.now() < task.expiresAt
+        if (!valid()) continue
         const wait = Math.max(0, lastAutomaticPlusOneAt + AUTOMATIC_PLUS_ONE_GAP_MS - Date.now())
-        if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait))
-        if (destroyed || !enabled() || !settings.repeatReminder.autoPlusOne) return
-        try {
-          await options.plusOne(text)
-        } catch {
-          // Platform senders already surface their own failure feedback.
-        } finally {
-          lastAutomaticPlusOneAt = Date.now()
-        }
-      })
+        if (wait > 0) await new Promise<void>((resolve) => {
+          const timer = setTimeout(() => { cancelAutomaticWait = undefined; resolve() }, wait)
+          cancelAutomaticWait = () => { clearTimeout(timer); resolve() }
+        })
+        if (!valid()) continue
+        try { await options.plusOne(task.text) } catch {
+          // The sender reports failures; never retry a danmaku automatically.
+        } finally { lastAutomaticPlusOneAt = Date.now() }
+      }
+    } finally { automaticSending = false }
   }
 
   function updateAutoPlusOne(next: boolean): void {
@@ -150,7 +174,7 @@ export function createRepeatReminderRuntime(
     }
     syncUi()
     try {
-      void globalThis.chrome?.storage?.sync?.set({ repeatReminder: settings.repeatReminder })
+      void saveSettingsPatch([{ path: ['repeatReminder', 'autoPlusOne'], value: next }]).catch(() => {})
     } catch {
       /* Keep the in-page choice active when sync storage is unavailable. */
     }
@@ -194,6 +218,7 @@ export function createRepeatReminderRuntime(
 
   function syncUi(): void {
     const nextEnabled = enabled()
+    if (!nextEnabled || !settings.repeatReminder.autoPlusOne) cancelAutomaticSends()
     if (wasEnabled && !nextEnabled) {
       detector.clear()
       trafficMeter.reset()
@@ -382,11 +407,15 @@ export function createRepeatReminderRuntime(
   function checkRoom(syncWhenUnchanged = true): void {
     const next = options.roomKey()
     if (next === roomKey) {
-      if (syncWhenUnchanged) syncAudience()
+      if (syncWhenUnchanged) {
+        detector.expire()
+        syncAudience()
+      }
       return
     }
     const now = Date.now()
     roomKey = next
+    cancelAutomaticSends()
     audienceSignature = ''
     frameAudience = null
     nextFrameRequestAt = 0
@@ -471,6 +500,7 @@ export function createRepeatReminderRuntime(
     },
     destroy(): void {
       destroyed = true
+      cancelAutomaticSends()
       clearInterval(routeTimer)
       collector?.destroy()
       options.collector?.destroy()

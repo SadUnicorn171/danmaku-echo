@@ -107,6 +107,7 @@
               </label>
             </div>
             <div class="settings-card"><RuntimeLogTools @status="setStatus" /></div>
+            <div class="settings-card"><SendStatisticsTools @status="setStatus" /></div>
           </section>
 
           <section id="repeat-reminder-settings" class="settings-section" aria-labelledby="repeat-reminder-title">
@@ -318,6 +319,19 @@
             </div>
           </section>
 
+          <section id="douyin-native-settings" class="settings-section" aria-labelledby="douyin-native-title">
+            <h2 id="douyin-native-title">{{ t('settingsDouyinNativeTitle') }}</h2>
+            <div class="settings-card">
+              <SettingSwitch id="douyin-hide-gift-messages" v-model="settings.douyinNativeSettings.hideGiftMessages"
+                :title="t('settingsDouyinHideGiftMessages')" :description="t('settingsDouyinHideGiftMessagesDescription')" @change="save" />
+              <SettingSwitch id="douyin-hide-lucky-bag" v-model="settings.douyinNativeSettings.hideLuckyBagCommands"
+                :title="t('settingsDouyinHideLuckyBag')" :description="t('settingsDouyinHideLuckyBagDescription')" @change="save" />
+              <SettingSwitch id="douyin-block-gift-effects" v-model="settings.douyinNativeSettings.blockGiftEffects"
+                :title="t('settingsDouyinBlockGiftEffects')" :description="t('settingsDouyinBlockGiftEffectsDescription')" @change="save" />
+            </div>
+            <p class="douyin-native-note">{{ t('settingsDouyinNativeNote') }}</p>
+          </section>
+
           <section id="platform-colors" class="settings-section color-settings-section" aria-labelledby="colors-title">
             <div class="color-section-heading">
               <div>
@@ -443,6 +457,7 @@ import type {
 import ColorPlatform from "./components/ColorPlatform.vue";
 import FavoritesDataTools from "./components/FavoritesDataTools.vue";
 import RuntimeLogTools from "./components/RuntimeLogTools.vue";
+import SendStatisticsTools from "./components/SendStatisticsTools.vue";
 import SettingSwitch from "./components/SettingSwitch.vue";
 import SettingsSidebar from "./components/SettingsSidebar.vue";
 import SettingsTopbar from "./components/SettingsTopbar.vue";
@@ -524,6 +539,7 @@ const activeSectionTitle = computed(() => ({
   "favorites-guide": t("settingsFavorites"),
   "general-settings": t("settingsGeneral"),
   "native-danmaku-capsule": t("settingsNativeCapsule"),
+  "douyin-native-settings": t("settingsDouyinNativeTitle"),
   "platform-colors": t("settingsColors"),
   "platform-connections": t("settingsPlatforms"),
   "repeat-reminder-settings": t("settingsRepeatReminder"),
@@ -624,6 +640,12 @@ async function copyCurrentPageDiagnostics(): Promise<void> {
 </script>
 
 <style lang="scss">
+.douyin-native-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 10px 2px 0;
+}
 :root {
   color-scheme: light;
   font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;

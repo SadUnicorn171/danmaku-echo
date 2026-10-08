@@ -30,6 +30,23 @@ afterEach(() => {
 })
 
 describe('SendCoordinator', () => {
+  it.each([
+    { code: 0, expected: 'platform' },
+    { code: '0', expected: 'platform' },
+    { httpStatus: 200, expected: 'page' },
+    { code: 0, requestOnly: true, expected: 'page' },
+    { code: 0, pending: true, expected: 'page' },
+  ] as const)('identifies success evidence without promoting HTTP or pending requests: %j', async ({ expected, ...response }) => {
+    const onSuccess = vi.fn<(id: string, second: number, roomId: string | undefined, text: string, confirmation: 'platform' | 'page') => void>()
+    const coordinator = new SendCoordinator({ platform: 'douyu', onSuccess })
+    coordinator.begin('成功')
+    const result = await coordinator.settle({ message: '成功', success: true, feedbackProbe: probe(null), networkObserver: network({
+      nonce: 'nonce-confirmation', platform: 'douyu', source: 'danmaku-echo.live-native-send-observer',
+      type: 'native-send-result', transport: 'fetch', endpoint: 'www.douyu.com/chat/send', ...response,
+    }) })
+    expect(result).toMatchObject({ success: true, confirmation: expected })
+    expect(onSuccess.mock.calls[0]?.[4]).toBe(expected)
+  })
   it('records failed attempts once with DOM and request evidence, and skips successful sends', async () => {
     const write = vi.fn<(entry: RuntimeLog) => void>()
     installRuntimeLogger({ source: 'test', write })
@@ -164,5 +181,31 @@ describe('SendCoordinator', () => {
       success: true,
     })
     expect(succeeded).toMatchObject({ method: 'text', success: true })
+  })
+
+  it('reports each confirmed attempt once and excludes rejected or unconfirmed attempts', async () => {
+    let roomId = 'old-room'
+    const successes: { id: string; second: number; roomId?: string; text: string }[] = []
+    const coordinator = new SendCoordinator({
+      platform: 'douyu',
+      protection: createSendProtection({ accidentalIntervalMs: 0 }),
+      onSuccess: (id, second, room, text) => successes.push({ id, second, roomId: room, text }),
+      roomId: () => roomId,
+    })
+    coordinator.begin('success', '你好 👋[微笑]')
+    roomId = 'new-room'
+    coordinator.finish('success', true)
+    coordinator.finish('success', true)
+    expect(successes).toHaveLength(1)
+    expect(successes[0]?.second).toBe(Math.floor(Date.now() / 1_000))
+    expect(successes[0]?.roomId).toBe('old-room')
+    expect(successes[0]?.text).toBe('你好 👋[微笑]')
+    coordinator.begin('rejected')
+    await coordinator.settle({ feedbackProbe: probe({
+      cooldownMs: 0, kind: 'rejected', message: 'no', source: 'page', transport: 'page',
+    }), message: 'rejected', success: true })
+    coordinator.begin('unconfirmed')
+    coordinator.finish('unconfirmed', false)
+    expect(successes).toHaveLength(1)
   })
 })

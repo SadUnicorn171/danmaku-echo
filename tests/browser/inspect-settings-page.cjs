@@ -182,8 +182,13 @@ async function inspect() {
 
   const languageSwitch = await evaluate(`(async () => {
     const root = document.querySelector('.app-shell');
+    const autoPlusOneTitle = () => document.querySelector('label[for="repeat-reminder-auto-plus-one"] strong')?.textContent?.trim();
+    const scaleDescription = () => document.querySelector('#general-settings .repeat-reminder-mode-setting p')?.textContent || '';
     const defaultChinese = document.documentElement.lang === 'zh-CN'
-      && document.querySelector('.topbar h1')?.textContent === '常规设置';
+      && document.querySelector('.topbar h1')?.textContent === '常规设置'
+      && autoPlusOneTitle() === '自动 +1 雷达弹幕'
+      && document.querySelector('label[for="douyin-hide-gift-messages"] strong')?.textContent === '自动关闭送礼信息'
+      && !scaleDescription().includes('3860') && !scaleDescription().includes('3840');
     document.querySelector('.language-switch button[lang="en"]').click();
     for (let attempt = 0; attempt < 30; attempt++) {
       if ((await chrome.storage.sync.get('settingsLanguage')).settingsLanguage === 'en') break;
@@ -191,7 +196,10 @@ async function inspect() {
     }
     const english = document.documentElement.lang === 'en'
       && document.querySelector('.topbar h1')?.textContent === 'General'
-      && document.querySelector('#repeat-reminder-tab-bilibili')?.textContent.trim() === 'Bilibili';
+      && document.querySelector('#repeat-reminder-tab-bilibili')?.textContent.trim() === 'Bilibili'
+      && autoPlusOneTitle() === 'Automatically +1 radar danmaku'
+      && document.querySelector('label[for="douyin-hide-gift-messages"] strong')?.textContent === 'Automatically hide gift messages'
+      && !scaleDescription().includes('3860') && !scaleDescription().includes('3840');
     const samePage = root === document.querySelector('.app-shell');
     if (${locale.toLowerCase().startsWith('zh')}) {
       document.querySelector('.language-switch button[lang="zh-CN"]').click();
@@ -205,6 +213,27 @@ async function inspect() {
   await send('Page.reload', {}, sessionId);
   await delay(1000);
   languageSwitch.persisted = await evaluate(`document.documentElement.lang === ${JSON.stringify(locale.toLowerCase().startsWith('zh') ? 'zh-CN' : 'en')}`);
+
+  const douyinNativeSettings = await evaluate(`(async () => {
+    const controls = [
+      ['douyin-hide-gift-messages', 'hideGiftMessages'],
+      ['douyin-hide-lucky-bag', 'hideLuckyBagCommands'],
+      ['douyin-block-gift-effects', 'blockGiftEffects'],
+    ];
+    const defaultsOff = controls.every(([id]) => document.getElementById(id)?.checked === false);
+    for (const [id, key] of controls) {
+      document.getElementById(id).click();
+      for (let attempt = 0; attempt < 30; attempt++) {
+        if ((await chrome.storage.sync.get('douyinNativeSettings')).douyinNativeSettings?.[key]) break;
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+    const stored = (await chrome.storage.sync.get('douyinNativeSettings')).douyinNativeSettings;
+    return { defaultsOff, saved: controls.every(([, key]) => stored?.[key] === true) };
+  })()`);
+  await send('Page.reload', {}, sessionId);
+  await delay(1000);
+  douyinNativeSettings.persisted = await evaluate(`['douyin-hide-gift-messages', 'douyin-hide-lucky-bag', 'douyin-block-gift-effects'].every(id => document.getElementById(id)?.checked === true)`);
 
   const viewports = [];
   const polishLayouts = [];
@@ -421,8 +450,8 @@ async function inspect() {
     const saved = response?.data?.entries?.find(entry => entry.message === '[Danmaku Echo] runtime-log-browser-test');
     const serialized = JSON.stringify(saved || {});
     const buttons = document.querySelectorAll('.runtime-log-actions button');
-    if (buttons.length !== 2) return false;
-    buttons[1].click();
+    if (buttons.length !== 3) return false;
+    buttons[2].click();
     await new Promise(resolve => setTimeout(resolve, 200));
     const cleared = await chrome.runtime.sendMessage({ type: 'danmaku-echo.runtime-log', action: 'export' });
     return Boolean(saved?.details?.[0]?.stack && saved?.version && saved?.context?.browser
@@ -430,12 +459,88 @@ async function inspect() {
       && cleared?.ok && cleared.data.entries.length === 0);
   })()`);
 
+  const sendStatistics = await evaluate(`(async () => {
+    const current = Math.floor(Date.now() / 1000);
+    const previous = current - 86400;
+    const day = second => new Date(second * 1000).toISOString().slice(0, 10);
+    const key = date => 'danmakuEchoSendStatisticsDayV1:' + date;
+    const first = { id: 'browser-attempt-001', platform: 'bilibili', roomId: '123', sentAtSec: current, text: '你好 👋[微笑]' };
+    const second = { id: 'browser-attempt-002', platform: 'douyu', roomId: '456', sentAtSec: current, text: '<img src="test">只是文字' };
+    const third = { id: 'browser-attempt-003', platform: 'huya', roomId: '789', sentAtSec: previous };
+    const index = 'danmakuEchoSendStatisticsIndexV1';
+    await chrome.storage.local.set({
+      [index]: { schemaVersion: 1, days: [day(previous), day(current)] },
+      [key(day(current))]: { schemaVersion: 1, date: day(current), events: [first, second] },
+      [key(day(previous))]: { schemaVersion: 1, date: day(previous), events: [third] },
+    });
+    const buttons = [...document.querySelectorAll('.send-statistics-actions button')];
+    if (buttons.length !== 3) return false;
+    buttons[0].click();
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (document.querySelector('.send-statistics-summary b')?.textContent === '3') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    const totals = [...document.querySelectorAll('.send-statistics-summary b')].map(item => item.textContent);
+    const daily = [...document.querySelectorAll('.send-statistics-daily-list b')].map(item => item.textContent);
+    const perSecond = [...document.querySelectorAll('.send-statistics-recent b')].map(item => item.textContent);
+    const messages = [...document.querySelectorAll('.send-statistics-text')].map(item => item.textContent);
+    const plainTextRendered = messages.includes(first.text) && messages.includes(second.text)
+      && !document.querySelector('.send-statistics-messages img');
+    const exported = await chrome.runtime.sendMessage({ type: 'danmaku-echo.send-statistics', action: 'export' });
+    const textExported = exported?.data?.events?.some(event => event.id === first.id && event.text === first.text)
+      && exported.data.events.some(event => event.id === second.id && event.text === second.text)
+      && exported.data.events.some(event => event.id === third.id && !Object.hasOwn(event, 'text'));
+    return { totals, daily, perSecond, plainTextRendered, textExported, exported: exported?.ok,
+      exportedEvents: exported?.data?.events?.length,
+      exportedSeconds: exported?.data?.perSecond?.length,
+      passed: totals.join(',') === '3,2,1,0,1,1'
+      && daily.join(',') === '2,1'
+      && perSecond.join(',') === '×2,×1'
+      && exported?.ok && exported.data.events.length === 3
+      && exported.data.perSecond.length === 2 && plainTextRendered && textExported };
+  })()`);
+
+  const statisticsLayouts = [];
+  for (const width of [800, 1280]) {
+    await send('Emulation.setDeviceMetricsOverride', { deviceScaleFactor: 1, height: 900, mobile: false, screenHeight: 900, screenWidth: width, width }, sessionId);
+    await evaluate(`document.querySelector('.send-statistics').scrollIntoView({ block: 'start' })`);
+    await delay(100);
+    const layout = await evaluate(`(() => {
+      const root = document.querySelector('.send-statistics');
+      const box = root.getBoundingClientRect();
+      return { clip: { x: box.left + scrollX, y: box.top + scrollY, width: box.width, height: box.height, scale: 1 },
+        fits: document.documentElement.scrollWidth <= innerWidth + 1
+          && [...root.querySelectorAll('input,select,button')].every(element => {
+            const rect = element.getBoundingClientRect(); return rect.left >= box.left - 1 && rect.right <= box.right + 1;
+          }) };
+    })()`);
+    statisticsLayouts.push({ width, fits: layout.fits });
+    const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: true, clip: layout.clip }, sessionId);
+    writeFileSync(path.join(artifactDirectory, `${scenarioName}-statistics-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+  }
+  const statisticsCleared = await evaluate(`(async () => {
+    window.confirm = () => true;
+    document.querySelectorAll('.send-statistics-actions button')[2].click();
+    for (let attempt = 0; attempt < 30; attempt++) {
+      if (document.querySelector('.send-statistics-summary b')?.textContent === '0') break;
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    return !(await chrome.storage.local.get('danmakuEchoSendStatisticsIndexV1')).danmakuEchoSendStatisticsIndexV1;
+  })()`);
+  if (sendStatistics && typeof sendStatistics === 'object') {
+    sendStatistics.cleared = statisticsCleared;
+    sendStatistics.layouts = statisticsLayouts;
+    sendStatistics.passed = sendStatistics.passed && statisticsCleared && statisticsLayouts.every(layout => layout.fits);
+  }
+
   const failures = [];
+  if (Object.values(douyinNativeSettings).some(value => value !== true)) failures.push('douyin-native-settings-persistence');
   if (Object.values(languageSwitch).some(value => value !== true)) failures.push('settings-language-switch');
   for (const layout of polishLayouts) {
     if (!layout.buttonsFit || !layout.labelsFit || !layout.pageFits) failures.push(`${layout.width}:settings-detail-overflow`);
   }
   if (!beforeReloadLogs || !runtimeLogs) failures.push("persistent-runtime-logs");
+  if (!sendStatistics?.passed) failures.push("send-statistics-ui-and-export");
   if (!sizing) failures.push("auto-sizing-and-radar-preferences");
   for (const viewport of viewports) {
     if (!viewport.topbarFits) failures.push(`${viewport.width}:topbar-overflow`);
@@ -476,7 +581,9 @@ async function inspect() {
   return {
     assertionFailures: failures,
     languageSwitch,
+    douyinNativeSettings,
     runtimeLogs,
+    sendStatistics,
     browserStderr: browserStderr.slice(-8_000),
     actionSettings,
     locale,

@@ -61,6 +61,12 @@
         <img class="nav-item__icon" src="/assets/icons/capsule.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsNativeCapsule') }}</span>
       </a>
+      <a :class="['nav-item', { 'is-active': activeSection === 'douyin-native-settings' }]"
+        href="#douyin-native-settings" :aria-current="activeSection === 'douyin-native-settings' ? 'location' : undefined"
+        @click.prevent="emit('navigate', 'douyin-native-settings')">
+        <img class="nav-item__icon" src="/assets/icons/settings.svg" alt="" aria-hidden="true">
+        <span>{{ t('settingsDouyinNativeTitle') }}</span>
+      </a>
       <a
         :class="['nav-item', { 'is-active': activeSection === 'platform-colors' }]"
         href="#platform-colors"

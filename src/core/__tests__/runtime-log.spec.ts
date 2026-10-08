@@ -45,6 +45,15 @@ afterEach(() => {
   vi.useRealTimers()
 })
 describe('persistent runtime logs', () => {
+  it('exports only entries belonging to the latest failed send attempt', async () => {
+    const store = createRuntimeLogStore(storageFixture())
+    for (const [id, attemptId, message] of [['a', 'first-attempt', 'send-failure'], ['b', 'latest-attempt', 'send-failure'], ['c', 'latest-attempt', 'send-detail'], ['d', 'unrelated-attempt', 'other-warning']]) {
+      await store.append({ ...entry(id), message, details: { attemptId } }, { version: 'test' })
+    }
+    expect((await store.export(true)).entries.map((row) => row.id)).toEqual(['b', 'c'])
+    expect((await store.export()).entries).toHaveLength(4)
+  })
+
   it.each(['count', 'bytes'])('preserves sequential eviction and retry semantics across a %s-bounded batch', async (limit) => {
     const now = Date.now()
     const seed = Array.from({ length: limit === 'count' ? 500 : 280 }, (_, index) => ({

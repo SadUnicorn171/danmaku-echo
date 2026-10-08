@@ -1,3 +1,4 @@
+import { applySettingsPatch, diffSettings, saveSettingsPatch, type SettingsPatch } from '../core/settings-persistence';
 import { onMounted, onUnmounted, reactive, ref, toRaw, watchEffect } from "vue";
 import { mergeSettings } from "../core/shared";
 import type { ExtensionSettings } from "../core/types";
@@ -7,6 +8,10 @@ type StatusKind = "error" | "saved" | "";
 
 export function useSettings() {
   const settings = reactive<ExtensionSettings>(mergeSettings());
+  let baseline = mergeSettings();
+  let pendingSaves = 0;
+  let saveVersion = 0;
+  const submitted = new Map<string, { change: SettingsPatch; version: number; failed: boolean }>();
   const statusMessage = ref(t("settingsAutoSave"));
   const statusKind = ref<StatusKind>("");
   const statusVisible = ref(false);
@@ -20,16 +25,19 @@ export function useSettings() {
     document.title = t("extensionActionTitle");
   });
 
-  function replaceSettings(value: unknown): void {
+  function replaceSettings(value: unknown, failed: SettingsPatch[] = []): void {
     const preference = value && typeof value === "object" && "settingsLanguage" in value
       ? value.settingsLanguage : undefined;
     settingsLanguage.value = normalizeSettingsLanguage(preference);
-    const next = mergeSettings(value);
+    const edits = [...failed, ...diffSettings(baseline, plainSettings())];
+    baseline = mergeSettings(value);
+    const next = mergeSettings(applySettingsPatch(value, edits));
     settings.enabled = next.enabled;
     settings.interfaceScale = next.interfaceScale;
     settings.altClick = next.altClick;
     settings.actions = next.actions;
     settings.nativeDanmakuCapsule = next.nativeDanmakuCapsule;
+    settings.douyinNativeSettings = next.douyinNativeSettings;
     settings.platforms = next.platforms;
     settings.repeatReminder = next.repeatReminder;
     settings.sideChatCapsule = next.sideChatCapsule;
@@ -58,12 +66,32 @@ export function useSettings() {
       setStatus(t("settingsPreviewSaved"), "saved");
       return;
     }
-    storage.set(payload, () => {
-      if (chrome.runtime.lastError) {
-        setStatus(t("settingsSaveFailed"), "error");
-      } else {
-        setStatus(t("settingsSaved"), "saved");
-      }
+    const changes = diffSettings(baseline, payload);
+    if (!changes.length) return;
+    const version = ++saveVersion;
+    // Compare subsequent clicks with the latest submitted intent, not an old server echo.
+    baseline = mergeSettings(applySettingsPatch(baseline, changes));
+    changes.forEach(change => submitted.set(change.path.join('.'), { change, version, failed: false }));
+    pendingSaves++;
+    void saveSettingsPatch(changes).then(() => {
+      setStatus(t("settingsSaved"), "saved");
+    }, () => {
+      for (const entry of submitted.values()) if (entry.version === version) entry.failed = true;
+      setStatus(t("settingsSaveFailed"), "error");
+    }).finally(() => {
+      pendingSaves--;
+      refreshSettings();
+    });
+  }
+
+  function refreshSettings(): void {
+    if (!storage || pendingSaves) return;
+    const version = saveVersion;
+    storage.get(null, (saved) => {
+      if (pendingSaves || version !== saveVersion) return;
+      const failed = [...submitted.values()].filter(entry => entry.failed).map(entry => entry.change);
+      submitted.clear();
+      replaceSettings(saved, failed);
     });
   }
 
@@ -74,13 +102,10 @@ export function useSettings() {
     statusVisible.value = false;
     if (!storage) return;
     languageSaving.value = true;
-    storage.set({ settingsLanguage: language }, () => {
-      languageSaving.value = false;
-      if (chrome.runtime.lastError) {
-        settingsLanguage.value = previous;
-        setStatus(t("settingsSaveFailed"), "error");
-      }
-    });
+    void saveSettingsPatch([{ path: ['settingsLanguage'], value: language }]).catch(() => {
+      settingsLanguage.value = previous;
+      setStatus(t("settingsSaveFailed"), "error");
+    }).finally(() => { languageSaving.value = false; });
   }
 
   async function copyFeedbackEmail(email: string): Promise<void> {
@@ -122,14 +147,14 @@ export function useSettings() {
     areaName
   ) => {
     if (areaName === "sync" && storage) {
-      storage.get(null, (saved) => replaceSettings(saved));
+      refreshSettings();
     }
   };
 
   onMounted(() => {
     version.value = globalThis.chrome?.runtime?.getManifest?.().version || version.value;
     if (storage) {
-      storage.get(null, (saved) => replaceSettings(saved));
+      refreshSettings();
       globalThis.chrome?.storage?.onChanged?.addListener(storageChanged);
     }
   });

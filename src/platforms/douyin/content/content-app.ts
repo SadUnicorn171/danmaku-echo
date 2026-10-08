@@ -8,6 +8,7 @@ import {
 } from '../own-message'
 import { createFavoritesRuntime } from '../../../features/favorites/launcher'
 import { currentRoomContext } from '../../../features/favorites/room-context'
+import { recordConfirmedSend } from '../../../features/send-statistics/client'
 import { createRepeatReminderRuntime } from '../../../features/repeat-reminder/runtime'
 import {
   createDouyinContentRuntimeState,
@@ -16,6 +17,7 @@ import {
 import { createDouyinDomHoverController } from './dom-hover-controller'
 import { createDouyinEditorController } from './editor-controller'
 import { createDouyinSendController } from './send-controller'
+import { createDouyinNativeSettingsController } from './native-settings-controller'
 import { createDouyinOwnMessageController } from './own-message-controller'
 import { createDouyinRadarCollector } from './radar-collector'
 import {
@@ -145,6 +147,7 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
       debugState.counters.sendsAttempted += 1
     },
     onCooldownChange: updateCooldownUi,
+    onConfirmedSend: (attemptId, sentAtSec, roomId, text, confirmation) => recordConfirmedSend(attemptId, sentAtSec, 'douyin', roomId, text, confirmation),
     onDebug: debugEvent,
     onFailure() {
       debugState.counters.sendsFailed += 1
@@ -155,6 +158,7 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
     platformName: t('platformDouyin'),
     protection: state.sendProtection,
     query: queryAll,
+    roomId: () => currentRoomContext('douyin').roomId,
     showToast,
   })
 
@@ -772,9 +776,16 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
       'repeat-reminder-message': (message) => radarCollector.ingestRenderer(message.message),
     },
   })
+  const nativeSettings = createDouyinNativeSettingsController({
+    document,
+    href: () => location.href,
+    settings: () => state.settings,
+    onUnavailable: (key) => debugEvent('native-setting-unavailable', { setting: key }, 'warn'),
+  })
   const featureRuntimes = {
     applySettings(settings: ExtensionSettings): void {
       state.repeatReminderRuntime?.applySettings(settings)
+      nativeSettings.applySettings()
     },
     destroy(): void {
       state.repeatReminderRuntime?.destroy()
@@ -849,7 +860,7 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
   const runtime = createDouyinContentRuntime({
     bindings: createChromeDouyinRuntimeBindings(),
     bridge,
-    controllers: [actionDispatcher, editorController],
+    controllers: [actionDispatcher, editorController, nativeSettings],
     debug: contentDiagnostics,
     diagnostics,
     document,
@@ -880,6 +891,7 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
     onRouteChanged() {
       state.pageReady = false
       debugState.pageReady = false
+      nativeSettings.routeChanged()
     },
     rendererSettings: () => {
       const rendererEnabled = enabled()
