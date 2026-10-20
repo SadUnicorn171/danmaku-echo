@@ -1,3 +1,5 @@
+import { douyuEmojiToken } from './rich-emoji'
+import type { RichEmojiMetadataAdapter } from '../live/rich-emoji-metadata'
 import { createSelectorPlatformAdapter } from '../live/selector-adapter'
 import { DOUYU_PLATFORM_CONFIG } from './config'
 import {
@@ -34,6 +36,10 @@ export function createDouyuAdapter() {
       nativeCapsuleVisible: (settings) => settings.nativeDanmakuCapsule.douyu,
       platform: 'douyu',
     }),
+    richEmojiMetadata: {
+      imageToken: douyuEmojiToken,
+      assetMetadata: ({ element, normalize, marker }) => ({ token: douyuEmojiToken(element, normalize, marker), keys: [] }),
+    } satisfies RichEmojiMetadataAdapter,
     douyu: {
       actionMarker: DOUYU_NATIVE_DANMAKU_ACTION_MARKER,
       actionSelectors: DOUYU_NATIVE_DANMAKU_ACTION_SELECTORS,

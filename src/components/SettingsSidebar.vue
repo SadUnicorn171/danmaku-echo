@@ -3,7 +3,7 @@
     <div class="brand">
       <img class="brand__mark" src="/assets/icons/icon-128.png" alt="">
       <span class="brand__copy">
-        <strong>{{ t('extensionName') }}</strong>
+        <strong>{{ t('settingsBrandName') }}</strong>
         <small id="version">v{{ version }}</small>
       </span>
     </div>
@@ -112,151 +112,49 @@ const emit = defineEmits<{
 
 <style scoped lang="scss">
 .sidebar {
-  align-items: stretch;
   background: var(--surface);
-  border-right: 1px solid var(--border);
   display: flex;
-  flex: 0 0 240px;
+  flex: 0 0 248px;
   flex-direction: column;
-  padding: 24px 17px 24px 16px;
+  padding: 32px 20px;
+  overflow-y: auto;
   position: relative;
   z-index: 2;
 }
-
-.brand {
-  align-items: center;
-  display: flex;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding: 0 8px;
+.brand { display: flex; align-items: center; gap: 12px; margin-bottom: 26px; padding: 0 12px; }
+.brand__mark { display: block; width: 36px; height: 36px; object-fit: contain; }
+.brand__copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.brand__copy strong { font-size: 19px; font-weight: 600; line-height: 26px; letter-spacing: -.02em; }
+.brand__copy small { color: var(--text-secondary); font-size: 11px; font-variant-numeric: tabular-nums; }
+.language-switch { display: flex; gap: 2px; align-self: flex-start; margin: 0 0 26px; padding: 4px; border-radius: 24px; background: var(--canvas); }
+.language-switch button { min-height: 32px; padding: 6px 14px; border: 0; border-radius: 20px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 12px; cursor: pointer; transition: background-color 140ms ease, color 140ms ease, transform 140ms ease; }
+.language-switch button[aria-pressed="true"] { background: var(--surface); color: var(--accent-text); font-weight: 600; }
+.language-switch button:hover:not(:disabled) { color: var(--text); }
+.language-switch button:active:not(:disabled) { transform: scale(.97); }
+.language-switch button:disabled { cursor: wait; opacity: .6; }
+.nav-list { display: flex; flex-direction: column; gap: 6px; }
+.nav-item { display: flex; align-items: center; min-height: 46px; padding: 12px 16px; gap: 12px; border-radius: 14px; color: var(--text-secondary); font-size: 14px; line-height: 22px; text-decoration: none; transition: background-color 140ms ease, color 140ms ease; }
+.nav-item:hover { background: var(--canvas); color: var(--text); }
+.nav-item:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.nav-item.is-active { background: var(--accent-soft); color: var(--accent-text); font-weight: 600; }
+.nav-item__icon { flex: 0 0 18px; width: 18px; height: 18px; object-fit: contain; opacity: .7; filter: grayscale(1); }
+.nav-item.is-active .nav-item__icon { opacity: 1; }
+.nav-item:last-child { margin-top: 24px; }
+@media (max-width: 1100px) {
+  .sidebar { flex-basis: 218px; padding: 28px 14px; }
+  .brand { padding: 0 8px; }
+  .brand__copy strong { font-size: 17px; }
 }
-
-.brand__mark {
-  border-radius: 4px;
-  display: block;
-  flex: 0 0 32px;
-  height: 32px;
-  object-fit: contain;
-  width: 32px;
-}
-
-.brand__copy {
-  align-items: flex-start;
-  display: flex;
-  flex-direction: column;
-}
-
-.brand__copy strong {
-  font-size: 16px;
-  font-weight: 500;
-  line-height: 20px;
-  white-space: nowrap;
-}
-
-.brand__copy small {
-  color: var(--text-secondary);
-  font-family: Bahnschrift, "Segoe UI", sans-serif;
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-  line-height: 16px;
-}
-
-.nav-list {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.language-switch {
-  display: flex;
-  gap: 2px;
-  align-self: flex-start;
-  margin: 0 8px 20px;
-  padding: 2px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface-muted);
-}
-
-.language-switch button {
-  min-height: 28px;
-  padding: 3px 12px;
-  border: 0;
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text-secondary);
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-  transition: background-color 140ms ease, color 140ms ease;
-}
-
-.language-switch button[aria-pressed="true"] {
-  background: var(--surface);
-  color: #9a4d00;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 8%);
-}
-
-.language-switch button:hover:not(:disabled) {
-  color: var(--text);
-}
-
-.language-switch button:disabled {
-  cursor: wait;
-}
-
-.nav-item {
-  align-items: center;
-  border-radius: 6px;
-  color: var(--text-secondary);
-  display: flex;
-  font-size: 14px;
-  gap: 12px;
-  line-height: 20px;
-  min-height: 36px;
-  padding: 8px 12px;
-  text-decoration: none;
-  transition: background-color 140ms ease, color 140ms ease;
-}
-
-.nav-item:hover {
-  background: rgb(228 226 226 / 32%);
-  color: var(--text);
-}
-
-.nav-item:focus-visible {
-  outline: 2px solid rgb(39 174 96 / 38%);
-  outline-offset: -2px;
-}
-
-.nav-item.is-active {
-  background: rgb(228 226 226 / 50%);
-  color: var(--text);
-  font-weight: 600;
-}
-
-.nav-item__icon {
-  display: block;
-  flex: 0 0 16px;
-  height: 16px;
-  object-fit: contain;
-  opacity: 0.72;
-  transition: opacity 140ms ease, transform 140ms ease;
-  width: 16px;
-}
-
-.nav-item:hover .nav-item__icon,
-.nav-item.is-active .nav-item__icon {
-  opacity: 1;
-  transform: scale(1.04);
-}
-
-@media (max-width: 900px) {
-  .sidebar {
-    flex-basis: 200px;
-    padding-left: 12px;
-    padding-right: 12px;
-  }
+@media (max-width: 700px) {
+  .sidebar { display: grid; grid-template-columns: minmax(0, 1fr) auto; flex: 0 0 auto; gap: 16px; padding: 18px 16px 10px; overflow: visible; }
+  .brand { margin: 0; padding: 0; gap: 8px; min-width: 0; }
+  .brand__mark { width: 30px; height: 30px; }
+  .brand__copy strong { font-size: 15px; line-height: 20px; }
+  .language-switch { margin: 0; align-self: center; }
+  .language-switch button { padding: 6px 10px; }
+  .nav-list { grid-column: 1 / -1; flex-direction: row; overflow-x: auto; min-width: 0; padding: 2px 0; scrollbar-width: thin; }
+  .nav-item { flex: 0 0 auto; min-height: 40px; padding: 9px 14px; border-radius: 22px; font-size: 12px; }
+  .nav-item__icon { display: none; }
+  .nav-item:last-child { margin-top: 0; }
 }
 </style>

@@ -54,14 +54,14 @@
           :aria-label="t('favoritesMoveUpAria', item.text)"
           :title="t('favoritesMoveUp')"
           @click="emit('move', item.id, 'up')"
-        >&#8593;</button>
+        ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5m-6 6 6-6 6 6" /></svg></button>
         <button
           type="button"
           class="bcp-favorites-secondary"
           :aria-label="t('favoritesMoveDownAria', item.text)"
           :title="t('favoritesMoveDown')"
           @click="emit('move', item.id, 'down')"
-        >&#8595;</button>
+        ><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14m-6-6 6 6 6-6" /></svg></button>
       </span>
       <button
         type="button"
@@ -91,21 +91,21 @@
       </button>
       <button
         type="button"
-        class="bcp-favorites-send"
-        :aria-label="t('favoritesSendAria', item.text)"
-        :title="t('favoritesSendTitle', item.text)"
-        @click="emit('send', item.id)"
-      >
-        {{ t("favoritesSend") }}
-      </button>
-      <button
-        type="button"
         :class="['bcp-favorites-remove', { 'is-confirming': pendingRemoveId === item.id }]"
         :aria-label="pendingRemoveId === item.id ? t('favoritesConfirmRemoveAria', item.text) : t('favoritesRemoveAria', item.text)"
         :title="pendingRemoveId === item.id ? t('favoritesConfirmRemoveTitle') : t('favoritesRemoveTitle')"
         @click="emit('requestRemove', item.id)"
       >
         {{ pendingRemoveId === item.id ? t('favoritesConfirm') : t('favoritesRemove') }}
+      </button>
+      <button
+        type="button"
+        class="bcp-favorites-send"
+        :aria-label="t('favoritesSendAria', item.text)"
+        :title="t('favoritesSendTitle', item.text)"
+        @click="emit('send', item.id)"
+      >
+        {{ t("favoritesSend") }}
       </button>
     </span>
     <form v-if="editingTags" class="bcp-favorites-tag-editor" @submit.prevent="saveTags">

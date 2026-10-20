@@ -8,7 +8,7 @@ import { SEND_STATISTICS_DAY_PREFIX, SEND_STATISTICS_INDEX_KEY, type StatisticsF
 function storage(initial: Record<string, unknown> = {}, workerAvailable = false) {
   const values = new Map<string, unknown>(Object.entries(initial))
   const local = {
-    get: vi.fn<(keys: string | string[]) => Promise<Record<string, unknown>>>(async (keys) => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).map((key) => [key, values.get(key)]))),
+    get: vi.fn<(keys: string | string[] | null) => Promise<Record<string, unknown>>>(async (keys) => Object.fromEntries((keys === null ? [...values.keys()] : Array.isArray(keys) ? keys : [keys]).map((key) => [key, values.get(key)]))),
     set: vi.fn<(items: Record<string, unknown>) => Promise<void>>(async (items) => {
       for (const [key, value] of Object.entries(items)) values.set(key, value)
     }),
@@ -65,6 +65,21 @@ describe('send statistics settings', () => {
     expect((await writer.read())).toHaveLength(117)
     wrapper.unmount()
   })
+  it('returns to page one after another settings page clears history', async () => {
+    const { local } = storage({}, true)
+    const writer = createSendStatisticsStore(local)
+    for (let i = 0; i < 61; i++) await writer.append({ id: `cursor-ui-test-${i}`, platform: 'huya', roomId: '123', sentAtSec: 1_800_000_000 + i, text: `row:${i}:` })
+    const wrapper = mount(SendStatisticsTools)
+    await flushPromises()
+    await writer.clear({ text: 'row:0:' })
+    await wrapper.findAll('.send-statistics-pagination button')[1]!.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.send-statistics-text').text()).toBe('row:60:')
+    expect(wrapper.find('.send-statistics-pagination').text()).toContain('第 1 页')
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toContain('记录已变化')
+    wrapper.unmount()
+  })
+
   it('explains why statistics are unavailable in a plain development preview', async () => {
     vi.stubGlobal('chrome', undefined)
     const wrapper = mount(SendStatisticsTools)
@@ -147,6 +162,51 @@ describe('send statistics settings', () => {
     expect(wrapper.find('.send-statistics-summary b').text()).toBe('1')
     expect(wrapper.find('.send-statistics-warning').text()).toContain('1 天')
     expect(values.has(SEND_STATISTICS_INDEX_KEY)).toBe(true)
+    wrapper.unmount()
+  })
+})
+
+describe('statistics capacity controls', () => {
+  it.each([.81, .96])('shows the appropriate quota warning at %s and applies the UTC age shortcut to all platforms', async ratio => {
+    const { local, sendMessage } = storage({}, true)
+    Object.assign(local, { QUOTA_BYTES: 1000000, getBytesInUse: vi.fn<(keys: string[] | null) => Promise<number>>(async (keys: string[] | null) => keys ? 10000 : 1000000 * ratio) })
+    const wrapper = mount(SendStatisticsTools)
+    await flushPromises()
+    expect(wrapper.find('.send-statistics-capacity').text()).toContain(ratio > .95 ? '95%' : '80%')
+    expect(wrapper.find('.send-statistics-warning').classes().includes('is-critical')).toBe(ratio > .95)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await wrapper.find('.send-statistics-capacity button').trigger('click')
+    await flushPromises()
+    expect(confirm.mock.calls[0]?.[0]).toContain('与当前筛选无关')
+    const to = new Date(Date.parse(new Date().toISOString().slice(0, 10)) - 30 * 86400000 - 1).toISOString().slice(0, 10)
+    expect(sendMessage).toHaveBeenCalledWith(expect.objectContaining({ action: 'clear', filter: { to } }))
+    wrapper.unmount()
+  })
+
+  it('offers cancel during a text scan and releases the busy state without changing stored records', async () => {
+    const { local, values } = storage()
+    const writer = createSendStatisticsStore(local)
+    for (let i = 0; i < 150; i++) await writer.append({ id: `cancel-ui-test-${i}`, platform: 'huya', roomId: 'test', sentAtSec: 1800000000 + i, text: 'fixture' })
+    const wrapper = mount(SendStatisticsTools)
+    await flushPromises()
+    const get = local.get.getMockImplementation()!
+    let release!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    local.get.mockImplementation(async keys => {
+      if (Array.isArray(keys) && keys.some(k => k.includes('EventV2:'))) await gate
+      return get(keys)
+    })
+    const before = JSON.stringify([...values])
+    await wrapper.findAll('input[type="search"]')[1]!.setValue('absent')
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.find('.send-statistics-progress').exists()).toBe(true)
+    await wrapper.find('.send-statistics-progress button').trigger('click')
+    release()
+    await flushPromises()
+    expect(wrapper.find('.send-statistics-progress').exists()).toBe(false)
+    expect(wrapper.emitted('status')?.at(-1)?.[0]).toContain('已取消')
+    expect(JSON.stringify([...values])).toBe(before)
     wrapper.unmount()
   })
 })

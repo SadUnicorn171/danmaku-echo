@@ -230,11 +230,14 @@ export function createDouyinActionDispatcher(
       }
 
       let richAction: DouyinRichAction
-      if (resolved) richAction = resolved.action
-      else if (source === 'renderer') {
-        richAction = (
-          await options.resolver.resolveWithRetry(candidate.message, candidate.content || [])
-        ).action
+      let favoritePayload = candidate.richPayload
+      if (resolved) {
+        richAction = resolved.action
+        favoritePayload = resolved.payload
+      } else if (source === 'renderer') {
+        const recovery = await options.resolver.resolveWithRetry(candidate.message, candidate.content || [])
+        richAction = recovery.action
+        favoritePayload = recovery.payload
       } else {
         richAction = options.resolver.actionFromPayload(
           candidate.richPayload,
@@ -256,7 +259,7 @@ export function createDouyinActionDispatcher(
       if (action === 'favorite') {
         const saved = await options.favorite(
           richAction.text,
-          richAction.richPayload || undefined,
+          favoritePayload || richAction.richPayload || undefined,
         )
         return result({
           accepted: true,

@@ -19,9 +19,10 @@
     >
       <header class="bcp-favorites-header">
         <div class="bcp-favorites-brand">
-          <span class="bcp-favorites-brand-mark" aria-hidden="true">+1</span>
+          <svg class="bcp-favorites-brand-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4Z" /></svg>
           <span class="bcp-favorites-heading">
             <strong id="bcp-favorites-title">{{ t("settingsFavorites") }}</strong>
+            <span class="bcp-favorites-subtitle">{{ t("favoritesSubtitle") }}</span>
           </span>
         </div>
         <button
@@ -31,19 +32,18 @@
           :title="t('favoritesCloseEsc')"
           @click="emit('close')"
         >
-          &#10005;
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" /></svg>
         </button>
       </header>
-
-      <div class="bcp-favorites-subtitle">{{ t("favoritesSubtitle") }}</div>
 
       <div class="bcp-favorites-divider" aria-hidden="true" />
 
       <div class="bcp-favorites-room">
         <span class="bcp-favorites-room-icon" aria-hidden="true">
-          <img src="/assets/icons/live-room.svg" alt="" style="height: 32px;width: 32px;">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="2" /><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16" /></svg>
         </span>
         <span class="bcp-favorites-room-copy">
+          <small>{{ t("favoritesCurrentRoom") }}</small>
           <strong :title="state.room.roomName">{{ state.room.roomName }}</strong>
         </span>
         <span class="bcp-favorites-room-count">
@@ -109,7 +109,7 @@
             :title="t('favoritesBackToRoomsEsc')"
             @click="emit('backToRooms')"
           >
-            &#8249;
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6" /></svg>
           </button>
           <strong :title="selectedRoom?.roomName">{{ selectedRoom?.roomName || activeTab.label }}</strong>
           <small>{{ listSummary }}</small>
@@ -167,7 +167,7 @@
         </div>
       </div>
 
-      <div v-if="state.loading" class="bcp-favorites-loading" role="status" :aria-label="t('favoritesLoading')">
+      <div v-if="state.loading" class="bcp-favorites-loading" role="status" aria-busy="true" :aria-label="t('favoritesLoading')">
         <span v-for="index in 3" :key="index" class="bcp-favorites-skeleton" />
       </div>
 
@@ -298,13 +298,14 @@
 
     <div
       v-else-if="state.mode === 'radial'"
-      class="bcp-favorites-radial"
-      :style="{ left: `${state.centerX}px`, top: `${state.centerY}px` }"
+      :class="['bcp-favorites-radial', `is-${state.radialPhase}`, { 'is-submitted': state.radialPhase !== 'idle' }]"
+      :aria-busy="state.radialPhase === 'sending'"
+      :style="{ left: `${state.centerX}px`, top: `${state.centerY}px`, scale: state.radialScale }"
       data-bcp-favorites-owned="true"
       role="menu"
       :aria-label="t('favoritesWheelAria')"
     >
-      <div class="bcp-favorites-radial-hint" aria-hidden="true">
+      <div v-if="state.radialPhase === 'idle'" class="bcp-favorites-radial-hint" aria-hidden="true">
         {{ t("favoritesWheelHint") }}
       </div>
       <div
@@ -315,7 +316,9 @@
         ]"
         :style="radialBotStyle"
       >
-        <span class="bcp-favorites-radial-bot" aria-hidden="true">
+        <svg v-if="state.radialPhase === 'success'" class="bcp-favorites-radial-check" viewBox="0 0 40 40" aria-hidden="true"><path d="m10 20 7 7 14-14" /></svg>
+        <svg v-else-if="state.radialPhase === 'failed'" class="bcp-favorites-radial-cross" viewBox="0 0 40 40" aria-hidden="true"><path d="m12 12 16 16m0-16L12 28" /></svg>
+        <span v-else class="bcp-favorites-radial-bot" aria-hidden="true">
           <span class="bcp-favorites-radial-bot-eyes">
             <span
               :key="selectedOption?.key || 'idle'"
@@ -327,22 +330,36 @@
           </span>
         </span>
       </div>
-      <button
-        v-for="option in state.radialOptions"
-        :key="option.key"
-        type="button"
-        :class="['bcp-favorites-radial-item', `is-${option.kind}`, {
-          'is-selected': option.key === state.selectedRadialKey
-        }]"
-        :style="{
-          left: `${Math.cos(option.angle * Math.PI / 180) * 132}px`,
-          top: `${Math.sin(option.angle * Math.PI / 180) * 132}px`
-        }"
-        tabindex="-1"
-      >
-        <span>{{ option.label }}</span>
-        <small>{{ option.detail }}</small>
-      </button>
+      <div class="bcp-favorites-radial-sectors" :aria-hidden="state.radialPhase !== 'idle'">
+        <svg class="bcp-favorites-radial-pie" viewBox="0 0 360 360" aria-hidden="true">
+          <path v-for="option in state.radialOptions" :key="option.key"
+            :d="radialSectorPath(option.angle, state.radialOptions.length)"
+            :class="{ 'is-selected': option.key === state.selectedRadialKey }" />
+        </svg>
+        <button
+          v-for="option in state.radialOptions"
+          :key="option.key"
+          type="button"
+          :class="['bcp-favorites-radial-item', `is-${option.kind}`, {
+            'is-selected': option.key === state.selectedRadialKey
+          }]"
+          :style="{
+            left: `${Math.cos(option.angle * Math.PI / 180) * 132}px`,
+            top: `${Math.sin(option.angle * Math.PI / 180) * 132}px`
+          }"
+          :aria-label="option.detail"
+          :title="option.detail"
+          tabindex="-1"
+        >
+          <span>{{ option.label }}</span>
+          <small>{{ option.detail }}</small>
+        </button>
+      </div>
+      <span class="bcp-favorites-visually-hidden" role="status">{{ radialStatus }}</span>
+      <div v-if="state.radialPhase === 'idle'" class="bcp-favorites-radial-caption">
+        <strong role="status">{{ selectedOption?.detail || t("favoritesWheelCancel") }}</strong>
+        <span v-if="state.radialPhase === 'idle'">{{ selectedOption ? t(selectedOption.kind === "favorite" ? "favoritesWheelReleaseSend" : "favoritesWheelReleaseOpen") : t("favoritesWheelFirstSix") }}</span>
+      </div>
     </div>
   </div>
 </template>
@@ -350,12 +367,19 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch, type CSSProperties } from "vue";
 import FavoriteItemRow from "./FavoriteItemRow.vue";
+import { radialSectorPath } from "./radial-geometry";
 import type { PlatformId } from "../../core/types";
 import type { FavoriteDisplayItem, FavoriteSort, FavoriteView } from "./types";
 import type { FavoritesLauncherState } from "./launcher";
 import { t } from "../../core/i18n";
 
 const props = defineProps<{ state: FavoritesLauncherState }>();
+const radialStatus = computed(() => {
+  if (props.state.radialPhase === 'sending') return t('favoritesWheelSending');
+  if (props.state.radialPhase === 'success') return t('favoritesWheelSent');
+  if (props.state.radialPhase === 'failed') return t('favoritesWheelFailed');
+  return '';
+});
 const emit = defineEmits<{
   addToRoom: [id: string];
   changeView: [view: FavoriteView];

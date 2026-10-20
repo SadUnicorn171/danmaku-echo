@@ -33,17 +33,20 @@ const flush = async () => {
 function harness(initial = mergeSettings({ douyinNativeSettings: enabled })) {
   let settings = initial
   let href = 'https://live.douyin.com/100'
+  const onStateChange = vi.fn<(state: unknown) => void>()
   const onUnavailable = vi.fn<(key: string) => void>()
   const controller = createDouyinNativeSettingsController({
     document,
     settings: () => settings,
     href: () => href,
     onUnavailable,
+    onStateChange,
   })
   controllers.push(controller)
   return {
     controller,
     onUnavailable,
+    onStateChange,
     settings(value: unknown) {
       settings = mergeSettings(value)
       controller.applySettings()
@@ -171,6 +174,7 @@ describe('Douyin native viewing settings', () => {
     },
   )
   it('does not guess unknown or disabled states and never repeatedly clicks an unresponsive switch', async () => {
+    vi.useFakeTimers()
     document.body.innerHTML = fixture()
     const switches = document.querySelectorAll<HTMLElement>('._h3OuAw5')
     switches[0]!.firstElementChild!.classList.remove('frP5WL3d')
@@ -183,7 +187,10 @@ describe('Douyin native viewing settings', () => {
     switches[3]!.setAttribute('aria-checked', 'false')
     await flush()
     expect(clicks).toHaveBeenCalledTimes(1)
+    expect(h.onUnavailable).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(5000)
     expect(h.onUnavailable).toHaveBeenCalledTimes(3)
+    expect(h.controller.state()).toMatchObject({ status: 'unavailable', showNotice: true })
   })
   it('releases a never-mounted temporary panel and its deadline on destruction', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
@@ -191,8 +198,65 @@ describe('Douyin native viewing settings', () => {
     const h = harness()
     h.controller.start()
     await flush()
-    expect(vi.getTimerCount()).toBe(1)
+    expect(vi.getTimerCount()).toBe(2)
     h.controller.destroy()
+    expect(vi.getTimerCount()).toBe(0)
+  })
+})
+
+
+describe('native settings visible-time failure notice', () => {
+  it('reports missing menus together only after five visible seconds, and retries without polling', async () => {
+    vi.useFakeTimers()
+    let visibility: DocumentVisibilityState = 'visible'
+    const visibilitySpy = vi.spyOn(document, 'visibilityState', 'get').mockImplementation(() => visibility)
+    const h = harness()
+    h.controller.start()
+    await vi.advanceTimersByTimeAsync(2000)
+    visibility = 'hidden'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(h.controller.state().status).toBe('applying')
+    expect(h.onUnavailable).not.toHaveBeenCalled()
+    visibility = 'visible'
+    document.dispatchEvent(new Event('visibilitychange'))
+    await vi.advanceTimersByTimeAsync(2999)
+    expect(h.onUnavailable).not.toHaveBeenCalled()
+    await vi.advanceTimersByTimeAsync(1)
+    expect(h.controller.state()).toEqual({ status: 'unavailable', showNotice: true, failed: Object.keys(enabled) })
+    h.controller.dismiss()
+    document.body.append(document.createElement('div'))
+    await flush()
+    expect(h.controller.state().showNotice).toBe(false)
+    expect(h.onUnavailable).toHaveBeenCalledTimes(3)
+    document.body.innerHTML = fixture()
+    const clicks = installClicks()
+    h.controller.retry()
+    await flush()
+    expect(clicks).toHaveBeenCalledTimes(3)
+    expect(h.controller.state()).toEqual({ status: 'applied', failed: [], showNotice: false })
+    expect(vi.getTimerCount()).toBe(0)
+    visibilitySpy.mockRestore()
+  })
+
+  it('clears notices and listeners on settings disable, navigation and destruction', async () => {
+    vi.useFakeTimers()
+    const h = harness()
+    h.controller.start()
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.controller.state().showNotice).toBe(true)
+    h.settings({ douyinNativeSettings: {} })
+    expect(h.controller.state().status).toBe('idle')
+    expect(vi.getTimerCount()).toBe(0)
+    h.settings({ douyinNativeSettings: enabled })
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.controller.state().showNotice).toBe(true)
+    h.route('https://live.douyin.com/200')
+    expect(h.controller.state().showNotice).toBe(false)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.controller.state().showNotice).toBe(true)
+    h.controller.destroy()
+    expect(h.controller.state().status).toBe('idle')
     expect(vi.getTimerCount()).toBe(0)
   })
 })

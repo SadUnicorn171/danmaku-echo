@@ -43,17 +43,26 @@ function onChange(event: Event): void {
   cursor: pointer;
   display: flex;
   justify-content: space-between;
-  min-height: 72px;
-  padding: 15px 16px;
+  min-height: 76px;
+  padding: 16px 24px;
   transition: background-color 140ms ease;
 }
 
 .setting-row + .setting-row {
+  position: relative;
+}
+
+.setting-row + .setting-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 24px;
+  right: 24px;
   border-top: 1px solid var(--border);
 }
 
 .setting-row:hover {
-  background: rgb(255 255 255 / 55%);
+  background: #fffaf5;
 }
 
 .setting-copy {
@@ -67,66 +76,71 @@ function onChange(event: Event): void {
 }
 
 .setting-copy strong {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 500;
   line-height: 24px;
 }
 
 .setting-copy small {
   color: var(--text-secondary);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 20px;
 }
 
 input[role="switch"] {
   appearance: none;
-  background: #e8e8e8;
-  border: 1px solid var(--border);
-  border-radius: 12px;
+  background: #dbd6d1;
+  border: 1px solid transparent;
+  border-radius: 20px;
   box-sizing: border-box;
   cursor: pointer;
-  flex: 0 0 36px;
-  height: 20px;
+  flex: 0 0 44px;
+  height: 26px;
   margin: 0;
   padding: 0;
   position: relative;
   transition: background-color 140ms ease, border-color 140ms ease;
-  width: 36px;
+  width: 44px;
 }
 
 input[role="switch"]::after {
   background: #fff;
-  border: 1px solid #d4d5d5;
+  border: 0;
   border-radius: 50%;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 14%);
+  box-shadow: none;
   content: "";
-  height: 16px;
-  left: 1px;
+  height: 20px;
+  left: 2px;
   position: absolute;
-  top: 1px;
-  transition: transform 140ms ease;
-  width: 16px;
+  top: 2px;
+  transition: transform 200ms var(--ease-spring);
+  width: 20px;
 }
 
 input[role="switch"]:checked {
-  background: var(--success);
-  border-color: var(--success);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 input[role="switch"]:checked::after {
   border-color: #fff;
-  transform: translateX(16px);
+  transform: translateX(18px);
 }
 
 input[role="switch"]:focus-visible {
-  outline: 3px solid rgb(39 174 96 / 28%);
+  outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
 
 input[role="switch"]:disabled {
   cursor: not-allowed;
   opacity: .58;
+}
+
+@media (max-width: 700px) {
+  .setting-row { padding: 16px 18px; }
+  .setting-row + .setting-row::before { left: 18px; right: 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

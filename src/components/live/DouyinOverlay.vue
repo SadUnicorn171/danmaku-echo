@@ -55,6 +55,13 @@
     variant="douyin"
     :visible="state.toast.visible"
   />
+  <aside v-if="state.nativeSettingsNotice" class="bcp-douyin-native-notice" data-bcp-douyin-owned="true" role="status" :hidden="Boolean(state.toast)" @pointerdown.stop @click.stop>
+    <p>{{ state.nativeSettingsNotice.message }}</p>
+    <div>
+      <button type="button" @click="state.nativeSettingsNotice.retry()">{{ state.nativeSettingsNotice.retryLabel }}</button>
+      <button type="button" @click="state.nativeSettingsNotice.dismiss()">{{ state.nativeSettingsNotice.dismissLabel }}</button>
+    </div>
+  </aside>
 </template>
 
 <script setup lang="ts">
@@ -554,4 +561,28 @@ function hasRenderableContent(content: unknown[]): boolean {
     transition: none;
   }
 }
+</style>
+
+<style>
+.bcp-douyin-native-notice {
+  all: initial;
+  box-sizing: border-box;
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 12px 16px;
+  border: 1px solid #fd8101;
+  border-radius: 8px;
+  background: #fff;
+  color: #241a14;
+  font: 13px/1.6 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  box-shadow: none;
+  pointer-events: auto;
+}
+.bcp-douyin-native-notice[hidden] { display: none; }
+.bcp-douyin-native-notice p { all: unset; display: block; }
+.bcp-douyin-native-notice > div { display: flex; gap: 16px; margin-top: 8px; }
+.bcp-douyin-native-notice button { all: unset; padding: 2px 0; color: #804000; cursor: pointer; font: inherit; }
+.bcp-douyin-native-notice button:hover, .bcp-douyin-native-notice button:focus-visible { text-decoration: underline; text-underline-offset: 3px; }
 </style>

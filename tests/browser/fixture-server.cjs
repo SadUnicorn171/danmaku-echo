@@ -55,6 +55,10 @@ const html = String.raw`<!doctype html>
       const quickInput = document.querySelector(".fixture-huya-quick-input");
       const quickSend = document.querySelector(".fixture-huya-quick-send");
       const parameters = new URLSearchParams(location.search);
+      if (parameters.get("platform") === "douyu") {
+        quickInput.classList.add("inputView-fixture");
+        quickSend.classList.add("sendDanmu-fixture");
+      }
       if (parameters.get("fullscreenViewportConflict") === "1") {
         const outerPlayer = document.querySelector(".fixture-huya-outer-player");
         Object.assign(outerPlayer.style, {
@@ -95,6 +99,9 @@ const html = String.raw`<!doctype html>
         const value = quickInput.value;
         if (!value.trim()) return;
         document.body.dataset.huyaQuickSent = value;
+        if (parameters.get("platform") === "douyu") {
+          document.body.dataset.douyuSent = value;
+        }
         document.body.dataset.chatSent = value;
         document.body.dataset.chatSentAt = String(Date.now());
         if (value === "全屏弹幕也能复读") {
@@ -1006,6 +1013,7 @@ const douyinHtml = String.raw`<!doctype html>
           strokeColor: "#000000"
         }].concat(withImage ? [{
           type: "image",
+          alt: "[微笑]",
           src: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24'%3E%3Ccircle cx='12' cy='12' r='10' fill='%23ffd84d'/%3E%3C/svg%3E",
           width: 24,
           height: 24,
@@ -1109,9 +1117,9 @@ const douyinHtml = String.raw`<!doctype html>
       const send = document.querySelector(".sendButton");
       const handleFixtureSend = (editor, event) => {
         const sentMessage = editor.value;
-        const plainMessage = sentMessage.replace(/😀/g, "");
+        const plainMessage = sentMessage.replace(/😀|\[微笑\]/g, "");
         const manual = richMode && sentMessage === "我自己发送的侧边消息";
-        document.body.dataset.douyinSent = plainMessage;
+        document.body.dataset.douyinSent = sentMessage;
         document.body.dataset.douyinSentRich = sentMessage;
         document.body.dataset.douyinNativeSendTrusted = String(event.isTrusted);
         document.body.dataset.douyinSendSurface = editor.dataset.fixtureReplySurface || "";
@@ -1122,7 +1130,7 @@ const douyinHtml = String.raw`<!doctype html>
         }
         setTimeout(() => post(
           "addBarrage",
-          barrage("fixture-own-echo-" + Date.now(), plainMessage, richMode && !manual)
+          barrage("fixture-own-echo-" + Date.now(), plainMessage, sentMessage.includes("[微笑]") || (richMode && !manual))
         ), 80);
       };
       send.addEventListener("click", (event) => handleFixtureSend(input, event));

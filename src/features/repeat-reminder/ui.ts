@@ -67,12 +67,6 @@ const ONBOARDING_CHECK_ICON = `
   </svg>
 `
 
-const ONBOARDING_MOVE_ICON = `
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 2v20M2 12h20M9 5l3-3 3 3M9 19l3 3 3-3M5 9l-3 3 3 3M19 9l3 3-3 3"></path>
-  </svg>
-`
-
 const LAUNCHER_SIZE = 46
 const PROMPT_ENTER_DURATION_MS = 220
 const PROMPT_EXIT_DURATION_MS = 160
@@ -83,6 +77,7 @@ const PROMPT_MANUAL_SNOOZE_DURATION_MS = 40_000
 const VIEWPORT_GAP = 12
 const ONBOARDING_GAP = 18
 const ONBOARDING_MAX_WIDTH = 460
+const ONBOARDING_VIEWPORT_GAP = 16
 const REPEAT_REMINDER_OWNER_ATTRIBUTE = 'data-bcp-repeat-reminder-owner'
 const REPEAT_REMINDER_OWNER_TOKEN_ATTRIBUTE = 'data-bcp-repeat-reminder-owner-token'
 const REPEAT_REMINDER_PORTAL_SELECTOR = '[data-bcp-repeat-reminder-owned]'
@@ -158,58 +153,63 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     .setting-value.is-audience strong { color: #12a96b; font-size: 13px; text-align: right; }
     .open-settings { background: transparent; border: 0; border-top: 1px solid rgb(23 24 29 / 9%); color: #565a66; cursor: pointer; font-size: 11px; margin-top: 12px; padding: 10px 2px 0; text-align: left; width: 100%; }
     .open-settings:hover { color: #ff7a00; }
-    .onboarding { --onboarding-theme: var(--bcp-selection, var(--bcp-action-start, #fd8101)); --onboarding-tint: color-mix(in srgb, var(--onboarding-theme) 7%, white); --onboarding-line: color-mix(in srgb, var(--onboarding-theme) 20%, white); background: rgb(36 26 20 / 24%); display: none; inset: 0; pointer-events: auto; position: fixed; z-index: 10; }
+    .onboarding { --onboarding-theme: var(--bcp-selection, var(--bcp-action-start, #fd8101)); --onboarding-tint: color-mix(in srgb, var(--onboarding-theme) 12%, white); --onboarding-line: #eee7e1; background: rgb(36 26 20 / 24%); display: none; inset: 0; pointer-events: auto; position: fixed; z-index: 10; }
     .onboarding.is-visible { display: block; }
     .onboarding-card { animation: onboarding-enter 200ms cubic-bezier(0.22, 1, 0.36, 1); color: #241a14; pointer-events: auto; position: fixed; width: min(460px, calc(100vw - 32px)); z-index: 1; }
-    .onboarding-body { background: #fff; border: 1px solid var(--onboarding-line); border-radius: 16px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); overflow: auto; overscroll-behavior: contain; position: relative; scrollbar-color: var(--onboarding-line) #fff; scrollbar-width: thin; z-index: 1; }
-    .onboarding-body > * { flex-shrink: 0; }
+    .onboarding-body { background: #fff; border-radius: 18px; display: flex; flex-direction: column; max-height: calc(100vh - 32px); overflow: hidden; position: relative; z-index: 1; }
+    .onboarding-scroll { min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-color: #bdb4ad #fff; scrollbar-width: thin; }
     .onboarding ::selection { background: var(--onboarding-tint); color: #241a14; }
     .onboarding-arrow { background: #fff; display: block; height: 16px; pointer-events: none; position: absolute; width: 16px; z-index: 2; }
     .onboarding-card[data-placement='left'] .onboarding-arrow { clip-path: polygon(0 0, 100% 50%, 0 100%); right: -15px; top: var(--bcp-onboarding-arrow-y, 24px); transform: translateY(-50%); }
     .onboarding-card[data-placement='right'] .onboarding-arrow { clip-path: polygon(100% 0, 0 50%, 100% 100%); left: -15px; top: var(--bcp-onboarding-arrow-y, 24px); transform: translateY(-50%); }
     .onboarding-card[data-placement='below'] .onboarding-arrow { clip-path: polygon(0 100%, 50% 0, 100% 100%); left: var(--bcp-onboarding-arrow-x, 24px); top: -15px; transform: translateX(-50%); }
     .onboarding-card[data-placement='above'] .onboarding-arrow { bottom: -15px; clip-path: polygon(0 0, 50% 100%, 100% 0); left: var(--bcp-onboarding-arrow-x, 24px); transform: translateX(-50%); }
-    .onboarding-head { align-items: center; display: grid; gap: 12px 20px; grid-template-columns: minmax(0, 1fr) 48px; padding: 22px 26px 16px; }
-    .onboarding h2 { color: #241a14; font-size: 23px; font-weight: 600; line-height: 32px; margin: 0; }
-    .onboarding-anchor-label { color: #706257; display: block; font-size: 12px; line-height: 18px; margin-top: 4px; }
+    .onboarding-head { align-items: center; display: grid; gap: 12px 16px; grid-template-columns: minmax(0, 1fr) 40px; padding: 24px 24px 16px; }
+    .onboarding h2 { color: #241a14; font-size: 24px; font-weight: 600; line-height: 1.6; margin: 0; }
+    .onboarding-anchor-label { color: #75695f; display: block; font-size: 12px; line-height: 1.6; }
     .onboarding-radar { color: var(--onboarding-theme); display: flex; }
-    .onboarding-radar svg { fill: none; height: 48px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.2; width: 48px; }
+    .onboarding-radar svg { fill: none; height: 40px; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.2; width: 40px; }
     .onboarding-radar .is-filled { fill: currentColor; stroke: none; }
-    .onboarding-description { color: #706257; font-size: 13px; grid-column: 1 / -1; line-height: 22px; margin: 0; }
-    .onboarding-content { display: flex; flex-direction: column; gap: 16px; padding: 0 26px 16px; }
-    .onboarding-features { border-top: 1px solid var(--onboarding-line); display: flex; flex-direction: column; gap: 12px; padding-top: 16px; }
+    .onboarding-description { color: #75695f; font-size: 13px; grid-column: 1 / -1; line-height: 1.6; margin: 0; }
+    .onboarding-content { display: flex; flex-direction: column; gap: 18px; padding: 0 24px 20px; }
+    .onboarding-features { display: flex; flex-direction: column; gap: 14px; }
     .onboarding-feature { align-items: flex-start; display: flex; gap: 12px; }
-    .onboarding-feature-icon { align-items: center; color: var(--onboarding-theme); display: flex; flex: 0 0 22px; height: 22px; justify-content: center; }
-    .onboarding-feature-icon svg, .onboarding-settings-title svg, .onboarding-note svg, .onboarding-setting-list svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+    .onboarding-feature-icon { align-items: center; color: var(--onboarding-theme); display: flex; flex: 0 0 20px; height: 22px; justify-content: center; }
+    .onboarding-feature-icon svg, .onboarding-settings-title svg, .onboarding-setting-list svg { fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
     .onboarding-feature-icon svg { height: 20px; stroke-width: 1.7; width: 20px; }
-    .onboarding-feature-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-    .onboarding-feature-copy strong { font-size: 14px; font-weight: 600; line-height: 22px; }
-    .onboarding-feature-copy span { color: #706257; font-size: 12px; line-height: 20px; }
-    .onboarding-settings { border-top: 1px solid var(--onboarding-line); display: flex; flex-direction: column; gap: 10px; padding-top: 16px; }
-    .onboarding-settings-title { align-items: center; display: flex; font-size: 13px; font-weight: 600; gap: 8px; line-height: 20px; margin: 0; }
-    .onboarding-settings-title svg { color: var(--onboarding-theme); height: 16px; stroke-width: 1.7; width: 16px; }
-    .onboarding-setting-list { display: grid; gap: 8px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 0; padding: 0; }
-    .onboarding-setting-list li { align-items: flex-start; color: #706257; display: flex; font-size: 12px; gap: 7px; line-height: 20px; min-width: 0; }
+    .onboarding-feature-copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .onboarding-feature-copy strong { font-size: 14px; font-weight: 600; line-height: 1.6; }
+    .onboarding-feature-copy span { color: #75695f; font-size: 12px; line-height: 1.6; }
+    .onboarding-settings { border-top: 1px solid var(--onboarding-line); padding-top: 6px; }
+    .onboarding-settings-title { align-items: center; border-radius: 6px; cursor: pointer; display: flex; font-size: 13px; font-weight: 600; gap: 8px; line-height: 1.6; list-style: none; min-height: 36px; }
+    .onboarding-settings-title::-webkit-details-marker { display: none; }
+    .onboarding-settings-title:hover { color: #934800; }
+    .onboarding-settings-title:focus-visible { outline: 2px solid #241a14; outline-offset: 2px; }
+    .onboarding-settings-title svg { color: var(--onboarding-theme); flex: 0 0 16px; height: 16px; stroke-width: 1.7; width: 16px; }
+    .onboarding-settings-count { color: #75695f; font-size: 12px; font-weight: 400; margin-left: auto; }
+    .onboarding-settings-chevron { transition: transform 140ms ease; }
+    .onboarding-settings[open] .onboarding-settings-chevron { transform: rotate(180deg); }
+    .onboarding-setting-list { display: grid; gap: 8px 16px; grid-template-columns: repeat(2, minmax(0, 1fr)); list-style: none; margin: 8px 0 0; padding: 0; }
+    .onboarding-setting-list li { align-items: flex-start; color: #75695f; display: flex; font-size: 12px; gap: 6px; line-height: 1.6; min-width: 0; }
     .onboarding-setting-list svg { color: var(--onboarding-theme); flex: 0 0 12px; height: 12px; margin-top: 4px; stroke-width: 2; width: 12px; }
-    .onboarding-auto-plus-one { align-items: center; background: var(--onboarding-tint); border-radius: 12px; cursor: pointer; display: flex; gap: 16px; padding: 12px; }
+    .onboarding-auto-plus-one { align-items: center; background: var(--onboarding-tint); border-radius: 12px; cursor: pointer; display: flex; gap: 14px; padding: 14px; }
     .onboarding-auto-plus-one-copy { display: flex; flex: 1; flex-direction: column; gap: 4px; min-width: 0; }
-    .onboarding-auto-plus-one-title { align-items: baseline; display: flex; flex-wrap: wrap; gap: 4px 8px; }
-    .onboarding-auto-plus-one-title strong { font-size: 13px; font-weight: 600; line-height: 20px; }
-    .onboarding-auto-plus-one-title em { color: #706257; font-size: 11px; font-style: normal; line-height: 18px; }
-    .onboarding-auto-plus-one-copy small { color: #706257; font-size: 12px; line-height: 18px; }
-    .onboarding-auto-plus-one input { appearance: none; background: #c5beb8; border: 1px solid #c5beb8; border-radius: 999px; cursor: pointer; flex: 0 0 38px; height: 22px; margin: 0; position: relative; transition: background-color 140ms ease, border-color 140ms ease; width: 38px; }
-    .onboarding-auto-plus-one input::after { background: #fff; border-radius: 50%; content: ''; height: 16px; left: 2px; position: absolute; top: 2px; transition: transform 140ms ease; width: 16px; }
-    .onboarding-auto-plus-one input:checked { background: var(--onboarding-theme); border-color: var(--onboarding-theme); }
+    .onboarding-auto-plus-one-title { display: flex; flex-direction: column; gap: 4px; }
+    .onboarding-auto-plus-one-title strong { font-size: 14px; font-weight: 600; line-height: 1.6; }
+    .onboarding-auto-plus-one-title em { color: #75695f; font-size: 11px; font-style: normal; line-height: 1.6; }
+    .onboarding-auto-plus-one-copy small { color: #75695f; font-size: 12px; line-height: 1.6; }
+    .onboarding-auto-plus-one input { appearance: none; background: #bdb4ad; border: 0; border-radius: 999px; cursor: pointer; flex: 0 0 40px; height: 24px; margin: 0; position: relative; transition: background-color 140ms ease; width: 40px; }
+    .onboarding-auto-plus-one input::after { background: #fff; border-radius: 50%; content: ''; height: 18px; left: 3px; position: absolute; top: 3px; transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1); width: 18px; }
+    .onboarding-auto-plus-one input:checked { background: var(--onboarding-theme); }
     .onboarding-auto-plus-one input:checked::after { transform: translateX(16px); }
     .onboarding-auto-plus-one input:focus-visible { outline: 2px solid #241a14; outline-offset: 3px; }
-    .onboarding-note { align-items: flex-start; color: #706257; display: flex; font-size: 12px; gap: 8px; line-height: 20px; }
-    .onboarding-note svg { color: var(--onboarding-theme); flex: 0 0 16px; height: 16px; margin-top: 2px; stroke-width: 1.7; width: 16px; }
-    .onboarding-actions { align-items: center; background: #fff; border-top: 1px solid var(--onboarding-line); bottom: 0; display: flex; gap: 12px; justify-content: space-between; padding: 14px 26px; position: sticky; z-index: 1; }
-    .onboarding-actions button { border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 600; height: 42px; padding: 0 18px; transition: background-color 140ms ease, transform 140ms ease; }
-    .onboarding-actions button:active { transform: translateY(1px); }
-    .onboarding-open-settings { background: #fff; border: 0; color: #706257; }
+    .onboarding-note { color: #75695f; font-size: 12px; line-height: 1.6; }
+    .onboarding-actions { align-items: center; background: #fff; border-top: 1px solid var(--onboarding-line); display: flex; flex-shrink: 0; gap: 12px; justify-content: space-between; padding: 14px 24px max(14px, env(safe-area-inset-bottom)); }
+    .onboarding-actions button { border-radius: 22px; cursor: pointer; font-size: 13px; font-weight: 600; height: 44px; padding: 0 12px; transition: background-color 140ms ease, transform 140ms ease; }
+    .onboarding-actions button:active { transform: scale(0.97); }
+    .onboarding-open-settings { background: #fff; border: 0; color: #75695f; }
     .onboarding-open-settings:hover { background: var(--onboarding-tint); color: #241a14; }
-    .onboarding-acknowledge { background: var(--onboarding-theme); border: 0; color: #241a14; min-width: 112px; }
+    .onboarding-acknowledge { background: var(--onboarding-theme); border: 0; color: #241a14; min-width: 128px; }
     .onboarding-acknowledge:hover { background: color-mix(in srgb, var(--onboarding-theme) 88%, white); }
     .onboarding-acknowledge:focus-visible { outline: none; text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
     .prompt-list { display: none; flex-direction: column; gap: 8px; max-width: min(360px, calc(100vw - 86px)); pointer-events: none; position: fixed; transform: scale(var(--bcp-repeat-prompt-scale, 1)); transform-origin: left top; width: 360px; }
@@ -230,18 +230,23 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
     }
     @media (max-width: 480px) {
-      .onboarding-head { gap: 12px; padding: 20px 18px 16px; }
-      .onboarding h2 { font-size: 21px; line-height: 28px; }
-      .onboarding-content { gap: 18px; padding: 0 18px 18px; }
-      .onboarding-setting-list { grid-template-columns: 1fr; gap: 6px; }
-      .onboarding-actions { gap: 8px; padding: 12px 18px; }
-      .onboarding-actions button { min-width: 0; padding: 0 14px; }
+      .onboarding-head { grid-template-columns: minmax(0, 1fr) 36px; padding: 20px 18px 14px; }
+      .onboarding h2 { font-size: 21px; }
+      .onboarding-radar svg { height: 36px; width: 36px; }
+      .onboarding-content { gap: 16px; padding: 0 18px 18px; }
+      .onboarding-actions { gap: 8px; padding: 12px 18px max(12px, env(safe-area-inset-bottom)); }
+    }
+    @media (max-width: 340px) {
+      .onboarding-setting-list { grid-template-columns: 1fr; }
+      .onboarding h2 { font-size: 19px; }
+      .onboarding-actions button { min-width: 0; }
       .onboarding-acknowledge { flex: 1; }
     }
     @media (prefers-reduced-motion: reduce) {
       .launcher { transition-duration: 0.01ms; }
       .onboarding-card { animation: none; }
-      .onboarding-actions button, .onboarding-auto-plus-one input, .onboarding-auto-plus-one input::after { transition-duration: 0.01ms; }
+      .onboarding-actions button, .onboarding-auto-plus-one input, .onboarding-auto-plus-one input::after, .onboarding-settings-chevron { transition: none; }
+      .onboarding-actions button:active { transform: none; }
     }
   `
 
@@ -292,61 +297,64 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     >
       <span class="onboarding-arrow" aria-hidden="true"></span>
       <div class="onboarding-body">
-        <header class="onboarding-head">
-          <div>
-            <h2 id="bcp-repeat-onboarding-title">认识弹幕雷达</h2>
-            <span class="onboarding-anchor-label">这里是弹幕雷达</span>
-          </div>
-          <span class="onboarding-radar" aria-hidden="true">${RADAR_ICON}</span>
-          <p id="bcp-repeat-onboarding-description" class="onboarding-description">
-            箭头指向的按钮就是弹幕雷达。它会观察最近一分钟内重复出现的文字弹幕，达到设定次数后生成 +1 提示队列。
-          </p>
-        </header>
-        <div class="onboarding-content">
-          <div class="onboarding-features">
-            <div class="onboarding-feature">
-              <span class="onboarding-feature-icon">${ONBOARDING_BELL_ICON}</span>
-              <span class="onboarding-feature-copy">
-                <strong>默认只提醒</strong>
-                <span>默认只有用户点击 +1 才发送，也可以在下方主动开启自动 +1。</span>
-              </span>
+        <div class="onboarding-scroll">
+          <header class="onboarding-head">
+            <div>
+              <h2 id="bcp-repeat-onboarding-title">认识弹幕雷达</h2>
+              <span class="onboarding-anchor-label">箭头指向的按钮就是雷达入口。</span>
             </div>
-            <div class="onboarding-feature">
-              <span class="onboarding-feature-icon">${ONBOARDING_LIST_ICON}</span>
-              <span class="onboarding-feature-copy">
-                <strong>高频内容进入队列</strong>
-                <span>每条提示独立倒计时，用户可以选择 +1 或暂不处理。</span>
-              </span>
+            <span class="onboarding-radar" aria-hidden="true">${RADAR_ICON}</span>
+            <p id="bcp-repeat-onboarding-description" class="onboarding-description">
+              观察最近一分钟的重复文字弹幕，达到设定次数后生成 +1 提示。
+            </p>
+          </header>
+          <div class="onboarding-content">
+            <div class="onboarding-features">
+              <div class="onboarding-feature">
+                <span class="onboarding-feature-icon">${ONBOARDING_BELL_ICON}</span>
+                <span class="onboarding-feature-copy">
+                  <strong>默认只提醒</strong>
+                  <span>点击 +1 才发送，也可以暂不处理。</span>
+                </span>
+              </div>
+              <div class="onboarding-feature">
+                <span class="onboarding-feature-icon">${ONBOARDING_LIST_ICON}</span>
+                <span class="onboarding-feature-copy">
+                  <strong>高频内容进入队列</strong>
+                  <span>每条提示独立倒计时，结束后自动收起。</span>
+                </span>
+              </div>
             </div>
-          </div>
-          <label class="onboarding-auto-plus-one">
-            <span class="onboarding-auto-plus-one-copy">
-              <span class="onboarding-auto-plus-one-title">
-                <strong>自动 +1 雷达弹幕</strong>
-                <em>默认关闭</em>
+            <label class="onboarding-auto-plus-one">
+              <span class="onboarding-auto-plus-one-copy">
+                <span class="onboarding-auto-plus-one-title">
+                  <strong>自动 +1 雷达弹幕</strong>
+                  <em>默认关闭 · 需主动开启</em>
+                </span>
+                <small>开启后直接发送，仍受冷却和平台限制。</small>
               </span>
-              <small>高频弹幕达到门槛后直接发送，仍会遵守发送冷却和平台限制。</small>
-            </span>
-            <input type="checkbox" role="switch" aria-label="开启自动 +1 雷达弹幕">
-          </label>
-          <section class="onboarding-settings" aria-labelledby="bcp-repeat-onboarding-settings-title">
-            <h3 id="bcp-repeat-onboarding-settings-title" class="onboarding-settings-title">
-              ${ONBOARDING_SETTINGS_ICON}
-              <span>可调整设置</span>
-            </h3>
-            <ul class="onboarding-setting-list">
-              <li>${ONBOARDING_CHECK_ICON}<span>开启或关闭弹幕雷达</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>自动或手动档位</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>四个平台的独立触发次数</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>提示停留时间</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>队列上限</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>提示框大小</span></li>
-              <li>${ONBOARDING_CHECK_ICON}<span>自动 +1 开关</span></li>
-            </ul>
-          </section>
-          <div class="onboarding-note">
-            ${ONBOARDING_MOVE_ICON}
-            <span>以后可以点击雷达按钮查看当前设置，也可以拖动它调整位置。</span>
+              <input type="checkbox" role="switch" aria-label="开启自动 +1 雷达弹幕">
+            </label>
+            <details class="onboarding-settings">
+              <summary class="onboarding-settings-title">
+                ${ONBOARDING_SETTINGS_ICON}
+                <span>可调整设置</span>
+                <span class="onboarding-settings-count">7 项</span>
+                <svg class="onboarding-settings-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+              </summary>
+              <ul class="onboarding-setting-list">
+                <li>${ONBOARDING_CHECK_ICON}<span>雷达开关</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>自动 / 手动档位</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>四平台触发次数</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>提示停留时间</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>队列上限</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>提示框大小</span></li>
+                <li>${ONBOARDING_CHECK_ICON}<span>自动 +1 开关</span></li>
+              </ul>
+            </details>
+            <div class="onboarding-note">
+              <span>点击入口查看设置，拖动它调整位置。</span>
+            </div>
           </div>
         </div>
         <footer class="onboarding-actions">
@@ -459,18 +467,18 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     if (!onboardingOpen) return
     const viewportWidth = Math.max(0, window.innerWidth)
     const viewportHeight = Math.max(0, window.innerHeight)
-    const fallbackWidth = Math.min(ONBOARDING_MAX_WIDTH, Math.max(240, viewportWidth - 32))
-    onboardingBody.style.maxHeight = `${Math.max(220, viewportHeight - 32)}px`
+    const fallbackWidth = Math.min(ONBOARDING_MAX_WIDTH, Math.max(0, viewportWidth - 32))
+    onboardingBody.style.maxHeight = `${Math.max(0, viewportHeight - 32)}px`
     const rect = onboardingCard.getBoundingClientRect()
     const cardWidth = rect.width || fallbackWidth
-    const cardHeight = rect.height || Math.min(440, Math.max(220, viewportHeight - 32))
+    const cardHeight = rect.height || Math.min(440, Math.max(0, viewportHeight - 32))
     const launcherCenterX = launcherX + launcherSize / 2
     const launcherCenterY = launcherY + launcherSize / 2
-    const spaceLeft = launcherX - VIEWPORT_GAP
-    const spaceRight = viewportWidth - launcherX - launcherSize - VIEWPORT_GAP
-    const spaceBelow = viewportHeight - launcherY - launcherSize - VIEWPORT_GAP
-    let left = VIEWPORT_GAP
-    let top = VIEWPORT_GAP
+    const spaceLeft = launcherX - ONBOARDING_VIEWPORT_GAP
+    const spaceRight = viewportWidth - launcherX - launcherSize - ONBOARDING_VIEWPORT_GAP
+    const spaceBelow = viewportHeight - launcherY - launcherSize - ONBOARDING_VIEWPORT_GAP
+    let left = ONBOARDING_VIEWPORT_GAP
+    let top = ONBOARDING_VIEWPORT_GAP
     let placement: 'above' | 'below' | 'left' | 'right'
 
     if (spaceLeft >= cardWidth + ONBOARDING_GAP) {
@@ -478,36 +486,36 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
       left = launcherX - cardWidth - ONBOARDING_GAP
       top = clamp(
         launcherCenterY - cardHeight / 2,
-        VIEWPORT_GAP,
-        viewportHeight - cardHeight - VIEWPORT_GAP,
+        ONBOARDING_VIEWPORT_GAP,
+        viewportHeight - cardHeight - ONBOARDING_VIEWPORT_GAP,
       )
     } else if (spaceRight >= cardWidth + ONBOARDING_GAP) {
       placement = 'right'
       left = launcherX + launcherSize + ONBOARDING_GAP
       top = clamp(
         launcherCenterY - cardHeight / 2,
-        VIEWPORT_GAP,
-        viewportHeight - cardHeight - VIEWPORT_GAP,
+        ONBOARDING_VIEWPORT_GAP,
+        viewportHeight - cardHeight - ONBOARDING_VIEWPORT_GAP,
       )
     } else if (spaceBelow >= 220 || spaceBelow >= launcherY) {
       placement = 'below'
       left = clamp(
         launcherCenterX - cardWidth / 2,
-        VIEWPORT_GAP,
-        viewportWidth - cardWidth - VIEWPORT_GAP,
+        ONBOARDING_VIEWPORT_GAP,
+        viewportWidth - cardWidth - ONBOARDING_VIEWPORT_GAP,
       )
       top = launcherY + launcherSize + ONBOARDING_GAP
-      onboardingBody.style.maxHeight = `${Math.max(180, viewportHeight - top - VIEWPORT_GAP)}px`
+      onboardingBody.style.maxHeight = `${Math.max(0, viewportHeight - top - ONBOARDING_VIEWPORT_GAP)}px`
     } else {
       placement = 'above'
       left = clamp(
         launcherCenterX - cardWidth / 2,
-        VIEWPORT_GAP,
-        viewportWidth - cardWidth - VIEWPORT_GAP,
+        ONBOARDING_VIEWPORT_GAP,
+        viewportWidth - cardWidth - ONBOARDING_VIEWPORT_GAP,
       )
-      onboardingBody.style.maxHeight = `${Math.max(180, launcherY - ONBOARDING_GAP - VIEWPORT_GAP)}px`
-      const availableHeight = Math.min(cardHeight, launcherY - ONBOARDING_GAP - VIEWPORT_GAP)
-      top = Math.max(VIEWPORT_GAP, launcherY - ONBOARDING_GAP - availableHeight)
+      onboardingBody.style.maxHeight = `${Math.max(0, launcherY - ONBOARDING_GAP - ONBOARDING_VIEWPORT_GAP)}px`
+      const availableHeight = Math.min(cardHeight, launcherY - ONBOARDING_GAP - ONBOARDING_VIEWPORT_GAP)
+      top = Math.max(ONBOARDING_VIEWPORT_GAP, launcherY - ONBOARDING_GAP - availableHeight)
     }
 
     onboardingCard.dataset.placement = placement
@@ -1011,9 +1019,12 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     autoPlusOne = onboardingAutoPlusOne.checked
     options.setAutoPlusOne?.(autoPlusOne)
   })
+  onboarding.querySelector('details')!.addEventListener('toggle', () => positionFloatingUi())
   onboardingCard.addEventListener('keydown', (event) => {
     if (event.key !== 'Tab') return
-    const focusable = [onboardingAutoPlusOne, onboardingOpenSettings, onboardingAcknowledge]
+    const focusable = Array.from(
+      onboardingCard.querySelectorAll<HTMLElement>('input:not(:disabled), summary, button:not(:disabled)'),
+    )
     const first = focusable[0]
     const last = focusable.at(-1)
     if (event.shiftKey && shadow.activeElement === first) {
@@ -1028,7 +1039,14 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     if (settingsOpen && !event.composedPath().includes(portal)) setSettingsOpen(false)
   }
   const closeFromEscape = (event: KeyboardEvent): void => {
-    if (event.key === 'Escape') setSettingsOpen(false)
+    if (event.key !== 'Escape') return
+    if (onboardingOpen) {
+      event.preventDefault()
+      event.stopPropagation()
+      acknowledgeOnboarding(false)
+    } else {
+      setSettingsOpen(false)
+    }
   }
   const onResize = (): void => positionFloatingUi()
   document.addEventListener('pointerdown', closeFromOutside, true)

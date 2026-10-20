@@ -5,8 +5,8 @@ module.exports = async function inspectDouyinNativeSettings({ evaluateValue, iso
   const assertionFailures = []
   const samples = []
   const fixture = 'window.__nativeSettingsFixture'
-  const waitFor = async (expression) => {
-    for (let attempt = 0; attempt < 80; attempt++) {
+  const waitFor = async (expression, attempts = 80) => {
+    for (let attempt = 0; attempt < attempts; attempt++) {
       if (await evaluateValue(expression)) return
       await new Promise((resolve) => setTimeout(resolve, 50))
     }
@@ -101,5 +101,45 @@ module.exports = async function inspectDouyinNativeSettings({ evaluateValue, iso
   await evaluateValue(`(${fixture}.reset(), true)`)
   await drain()
   await snapshot('platform-disabled', original, 13)
-  return { assertionFailures, samples }
+  await evaluateValue(`(() => {
+    document.querySelector('#native').replaceChildren();
+    const input = document.createElement('textarea'); input.id = 'notice-focus';
+    document.body.append(input); input.focus(); return true;
+  })()`)
+  // The radar onboarding is a separate focus-trapped dialog; isolate the native notice.
+  await patch([{ path: ['repeatReminder', 'enabled'], value: false }, { path: ['platforms', 'douyin'], value: true }])
+  await drain()
+  const focusReady = await evaluateValue(`(() => {
+    document.querySelector('[data-bcp-repeat-reminder-owned]')?.shadowRoot?.querySelector('.onboarding-acknowledge')?.click();
+    document.getElementById('notice-focus').focus();
+    return document.activeElement.id === 'notice-focus';
+  })()`)
+  if (!focusReady) assertionFailures.push('failure-notice-focus-precondition')
+  const notice = "document.querySelector('.bcp-douyin-native-notice')"
+  await waitFor(`Boolean(${notice})`, 140)
+  const failureNotice = await evaluateValue(`(() => {
+    const notice = ${notice}; return {
+      count: document.querySelectorAll('.bcp-douyin-native-notice').length,
+      shadow: getComputedStyle(notice).boxShadow,
+      focusPreserved: document.activeElement.id === 'notice-focus',
+      activeElement: document.activeElement.tagName + '#' + document.activeElement.id,
+      actions: [...notice.querySelectorAll('button')].map(button => button.textContent),
+    };
+  })()`)
+  if (failureNotice.count !== 1 || failureNotice.shadow !== 'none' || !failureNotice.focusPreserved || failureNotice.actions.length !== 2) assertionFailures.push('failure-notice-presentation')
+  await evaluateValue(`(${notice}.querySelectorAll('button')[1].click(), true)`)
+  await drain()
+  await evaluateValue(`(document.body.append(document.createElement('aside')), true)`)
+  await drain()
+  if (await evaluateValue(`Boolean(${notice})`)) assertionFailures.push('dismissed-notice-reappeared')
+  await evaluateValue(`(history.pushState({}, '', '/201' + location.search), true)`)
+  await waitFor(`Boolean(${notice})`, 140)
+  await evaluateValue(`(${fixture}.reset(true), true)`)
+  await drain()
+  await evaluateValue(`(${notice}.querySelector('button').click(), true)`)
+  await waitFor(`${state} === ${JSON.stringify(filtered)} && !${notice}`)
+  await patch(preferences(false))
+  await drain()
+  if (await evaluateValue(`Boolean(${notice})`)) assertionFailures.push('disabled-notice-remained')
+  return { assertionFailures, samples, failureNotice }
 }

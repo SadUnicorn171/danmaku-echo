@@ -9,7 +9,7 @@
 
 [中文](#中文) · [English](#english) · [隐私权政策](PRIVACY.md)
 
-![Version](https://img.shields.io/badge/version-2.3.3-orange)
+![Version](https://img.shields.io/badge/version-2.3.4-orange)
 ![Manifest](https://img.shields.io/badge/Chrome-Manifest%20V3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 [![CI](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml/badge.svg)](https://github.com/SadUnicorn171/danmaku-echo/actions/workflows/ci.yml)
@@ -45,7 +45,7 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 
 ### 胶囊与雷达大小
 
-在「常规设置」选择界面大小的自动或手动模式，分别保留胶囊基础大小和各平台雷达提示大小。自动大小以 **3860×2160** 为基准，用浏览器报告的屏幕宽高乘像素比估算显示分辨率，按宽、高比例中较小的一项缩放；最终范围为 50%–200%。基准屏幕上 100% 保持原大小，1920×1080、像素比为 1 时约为 50%。浏览器缩放会影响像素比，切换屏幕或窗口重新获得焦点后会重新计算。无法取得有效屏幕数据时使用基础大小。
+在「常规设置」选择自动模式，根据屏幕大小调整界面；也可手动调整快捷操作和雷达提示的大小。
 
 界面自动大小、雷达自动触发和自动 +1 是三个独立开关。默认使用手动大小，升级保留原设置；自动触发不会锁定提示停留时间、队列上限或提示大小。
 
@@ -63,7 +63,7 @@ Danmaku Echo（弹幕回声）是一个适用于 Chrome 和 Edge 的 Manifest V3
 - 弹幕雷达统计最近一分钟内重复的文字弹幕，可自定义触发次数、提示时间和队列大小，并可选择自动 +1。
 - 设置中可按平台启用操作按钮、独立显示或隐藏各项操作，并切换中英文界面；弹幕操作支持网页和原生全屏。
 - 抖音直播设置可分别切换送礼信息、福袋口令和屏蔽礼物特效。
-- 发送统计按秒记录成功发送弹幕的平台、房间和纯文本内容，可在设置页查看、筛选和导出。
+- 发送统计按秒记录插件判定成功的发送及纯文本，可筛选、导出、查看存储占用，并手动清理 30／90／180 天前记录。
 
 ### 安装
 
@@ -175,7 +175,9 @@ build/extension/              可加载、可发布的生成产物（不提交�
 
 ### 隐私与权限
 
-- 申请 `storage` 权限保存扩展设置、本地弹幕收藏和脱敏运行日志；设置使用 `chrome.storage.sync`，收藏及日志使用 `chrome.storage.local` 且不会自动上传。
+发送统计仅在本机保存秒级时间、平台、房间和实际发送的纯文本，不保存图片、表情资源或页面源码，不自动上传。历史默认持续保留；可导出和手动清理，日期范围使用 UTC，删除不可撤销。成功判定可能来自页面状态，并不保证平台已广播。
+
+- 申请 `storage` 权限保存扩展设置、本地弹幕收藏、发送统计和脱敏运行日志；设置使用 `chrome.storage.sync`，收藏、统计及日志使用 `chrome.storage.local` 且不会自动上传。
 - 申请 `scripting` 权限用于抖音首次进房和 SPA 进房时补注入直播运行时、执行 B 站房间图片表情一次性后备发送，以及在用户主动发送时短暂观察当前平台的原生发送结果。
 - 主机权限仅覆盖四个受支持直播站点。虎牙、斗鱼的雷达规模信号直接读取当前页面已经显示的贵宾数，不请求房间热度接口。一次性发送观察器最多运行 8 秒，只输出请求方法、去除查询参数后的接口路径、HTTP 状态、平台业务码和官方错误文案；不会输出请求体、Cookie、CSRF、签名或请求头。
 - 完整功能脚本仅在虎牙直播、哔哩哔哩直播、抖音直播和斗鱼直播页面启用。
@@ -234,7 +236,7 @@ Choose automatic or manual thresholds for each platform, and set the prompt dura
 
 ### Capsule and radar size
 
-General settings provides independent Automatic and Manual interface sizing. Automatic sizing uses **3860×2160** as its reference and estimates display pixels from screen dimensions multiplied by devicePixelRatio. It applies the smaller width/height ratio to the saved capsule or platform prompt percentage, rounding and clamping the result to 50%–200%. A 100% base stays unchanged on the reference screen; a 1920×1080 screen at pixel ratio 1 uses approximately 50%. Browser zoom affects the pixel ratio; resize and focus changes recalculate the size. Invalid screen metrics fall back to the saved base size.
+Choose Automatic in General settings to scale the interface to your screen, or manually adjust quick-action and radar prompt sizes.
 
 Manual sizing is the default and preserves existing settings on upgrade. Interface sizing, automatic radar thresholds, and Automatic +1 are independent controls. Automatic thresholds leave duration, queue limit, and prompt size editable.
 
@@ -252,7 +254,7 @@ Use +1, Reply, and Favorite on supported side-chat messages and on-video danmaku
 - The danmaku radar counts repeated text from the last minute. Configure its threshold, display time, and queue size, and optionally enable automatic +1.
 - Enable action buttons per platform, show or hide each action, and switch the settings interface between Chinese and English. Danmaku actions work in web and native fullscreen.
 - Douyin settings include separate switches for gift messages, lucky-bag phrases, and blocking gift effects.
-- Send statistics record the successful send time to the second, platform, room, and plain-text content. View, filter, and export them in Settings.
+- Send statistics record sends judged successful by the extension, including second-level time and plain text. Filter, export, check storage usage, or manually clear records older than 30, 90, or 180 days in Settings.
 
 ### Installation
 
@@ -364,7 +366,9 @@ build/extension/              Loadable, releasable build output (not committed)
 
 ### Privacy and permissions
 
-- Requests `storage` for synchronized settings, local favorites, and sanitized runtime logs. Favorites use `chrome.storage.local` and are never uploaded.
+Send statistics keep second-level time, platform, room and submitted plain text on this device, without images, emote resources, page source or automatic upload. History stays until you clear it. Export and manual age-based clearing use UTC dates; deletion is irreversible. A successful send may be inferred from page state and does not guarantee platform broadcast.
+
+- Requests `storage` for synchronized settings, local favorites, send statistics, and sanitized runtime logs. Favorites use `chrome.storage.local` and are never uploaded.
 - Requests `scripting` to recover the Douyin runtime, run the one-shot Bilibili room-image fallback, and briefly observe a native send result after a user-initiated send.
 - Host access is limited to the four supported live sites. Huya and Douyu radar scaling reads the guest count already displayed on the current page and does not call a popularity endpoint. The one-shot send observer runs for at most eight seconds and exposes only the method, endpoint without query parameters, HTTP status, platform code, and native error text. It never exposes request bodies, headers, cookies, CSRF values, or signatures.
 - Activates complete feature scripts only on Huya Live, Bilibili Live, Douyin Live, and Douyu Live pages.

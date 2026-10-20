@@ -781,6 +781,13 @@ export function createDouyinContentApp(shared: SharedExtensionApi): DouyinConten
     href: () => location.href,
     settings: () => state.settings,
     onUnavailable: (key) => debugEvent('native-setting-unavailable', { setting: key }, 'warn'),
+    onStateChange: (application) => hoverController.setNativeSettingsNotice(application.showNotice ? {
+      message: t('douyinNativeSettingsUnavailable'),
+      retryLabel: t('douyinNativeSettingsRetry'),
+      dismissLabel: t('douyinNativeSettingsDismiss'),
+      retry: () => nativeSettings.retry(),
+      dismiss: () => nativeSettings.dismiss(),
+    } : null),
   })
   const featureRuntimes = {
     applySettings(settings: ExtensionSettings): void {

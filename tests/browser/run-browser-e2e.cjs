@@ -28,6 +28,7 @@ const requestedScenario = String(
 );
 
 const scenarios = [
+  { name: "statistics-performance", kind: "statistics", locale: "zh-CN", manualOnly: true, timeout: 150_000 },
   { name: "douyin-lifecycle", host: "live.douyin.com", platform: "douyin", query: "platform=douyin&lifecycle=1&skipSide=1", standardOrigin: true },
   { name: "douyin-spa-startup", host: "www.douyin.com", platform: "douyin", query: "platform=douyin&lifecycle=1&spaentry=1&skipSide=1", standardOrigin: true },
   { name: "douyin-native-settings", host: "live.douyin.com", platform: "douyin", query: "platform=douyin&nativesettings=1&skipSide=1" },
@@ -37,6 +38,10 @@ const scenarios = [
     manualOnly: true, pagePerformanceMode: mode,
   })),
   { name: "favorites-design", host: "www.huya.com", platform: "huya", query: "platform=huya&favoritesdesign=1&skipSide=1", manualOnly: true },
+  ...[
+    ["bilibili", "live.bilibili.com"], ["douyu", "www.douyu.com"],
+    ["huya", "www.huya.com"], ["douyin", "live.douyin.com"],
+  ].map(([platform, host]) => ({ name: `${platform}-radar-onboarding`, platform, host, query: `platform=${platform}&radaronboarding=1&skipSide=1`, manualOnly: true })),
   ...[
     ["bilibili", "live.bilibili.com"], ["douyu", "www.douyu.com"],
     ["huya", "www.huya.com"], ["douyin", "live.douyin.com"],
@@ -343,7 +348,14 @@ async function runScenario(browser, fixturePort, scenario, attempt) {
     rmSync(path.join(artifactDirectory, `${artifactName}${suffix}`), { force: true });
   }
   try {
-    if (scenario.kind === "settings") {
+    if (scenario.kind === "settings" || scenario.kind === "statistics") {
+      let benchmarkFile = '';
+      if (scenario.kind === 'statistics') {
+        const { build } = await import('vite');
+        const result = await build({ configFile: false, logLevel: 'error', build: { write: false, minify: false, lib: { entry: path.join(root, 'tests/browser/statistics-benchmark.ts'), name: 'DanmakuStatisticsBenchmark', formats: ['iife'] } } });
+        benchmarkFile = path.join(artifactRoot, 'statistics-benchmark.js');
+        writeFileSync(benchmarkFile, (Array.isArray(result) ? result[0] : result).output.find(item => item.type === 'chunk').code);
+      }
       const execution = await runProcess(
         process.execPath,
         [
@@ -354,6 +366,7 @@ async function runScenario(browser, fixturePort, scenario, attempt) {
           scenario.locale,
           artifactDirectory,
           artifactName,
+          ...(benchmarkFile ? [`--statistics-benchmark=${benchmarkFile}`] : []),
         ],
         scenario.timeout || 60_000,
       );

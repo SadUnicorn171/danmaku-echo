@@ -2,6 +2,14 @@ import { createApp, nextTick, reactive } from "vue";
 import type { ActionSettings } from "../../core/types";
 import DouyinOverlay from "./DouyinOverlay.vue";
 
+export interface DouyinNativeSettingsNotice {
+  message: string;
+  retryLabel: string;
+  dismissLabel: string;
+  retry(): void;
+  dismiss(): void;
+}
+
 export interface DouyinOverlayState {
   actions: ActionSettings;
   cardActive: boolean;
@@ -23,6 +31,7 @@ export interface DouyinOverlayState {
   previewStyle: Record<string, unknown>;
   sending: boolean;
   side: string;
+  nativeSettingsNotice: DouyinNativeSettingsNotice | null;
   toast: null | { id: number; message: string; tone: string; visible: boolean };
   top: number;
 }
@@ -59,6 +68,7 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     previewStyle: {},
     sending: false,
     side: "right",
+    nativeSettingsNotice: null,
     toast: null,
     top: 0
   });
@@ -128,6 +138,9 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
 
   return {
     card,
+    setNativeSettingsNotice(notice: DouyinNativeSettingsNotice | null): void {
+      if (!destroyed) state.nativeSettingsNotice = notice;
+    },
     dismissToast(): void {
       if (toastTimer !== undefined) clearTimeout(toastTimer);
       if (toastCleanupTimer !== undefined) clearTimeout(toastCleanupTimer);

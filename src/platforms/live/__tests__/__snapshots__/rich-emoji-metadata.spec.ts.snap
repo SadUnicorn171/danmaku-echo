@@ -1,0 +1,2212 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`rich metadata extraction equivalence > bilibili: Douyu panel title 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/123.png",
+        "name:https://cdn.example/123.png",
+        "path:/123.png",
+        "file:123.png",
+        "stem:123.png",
+        "raw:图片",
+        "name:图片",
+        "path:/图片",
+        "file:图片",
+        "stem:图片",
+      ],
+      "src": "https://cdn.example/123.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/123.png",
+          "name:https://cdn.example/123.png",
+          "path:/123.png",
+          "file:123.png",
+          "stem:123.png",
+          "raw:图片",
+          "name:图片",
+          "path:/图片",
+          "file:图片",
+          "stem:图片",
+        ],
+        "src": "https://cdn.example/123.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "text": "官方名称",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/123.png",
+            "name:https://cdn.example/123.png",
+            "path:/123.png",
+            "file:123.png",
+            "stem:123.png",
+            "raw:图片",
+            "name:图片",
+            "path:/图片",
+            "file:图片",
+            "stem:图片",
+          ],
+          "src": "https://cdn.example/123.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "官方名称",
+    "text": "官方名称",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: Douyu rel priority 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/gougutou.webp",
+        "name:https://cdn.example/gougutou.webp",
+        "path:/gougutou.webp",
+        "file:gougutou.webp",
+        "stem:gougutou.webp",
+        "raw:[other]",
+        "name:other",
+        "path:/[other]",
+        "file:[other]",
+        "stem:[other]",
+        "raw:狗骨头",
+        "name:狗骨头",
+        "path:/狗骨头",
+        "file:狗骨头",
+        "stem:狗骨头",
+      ],
+      "src": "https://cdn.example/gougutou.webp",
+      "token": "[other]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/gougutou.webp",
+          "name:https://cdn.example/gougutou.webp",
+          "path:/gougutou.webp",
+          "file:gougutou.webp",
+          "stem:gougutou.webp",
+          "raw:[other]",
+          "name:other",
+          "path:/[other]",
+          "file:[other]",
+          "stem:[other]",
+          "raw:狗骨头",
+          "name:狗骨头",
+          "path:/狗骨头",
+          "file:狗骨头",
+          "stem:狗骨头",
+        ],
+        "src": "https://cdn.example/gougutou.webp",
+        "token": "[other]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/gougutou.webp",
+            "name:https://cdn.example/gougutou.webp",
+            "path:/gougutou.webp",
+            "file:gougutou.webp",
+            "stem:gougutou.webp",
+            "raw:[other]",
+            "name:other",
+            "path:/[other]",
+            "file:[other]",
+            "stem:[other]",
+            "raw:狗骨头",
+            "name:狗骨头",
+            "path:/狗骨头",
+            "file:狗骨头",
+            "stem:狗骨头",
+          ],
+          "src": "https://cdn.example/gougutou.webp",
+          "token": "[other]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[other]",
+  },
+  "token": "[other]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: Huya panel identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/web_base_material_99887766_pic.png",
+        "name:https://cdn.example/web_base_material_99887766_pic.png",
+        "path:/web_base_material_99887766_pic.png",
+        "file:web_base_material_99887766_pic.png",
+        "stem:web_base_material_99887766_pic.png",
+        "fragment:web_base_material_99887766_pic",
+        "raw:虎牙开心",
+        "name:虎牙开心",
+        "path:/虎牙开心",
+        "file:虎牙开心",
+        "stem:虎牙开心",
+        "raw:[虎牙开心]",
+        "path:/[虎牙开心]",
+        "file:[虎牙开心]",
+        "stem:[虎牙开心]",
+        "raw:99887766",
+        "path:/99887766",
+        "file:99887766",
+        "stem:99887766",
+      ],
+      "src": "https://cdn.example/web_base_material_99887766_pic.png",
+      "token": "[虎牙开心]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/web_base_material_99887766_pic.png",
+          "name:https://cdn.example/web_base_material_99887766_pic.png",
+          "path:/web_base_material_99887766_pic.png",
+          "file:web_base_material_99887766_pic.png",
+          "stem:web_base_material_99887766_pic.png",
+          "fragment:web_base_material_99887766_pic",
+          "raw:虎牙开心",
+          "name:虎牙开心",
+          "path:/虎牙开心",
+          "file:虎牙开心",
+          "stem:虎牙开心",
+          "raw:[虎牙开心]",
+          "path:/[虎牙开心]",
+          "file:[虎牙开心]",
+          "stem:[虎牙开心]",
+          "raw:99887766",
+          "path:/99887766",
+          "file:99887766",
+          "stem:99887766",
+        ],
+        "src": "https://cdn.example/web_base_material_99887766_pic.png",
+        "token": "[虎牙开心]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/web_base_material_99887766_pic.png",
+            "name:https://cdn.example/web_base_material_99887766_pic.png",
+            "path:/web_base_material_99887766_pic.png",
+            "file:web_base_material_99887766_pic.png",
+            "stem:web_base_material_99887766_pic.png",
+            "fragment:web_base_material_99887766_pic",
+            "raw:虎牙开心",
+            "name:虎牙开心",
+            "path:/虎牙开心",
+            "file:虎牙开心",
+            "stem:虎牙开心",
+            "raw:[虎牙开心]",
+            "path:/[虎牙开心]",
+            "file:[虎牙开心]",
+            "stem:[虎牙开心]",
+            "raw:99887766",
+            "path:/99887766",
+            "file:99887766",
+            "stem:99887766",
+          ],
+          "src": "https://cdn.example/web_base_material_99887766_pic.png",
+          "token": "[虎牙开心]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后备文字",
+        "type": "text",
+      },
+    ],
+    "plainText": "后备文字",
+    "text": "[虎牙开心]后备文字",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: decorative rejection 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/badge.png",
+        "name:https://cdn.example/badge.png",
+        "path:/badge.png",
+        "file:badge.png",
+        "stem:badge.png",
+        "raw:舰长勋章",
+        "name:舰长勋章",
+        "path:/舰长勋章",
+        "file:舰长勋章",
+        "stem:舰长勋章",
+        "raw:[舰长勋章]",
+        "path:/[舰长勋章]",
+        "file:[舰长勋章]",
+        "stem:[舰长勋章]",
+      ],
+      "src": "https://cdn.example/badge.png",
+      "token": "[舰长勋章]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/badge.png",
+          "name:https://cdn.example/badge.png",
+          "path:/badge.png",
+          "file:badge.png",
+          "stem:badge.png",
+          "raw:舰长勋章",
+          "name:舰长勋章",
+          "path:/舰长勋章",
+          "file:舰长勋章",
+          "stem:舰长勋章",
+          "raw:[舰长勋章]",
+          "path:/[舰长勋章]",
+          "file:[舰长勋章]",
+          "stem:[舰长勋章]",
+        ],
+        "src": "https://cdn.example/badge.png",
+        "token": "[舰长勋章]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/badge.png",
+            "name:https://cdn.example/badge.png",
+            "path:/badge.png",
+            "file:badge.png",
+            "stem:badge.png",
+            "raw:舰长勋章",
+            "name:舰长勋章",
+            "path:/舰长勋章",
+            "file:舰长勋章",
+            "stem:舰长勋章",
+            "raw:[舰长勋章]",
+            "path:/[舰长勋章]",
+            "file:[舰长勋章]",
+            "stem:[舰长勋章]",
+          ],
+          "src": "https://cdn.example/badge.png",
+          "token": "[舰长勋章]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[舰长勋章]",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: mixed order 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/a.png",
+        "name:https://cdn.example/a.png",
+        "path:/a.png",
+        "file:a.png",
+        "stem:a.png",
+        "raw:[开心]",
+        "name:开心",
+        "path:/[开心]",
+        "file:[开心]",
+        "stem:[开心]",
+      ],
+      "src": "https://cdn.example/a.png",
+      "token": "[开心]",
+    },
+    {
+      "keys": [
+        "raw:https://cdn.example/b.png",
+        "name:https://cdn.example/b.png",
+        "path:/b.png",
+        "file:b.png",
+        "stem:b.png",
+        "raw:[大笑]",
+        "name:大笑",
+        "path:/[大笑]",
+        "file:[大笑]",
+        "stem:[大笑]",
+      ],
+      "src": "https://cdn.example/b.png",
+      "token": "[大笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/a.png",
+          "name:https://cdn.example/a.png",
+          "path:/a.png",
+          "file:a.png",
+          "stem:a.png",
+          "raw:[开心]",
+          "name:开心",
+          "path:/[开心]",
+          "file:[开心]",
+          "stem:[开心]",
+        ],
+        "src": "https://cdn.example/a.png",
+        "token": "[开心]",
+      },
+      {
+        "keys": [
+          "raw:https://cdn.example/b.png",
+          "name:https://cdn.example/b.png",
+          "path:/b.png",
+          "file:b.png",
+          "stem:b.png",
+          "raw:[大笑]",
+          "name:大笑",
+          "path:/[大笑]",
+          "file:[大笑]",
+          "stem:[大笑]",
+        ],
+        "src": "https://cdn.example/b.png",
+        "token": "[大笑]",
+      },
+    ],
+    "parts": [
+      {
+        "text": "前",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/a.png",
+            "name:https://cdn.example/a.png",
+            "path:/a.png",
+            "file:a.png",
+            "stem:a.png",
+            "raw:[开心]",
+            "name:开心",
+            "path:/[开心]",
+            "file:[开心]",
+            "stem:[开心]",
+          ],
+          "src": "https://cdn.example/a.png",
+          "token": "[开心]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "🙂",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/b.png",
+            "name:https://cdn.example/b.png",
+            "path:/b.png",
+            "file:b.png",
+            "stem:b.png",
+            "raw:[大笑]",
+            "name:大笑",
+            "path:/[大笑]",
+            "file:[大笑]",
+            "stem:[大笑]",
+          ],
+          "src": "https://cdn.example/b.png",
+          "token": "[大笑]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后",
+        "type": "text",
+      },
+    ],
+    "plainText": "前🙂后",
+    "text": "前[开心]🙂[大笑]后",
+  },
+  "token": "[开心]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: native room identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "native-panel:room_123_456",
+        "raw:https://cdn.example/exclusive.png",
+        "name:https://cdn.example/exclusive.png",
+        "path:/exclusive.png",
+        "file:exclusive.png",
+        "stem:exclusive.png",
+        "raw:图片表情",
+        "name:图片表情",
+        "path:/图片表情",
+        "file:图片表情",
+        "stem:图片表情",
+        "raw:[房间表情]",
+        "name:房间表情",
+        "path:/[房间表情]",
+        "file:[房间表情]",
+        "stem:[房间表情]",
+        "raw:room_123_456",
+        "path:/room_123_456",
+        "file:room_123_456",
+        "stem:room_123_456",
+        "fragment:room_123_456",
+      ],
+      "src": "https://cdn.example/exclusive.png",
+      "token": "[房间表情]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "native-panel:room_123_456",
+          "raw:https://cdn.example/exclusive.png",
+          "name:https://cdn.example/exclusive.png",
+          "path:/exclusive.png",
+          "file:exclusive.png",
+          "stem:exclusive.png",
+          "raw:图片表情",
+          "name:图片表情",
+          "path:/图片表情",
+          "file:图片表情",
+          "stem:图片表情",
+          "raw:[房间表情]",
+          "name:房间表情",
+          "path:/[房间表情]",
+          "file:[房间表情]",
+          "stem:[房间表情]",
+          "raw:room_123_456",
+          "path:/room_123_456",
+          "file:room_123_456",
+          "stem:room_123_456",
+          "fragment:room_123_456",
+        ],
+        "src": "https://cdn.example/exclusive.png",
+        "token": "[房间表情]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "native-panel:room_123_456",
+            "raw:https://cdn.example/exclusive.png",
+            "name:https://cdn.example/exclusive.png",
+            "path:/exclusive.png",
+            "file:exclusive.png",
+            "stem:exclusive.png",
+            "raw:图片表情",
+            "name:图片表情",
+            "path:/图片表情",
+            "file:图片表情",
+            "stem:图片表情",
+            "raw:[房间表情]",
+            "name:房间表情",
+            "path:/[房间表情]",
+            "file:[房间表情]",
+            "stem:[房间表情]",
+            "raw:room_123_456",
+            "path:/room_123_456",
+            "file:room_123_456",
+            "stem:room_123_456",
+            "fragment:room_123_456",
+          ],
+          "src": "https://cdn.example/exclusive.png",
+          "token": "[房间表情]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[房间表情]",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: no metadata 1`] = `
+{
+  "assets": [
+    null,
+  ],
+  "payload": {
+    "assets": [],
+    "parts": [
+      {
+        "text": "文字😀",
+        "type": "text",
+      },
+    ],
+    "plainText": "文字😀",
+    "text": "文字😀",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: source and identity fallback 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/fallback.png",
+        "name:https://cdn.example/fallback.png",
+        "path:/fallback.png",
+        "file:fallback.png",
+        "stem:fallback.png",
+        "raw:emoji",
+        "name:emoji",
+        "path:/emoji",
+        "file:emoji",
+        "stem:emoji",
+        "raw:0123456789abcdef",
+        "digest:0123456789abcdef",
+        "path:/0123456789abcdef",
+        "file:0123456789abcdef",
+        "stem:0123456789abcdef",
+        "fragment:0123456789abcdef",
+      ],
+      "src": "https://cdn.example/fallback.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/fallback.png",
+          "name:https://cdn.example/fallback.png",
+          "path:/fallback.png",
+          "file:fallback.png",
+          "stem:fallback.png",
+          "raw:emoji",
+          "name:emoji",
+          "path:/emoji",
+          "file:emoji",
+          "stem:emoji",
+          "raw:0123456789abcdef",
+          "digest:0123456789abcdef",
+          "path:/0123456789abcdef",
+          "file:0123456789abcdef",
+          "stem:0123456789abcdef",
+          "fragment:0123456789abcdef",
+        ],
+        "src": "https://cdn.example/fallback.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/fallback.png",
+            "name:https://cdn.example/fallback.png",
+            "path:/fallback.png",
+            "file:fallback.png",
+            "stem:fallback.png",
+            "raw:emoji",
+            "name:emoji",
+            "path:/emoji",
+            "file:emoji",
+            "stem:emoji",
+            "raw:0123456789abcdef",
+            "digest:0123456789abcdef",
+            "path:/0123456789abcdef",
+            "file:0123456789abcdef",
+            "stem:0123456789abcdef",
+            "fragment:0123456789abcdef",
+          ],
+          "src": "https://cdn.example/fallback.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > bilibili: standard id before label 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "bili-auto-text:official-id",
+        "raw://cdn.example/asset.png?signature=secret",
+        "name://cdn.example/asset.png?signature=secret",
+        "path:/asset.png",
+        "file:asset.png",
+        "stem:asset.png",
+        "raw:[微笑]",
+        "name:微笑",
+        "path:/[微笑]",
+        "file:[微笑]",
+        "stem:[微笑]",
+        "raw:opaque-id",
+        "path:/opaque-id",
+        "file:opaque-id",
+        "stem:opaque-id",
+        "raw:official-id",
+        "path:/official-id",
+        "file:official-id",
+        "stem:official-id",
+        "fragment:official-id",
+      ],
+      "src": "//cdn.example/asset.png?signature=secret",
+      "token": "[微笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "bili-auto-text:official-id",
+          "raw://cdn.example/asset.png?signature=secret",
+          "name://cdn.example/asset.png?signature=secret",
+          "path:/asset.png",
+          "file:asset.png",
+          "stem:asset.png",
+          "raw:[微笑]",
+          "name:微笑",
+          "path:/[微笑]",
+          "file:[微笑]",
+          "stem:[微笑]",
+          "raw:opaque-id",
+          "path:/opaque-id",
+          "file:opaque-id",
+          "stem:opaque-id",
+          "raw:official-id",
+          "path:/official-id",
+          "file:official-id",
+          "stem:official-id",
+          "fragment:official-id",
+        ],
+        "src": "//cdn.example/asset.png?signature=secret",
+        "token": "[微笑]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "bili-auto-text:official-id",
+            "raw://cdn.example/asset.png?signature=secret",
+            "name://cdn.example/asset.png?signature=secret",
+            "path:/asset.png",
+            "file:asset.png",
+            "stem:asset.png",
+            "raw:[微笑]",
+            "name:微笑",
+            "path:/[微笑]",
+            "file:[微笑]",
+            "stem:[微笑]",
+            "raw:opaque-id",
+            "path:/opaque-id",
+            "file:opaque-id",
+            "stem:opaque-id",
+            "raw:official-id",
+            "path:/official-id",
+            "file:official-id",
+            "stem:official-id",
+            "fragment:official-id",
+          ],
+          "src": "//cdn.example/asset.png?signature=secret",
+          "token": "[微笑]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[微笑]",
+  },
+  "token": "[微笑]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: Douyu panel title 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/123.png",
+        "name:https://cdn.example/123.png",
+        "path:/123.png",
+        "file:123.png",
+        "stem:123.png",
+        "raw:图片",
+        "name:图片",
+        "path:/图片",
+        "file:图片",
+        "stem:图片",
+        "raw:[官方名称]",
+        "name:官方名称",
+        "path:/[官方名称]",
+        "file:[官方名称]",
+        "stem:[官方名称]",
+      ],
+      "src": "https://cdn.example/123.png",
+      "token": "[官方名称]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/123.png",
+          "name:https://cdn.example/123.png",
+          "path:/123.png",
+          "file:123.png",
+          "stem:123.png",
+          "raw:图片",
+          "name:图片",
+          "path:/图片",
+          "file:图片",
+          "stem:图片",
+          "raw:[官方名称]",
+          "name:官方名称",
+          "path:/[官方名称]",
+          "file:[官方名称]",
+          "stem:[官方名称]",
+        ],
+        "src": "https://cdn.example/123.png",
+        "token": "[官方名称]",
+      },
+    ],
+    "parts": [
+      {
+        "text": "官方名称",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/123.png",
+            "name:https://cdn.example/123.png",
+            "path:/123.png",
+            "file:123.png",
+            "stem:123.png",
+            "raw:图片",
+            "name:图片",
+            "path:/图片",
+            "file:图片",
+            "stem:图片",
+            "raw:[官方名称]",
+            "name:官方名称",
+            "path:/[官方名称]",
+            "file:[官方名称]",
+            "stem:[官方名称]",
+          ],
+          "src": "https://cdn.example/123.png",
+          "token": "[官方名称]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "官方名称",
+    "text": "官方名称[官方名称]",
+  },
+  "token": "[官方名称]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: Douyu rel priority 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/gougutou.webp",
+        "name:https://cdn.example/gougutou.webp",
+        "path:/gougutou.webp",
+        "file:gougutou.webp",
+        "stem:gougutou.webp",
+        "raw:[other]",
+        "name:other",
+        "path:/[other]",
+        "file:[other]",
+        "stem:[other]",
+        "raw:狗骨头",
+        "name:狗骨头",
+        "path:/狗骨头",
+        "file:狗骨头",
+        "stem:狗骨头",
+        "raw:[狗骨头]",
+        "path:/[狗骨头]",
+        "file:[狗骨头]",
+        "stem:[狗骨头]",
+      ],
+      "src": "https://cdn.example/gougutou.webp",
+      "token": "[狗骨头]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/gougutou.webp",
+          "name:https://cdn.example/gougutou.webp",
+          "path:/gougutou.webp",
+          "file:gougutou.webp",
+          "stem:gougutou.webp",
+          "raw:[other]",
+          "name:other",
+          "path:/[other]",
+          "file:[other]",
+          "stem:[other]",
+          "raw:狗骨头",
+          "name:狗骨头",
+          "path:/狗骨头",
+          "file:狗骨头",
+          "stem:狗骨头",
+          "raw:[狗骨头]",
+          "path:/[狗骨头]",
+          "file:[狗骨头]",
+          "stem:[狗骨头]",
+        ],
+        "src": "https://cdn.example/gougutou.webp",
+        "token": "[狗骨头]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/gougutou.webp",
+            "name:https://cdn.example/gougutou.webp",
+            "path:/gougutou.webp",
+            "file:gougutou.webp",
+            "stem:gougutou.webp",
+            "raw:[other]",
+            "name:other",
+            "path:/[other]",
+            "file:[other]",
+            "stem:[other]",
+            "raw:狗骨头",
+            "name:狗骨头",
+            "path:/狗骨头",
+            "file:狗骨头",
+            "stem:狗骨头",
+            "raw:[狗骨头]",
+            "path:/[狗骨头]",
+            "file:[狗骨头]",
+            "stem:[狗骨头]",
+          ],
+          "src": "https://cdn.example/gougutou.webp",
+          "token": "[狗骨头]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[狗骨头]",
+  },
+  "token": "[狗骨头]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: Huya panel identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/web_base_material_99887766_pic.png",
+        "name:https://cdn.example/web_base_material_99887766_pic.png",
+        "path:/web_base_material_99887766_pic.png",
+        "file:web_base_material_99887766_pic.png",
+        "stem:web_base_material_99887766_pic.png",
+        "fragment:web_base_material_99887766_pic",
+        "raw:虎牙开心",
+        "name:虎牙开心",
+        "path:/虎牙开心",
+        "file:虎牙开心",
+        "stem:虎牙开心",
+        "raw:99887766",
+        "path:/99887766",
+        "file:99887766",
+        "stem:99887766",
+      ],
+      "src": "https://cdn.example/web_base_material_99887766_pic.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/web_base_material_99887766_pic.png",
+          "name:https://cdn.example/web_base_material_99887766_pic.png",
+          "path:/web_base_material_99887766_pic.png",
+          "file:web_base_material_99887766_pic.png",
+          "stem:web_base_material_99887766_pic.png",
+          "fragment:web_base_material_99887766_pic",
+          "raw:虎牙开心",
+          "name:虎牙开心",
+          "path:/虎牙开心",
+          "file:虎牙开心",
+          "stem:虎牙开心",
+          "raw:99887766",
+          "path:/99887766",
+          "file:99887766",
+          "stem:99887766",
+        ],
+        "src": "https://cdn.example/web_base_material_99887766_pic.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/web_base_material_99887766_pic.png",
+            "name:https://cdn.example/web_base_material_99887766_pic.png",
+            "path:/web_base_material_99887766_pic.png",
+            "file:web_base_material_99887766_pic.png",
+            "stem:web_base_material_99887766_pic.png",
+            "fragment:web_base_material_99887766_pic",
+            "raw:虎牙开心",
+            "name:虎牙开心",
+            "path:/虎牙开心",
+            "file:虎牙开心",
+            "stem:虎牙开心",
+            "raw:99887766",
+            "path:/99887766",
+            "file:99887766",
+            "stem:99887766",
+          ],
+          "src": "https://cdn.example/web_base_material_99887766_pic.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后备文字",
+        "type": "text",
+      },
+    ],
+    "plainText": "后备文字",
+    "text": "后备文字",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: decorative rejection 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/badge.png",
+        "name:https://cdn.example/badge.png",
+        "path:/badge.png",
+        "file:badge.png",
+        "stem:badge.png",
+        "raw:舰长勋章",
+        "name:舰长勋章",
+        "path:/舰长勋章",
+        "file:舰长勋章",
+        "stem:舰长勋章",
+      ],
+      "src": "https://cdn.example/badge.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/badge.png",
+          "name:https://cdn.example/badge.png",
+          "path:/badge.png",
+          "file:badge.png",
+          "stem:badge.png",
+          "raw:舰长勋章",
+          "name:舰长勋章",
+          "path:/舰长勋章",
+          "file:舰长勋章",
+          "stem:舰长勋章",
+        ],
+        "src": "https://cdn.example/badge.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/badge.png",
+            "name:https://cdn.example/badge.png",
+            "path:/badge.png",
+            "file:badge.png",
+            "stem:badge.png",
+            "raw:舰长勋章",
+            "name:舰长勋章",
+            "path:/舰长勋章",
+            "file:舰长勋章",
+            "stem:舰长勋章",
+          ],
+          "src": "https://cdn.example/badge.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: mixed order 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/a.png",
+        "name:https://cdn.example/a.png",
+        "path:/a.png",
+        "file:a.png",
+        "stem:a.png",
+        "raw:[开心]",
+        "name:开心",
+        "path:/[开心]",
+        "file:[开心]",
+        "stem:[开心]",
+      ],
+      "src": "https://cdn.example/a.png",
+      "token": "[开心]",
+    },
+    {
+      "keys": [
+        "raw:https://cdn.example/b.png",
+        "name:https://cdn.example/b.png",
+        "path:/b.png",
+        "file:b.png",
+        "stem:b.png",
+        "raw:[大笑]",
+        "name:大笑",
+        "path:/[大笑]",
+        "file:[大笑]",
+        "stem:[大笑]",
+      ],
+      "src": "https://cdn.example/b.png",
+      "token": "[大笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/a.png",
+          "name:https://cdn.example/a.png",
+          "path:/a.png",
+          "file:a.png",
+          "stem:a.png",
+          "raw:[开心]",
+          "name:开心",
+          "path:/[开心]",
+          "file:[开心]",
+          "stem:[开心]",
+        ],
+        "src": "https://cdn.example/a.png",
+        "token": "[开心]",
+      },
+      {
+        "keys": [
+          "raw:https://cdn.example/b.png",
+          "name:https://cdn.example/b.png",
+          "path:/b.png",
+          "file:b.png",
+          "stem:b.png",
+          "raw:[大笑]",
+          "name:大笑",
+          "path:/[大笑]",
+          "file:[大笑]",
+          "stem:[大笑]",
+        ],
+        "src": "https://cdn.example/b.png",
+        "token": "[大笑]",
+      },
+    ],
+    "parts": [
+      {
+        "text": "前",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/a.png",
+            "name:https://cdn.example/a.png",
+            "path:/a.png",
+            "file:a.png",
+            "stem:a.png",
+            "raw:[开心]",
+            "name:开心",
+            "path:/[开心]",
+            "file:[开心]",
+            "stem:[开心]",
+          ],
+          "src": "https://cdn.example/a.png",
+          "token": "[开心]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "🙂",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/b.png",
+            "name:https://cdn.example/b.png",
+            "path:/b.png",
+            "file:b.png",
+            "stem:b.png",
+            "raw:[大笑]",
+            "name:大笑",
+            "path:/[大笑]",
+            "file:[大笑]",
+            "stem:[大笑]",
+          ],
+          "src": "https://cdn.example/b.png",
+          "token": "[大笑]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后",
+        "type": "text",
+      },
+    ],
+    "plainText": "前🙂后",
+    "text": "前[开心]🙂[大笑]后",
+  },
+  "token": "[开心]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: native room identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/exclusive.png",
+        "name:https://cdn.example/exclusive.png",
+        "path:/exclusive.png",
+        "file:exclusive.png",
+        "stem:exclusive.png",
+        "raw:图片表情",
+        "name:图片表情",
+        "path:/图片表情",
+        "file:图片表情",
+        "stem:图片表情",
+      ],
+      "src": "https://cdn.example/exclusive.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/exclusive.png",
+          "name:https://cdn.example/exclusive.png",
+          "path:/exclusive.png",
+          "file:exclusive.png",
+          "stem:exclusive.png",
+          "raw:图片表情",
+          "name:图片表情",
+          "path:/图片表情",
+          "file:图片表情",
+          "stem:图片表情",
+        ],
+        "src": "https://cdn.example/exclusive.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/exclusive.png",
+            "name:https://cdn.example/exclusive.png",
+            "path:/exclusive.png",
+            "file:exclusive.png",
+            "stem:exclusive.png",
+            "raw:图片表情",
+            "name:图片表情",
+            "path:/图片表情",
+            "file:图片表情",
+            "stem:图片表情",
+          ],
+          "src": "https://cdn.example/exclusive.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: no metadata 1`] = `
+{
+  "assets": [
+    null,
+  ],
+  "payload": {
+    "assets": [],
+    "parts": [
+      {
+        "text": "文字😀",
+        "type": "text",
+      },
+    ],
+    "plainText": "文字😀",
+    "text": "文字😀",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: source and identity fallback 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/fallback.png",
+        "name:https://cdn.example/fallback.png",
+        "path:/fallback.png",
+        "file:fallback.png",
+        "stem:fallback.png",
+        "raw:emoji",
+        "name:emoji",
+        "path:/emoji",
+        "file:emoji",
+        "stem:emoji",
+        "raw:0123456789abcdef",
+        "digest:0123456789abcdef",
+        "path:/0123456789abcdef",
+        "file:0123456789abcdef",
+        "stem:0123456789abcdef",
+        "fragment:0123456789abcdef",
+      ],
+      "src": "https://cdn.example/fallback.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/fallback.png",
+          "name:https://cdn.example/fallback.png",
+          "path:/fallback.png",
+          "file:fallback.png",
+          "stem:fallback.png",
+          "raw:emoji",
+          "name:emoji",
+          "path:/emoji",
+          "file:emoji",
+          "stem:emoji",
+          "raw:0123456789abcdef",
+          "digest:0123456789abcdef",
+          "path:/0123456789abcdef",
+          "file:0123456789abcdef",
+          "stem:0123456789abcdef",
+          "fragment:0123456789abcdef",
+        ],
+        "src": "https://cdn.example/fallback.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/fallback.png",
+            "name:https://cdn.example/fallback.png",
+            "path:/fallback.png",
+            "file:fallback.png",
+            "stem:fallback.png",
+            "raw:emoji",
+            "name:emoji",
+            "path:/emoji",
+            "file:emoji",
+            "stem:emoji",
+            "raw:0123456789abcdef",
+            "digest:0123456789abcdef",
+            "path:/0123456789abcdef",
+            "file:0123456789abcdef",
+            "stem:0123456789abcdef",
+            "fragment:0123456789abcdef",
+          ],
+          "src": "https://cdn.example/fallback.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > douyu: standard id before label 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw://cdn.example/asset.png?signature=secret",
+        "name://cdn.example/asset.png?signature=secret",
+        "path:/asset.png",
+        "file:asset.png",
+        "stem:asset.png",
+        "raw:[微笑]",
+        "name:微笑",
+        "path:/[微笑]",
+        "file:[微笑]",
+        "stem:[微笑]",
+        "raw:opaque-id",
+        "path:/opaque-id",
+        "file:opaque-id",
+        "stem:opaque-id",
+        "raw:official-id",
+        "path:/official-id",
+        "file:official-id",
+        "stem:official-id",
+        "fragment:official-id",
+      ],
+      "src": "//cdn.example/asset.png?signature=secret",
+      "token": "[微笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw://cdn.example/asset.png?signature=secret",
+          "name://cdn.example/asset.png?signature=secret",
+          "path:/asset.png",
+          "file:asset.png",
+          "stem:asset.png",
+          "raw:[微笑]",
+          "name:微笑",
+          "path:/[微笑]",
+          "file:[微笑]",
+          "stem:[微笑]",
+          "raw:opaque-id",
+          "path:/opaque-id",
+          "file:opaque-id",
+          "stem:opaque-id",
+          "raw:official-id",
+          "path:/official-id",
+          "file:official-id",
+          "stem:official-id",
+          "fragment:official-id",
+        ],
+        "src": "//cdn.example/asset.png?signature=secret",
+        "token": "[微笑]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw://cdn.example/asset.png?signature=secret",
+            "name://cdn.example/asset.png?signature=secret",
+            "path:/asset.png",
+            "file:asset.png",
+            "stem:asset.png",
+            "raw:[微笑]",
+            "name:微笑",
+            "path:/[微笑]",
+            "file:[微笑]",
+            "stem:[微笑]",
+            "raw:opaque-id",
+            "path:/opaque-id",
+            "file:opaque-id",
+            "stem:opaque-id",
+            "raw:official-id",
+            "path:/official-id",
+            "file:official-id",
+            "stem:official-id",
+            "fragment:official-id",
+          ],
+          "src": "//cdn.example/asset.png?signature=secret",
+          "token": "[微笑]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[微笑]",
+  },
+  "token": "[微笑]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: Douyu panel title 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/123.png",
+        "name:https://cdn.example/123.png",
+        "path:/123.png",
+        "file:123.png",
+        "stem:123.png",
+        "raw:图片",
+        "name:图片",
+        "path:/图片",
+        "file:图片",
+        "stem:图片",
+      ],
+      "src": "https://cdn.example/123.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/123.png",
+          "name:https://cdn.example/123.png",
+          "path:/123.png",
+          "file:123.png",
+          "stem:123.png",
+          "raw:图片",
+          "name:图片",
+          "path:/图片",
+          "file:图片",
+          "stem:图片",
+        ],
+        "src": "https://cdn.example/123.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "text": "官方名称",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/123.png",
+            "name:https://cdn.example/123.png",
+            "path:/123.png",
+            "file:123.png",
+            "stem:123.png",
+            "raw:图片",
+            "name:图片",
+            "path:/图片",
+            "file:图片",
+            "stem:图片",
+          ],
+          "src": "https://cdn.example/123.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "官方名称",
+    "text": "官方名称",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: Douyu rel priority 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/gougutou.webp",
+        "name:https://cdn.example/gougutou.webp",
+        "path:/gougutou.webp",
+        "file:gougutou.webp",
+        "stem:gougutou.webp",
+        "raw:[other]",
+        "name:other",
+        "path:/[other]",
+        "file:[other]",
+        "stem:[other]",
+        "raw:狗骨头",
+        "name:狗骨头",
+        "path:/狗骨头",
+        "file:狗骨头",
+        "stem:狗骨头",
+      ],
+      "src": "https://cdn.example/gougutou.webp",
+      "token": "[other]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/gougutou.webp",
+          "name:https://cdn.example/gougutou.webp",
+          "path:/gougutou.webp",
+          "file:gougutou.webp",
+          "stem:gougutou.webp",
+          "raw:[other]",
+          "name:other",
+          "path:/[other]",
+          "file:[other]",
+          "stem:[other]",
+          "raw:狗骨头",
+          "name:狗骨头",
+          "path:/狗骨头",
+          "file:狗骨头",
+          "stem:狗骨头",
+        ],
+        "src": "https://cdn.example/gougutou.webp",
+        "token": "[other]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/gougutou.webp",
+            "name:https://cdn.example/gougutou.webp",
+            "path:/gougutou.webp",
+            "file:gougutou.webp",
+            "stem:gougutou.webp",
+            "raw:[other]",
+            "name:other",
+            "path:/[other]",
+            "file:[other]",
+            "stem:[other]",
+            "raw:狗骨头",
+            "name:狗骨头",
+            "path:/狗骨头",
+            "file:狗骨头",
+            "stem:狗骨头",
+          ],
+          "src": "https://cdn.example/gougutou.webp",
+          "token": "[other]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[other]",
+  },
+  "token": "[other]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: Huya panel identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "huya-emoticon-id:99887766",
+        "huya-material:99887766",
+        "raw:https://cdn.example/web_base_material_99887766_pic.png",
+        "name:https://cdn.example/web_base_material_99887766_pic.png",
+        "path:/web_base_material_99887766_pic.png",
+        "file:web_base_material_99887766_pic.png",
+        "stem:web_base_material_99887766_pic.png",
+        "fragment:web_base_material_99887766_pic",
+        "raw:虎牙开心",
+        "name:虎牙开心",
+        "path:/虎牙开心",
+        "file:虎牙开心",
+        "stem:虎牙开心",
+        "raw:[虎牙开心]",
+        "path:/[虎牙开心]",
+        "file:[虎牙开心]",
+        "stem:[虎牙开心]",
+        "raw:99887766",
+        "path:/99887766",
+        "file:99887766",
+        "stem:99887766",
+      ],
+      "src": "https://cdn.example/web_base_material_99887766_pic.png",
+      "token": "[虎牙开心]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "huya-emoticon-id:99887766",
+          "huya-material:99887766",
+          "raw:https://cdn.example/web_base_material_99887766_pic.png",
+          "name:https://cdn.example/web_base_material_99887766_pic.png",
+          "path:/web_base_material_99887766_pic.png",
+          "file:web_base_material_99887766_pic.png",
+          "stem:web_base_material_99887766_pic.png",
+          "fragment:web_base_material_99887766_pic",
+          "raw:虎牙开心",
+          "name:虎牙开心",
+          "path:/虎牙开心",
+          "file:虎牙开心",
+          "stem:虎牙开心",
+          "raw:[虎牙开心]",
+          "path:/[虎牙开心]",
+          "file:[虎牙开心]",
+          "stem:[虎牙开心]",
+          "raw:99887766",
+          "path:/99887766",
+          "file:99887766",
+          "stem:99887766",
+        ],
+        "src": "https://cdn.example/web_base_material_99887766_pic.png",
+        "token": "[虎牙开心]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "huya-emoticon-id:99887766",
+            "huya-material:99887766",
+            "raw:https://cdn.example/web_base_material_99887766_pic.png",
+            "name:https://cdn.example/web_base_material_99887766_pic.png",
+            "path:/web_base_material_99887766_pic.png",
+            "file:web_base_material_99887766_pic.png",
+            "stem:web_base_material_99887766_pic.png",
+            "fragment:web_base_material_99887766_pic",
+            "raw:虎牙开心",
+            "name:虎牙开心",
+            "path:/虎牙开心",
+            "file:虎牙开心",
+            "stem:虎牙开心",
+            "raw:[虎牙开心]",
+            "path:/[虎牙开心]",
+            "file:[虎牙开心]",
+            "stem:[虎牙开心]",
+            "raw:99887766",
+            "path:/99887766",
+            "file:99887766",
+            "stem:99887766",
+          ],
+          "src": "https://cdn.example/web_base_material_99887766_pic.png",
+          "token": "[虎牙开心]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后备文字",
+        "type": "text",
+      },
+    ],
+    "plainText": "后备文字",
+    "text": "[虎牙开心]后备文字",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: decorative rejection 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/badge.png",
+        "name:https://cdn.example/badge.png",
+        "path:/badge.png",
+        "file:badge.png",
+        "stem:badge.png",
+        "raw:舰长勋章",
+        "name:舰长勋章",
+        "path:/舰长勋章",
+        "file:舰长勋章",
+        "stem:舰长勋章",
+      ],
+      "src": "https://cdn.example/badge.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/badge.png",
+          "name:https://cdn.example/badge.png",
+          "path:/badge.png",
+          "file:badge.png",
+          "stem:badge.png",
+          "raw:舰长勋章",
+          "name:舰长勋章",
+          "path:/舰长勋章",
+          "file:舰长勋章",
+          "stem:舰长勋章",
+        ],
+        "src": "https://cdn.example/badge.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/badge.png",
+            "name:https://cdn.example/badge.png",
+            "path:/badge.png",
+            "file:badge.png",
+            "stem:badge.png",
+            "raw:舰长勋章",
+            "name:舰长勋章",
+            "path:/舰长勋章",
+            "file:舰长勋章",
+            "stem:舰长勋章",
+          ],
+          "src": "https://cdn.example/badge.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: mixed order 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/a.png",
+        "name:https://cdn.example/a.png",
+        "path:/a.png",
+        "file:a.png",
+        "stem:a.png",
+        "raw:[开心]",
+        "name:开心",
+        "path:/[开心]",
+        "file:[开心]",
+        "stem:[开心]",
+      ],
+      "src": "https://cdn.example/a.png",
+      "token": "[开心]",
+    },
+    {
+      "keys": [
+        "raw:https://cdn.example/b.png",
+        "name:https://cdn.example/b.png",
+        "path:/b.png",
+        "file:b.png",
+        "stem:b.png",
+        "raw:[大笑]",
+        "name:大笑",
+        "path:/[大笑]",
+        "file:[大笑]",
+        "stem:[大笑]",
+      ],
+      "src": "https://cdn.example/b.png",
+      "token": "[大笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/a.png",
+          "name:https://cdn.example/a.png",
+          "path:/a.png",
+          "file:a.png",
+          "stem:a.png",
+          "raw:[开心]",
+          "name:开心",
+          "path:/[开心]",
+          "file:[开心]",
+          "stem:[开心]",
+        ],
+        "src": "https://cdn.example/a.png",
+        "token": "[开心]",
+      },
+      {
+        "keys": [
+          "raw:https://cdn.example/b.png",
+          "name:https://cdn.example/b.png",
+          "path:/b.png",
+          "file:b.png",
+          "stem:b.png",
+          "raw:[大笑]",
+          "name:大笑",
+          "path:/[大笑]",
+          "file:[大笑]",
+          "stem:[大笑]",
+        ],
+        "src": "https://cdn.example/b.png",
+        "token": "[大笑]",
+      },
+    ],
+    "parts": [
+      {
+        "text": "前",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/a.png",
+            "name:https://cdn.example/a.png",
+            "path:/a.png",
+            "file:a.png",
+            "stem:a.png",
+            "raw:[开心]",
+            "name:开心",
+            "path:/[开心]",
+            "file:[开心]",
+            "stem:[开心]",
+          ],
+          "src": "https://cdn.example/a.png",
+          "token": "[开心]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "🙂",
+        "type": "text",
+      },
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/b.png",
+            "name:https://cdn.example/b.png",
+            "path:/b.png",
+            "file:b.png",
+            "stem:b.png",
+            "raw:[大笑]",
+            "name:大笑",
+            "path:/[大笑]",
+            "file:[大笑]",
+            "stem:[大笑]",
+          ],
+          "src": "https://cdn.example/b.png",
+          "token": "[大笑]",
+        },
+        "type": "emoji",
+      },
+      {
+        "text": "后",
+        "type": "text",
+      },
+    ],
+    "plainText": "前🙂后",
+    "text": "前[开心]🙂[大笑]后",
+  },
+  "token": "[开心]",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: native room identity 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/exclusive.png",
+        "name:https://cdn.example/exclusive.png",
+        "path:/exclusive.png",
+        "file:exclusive.png",
+        "stem:exclusive.png",
+        "raw:图片表情",
+        "name:图片表情",
+        "path:/图片表情",
+        "file:图片表情",
+        "stem:图片表情",
+      ],
+      "src": "https://cdn.example/exclusive.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/exclusive.png",
+          "name:https://cdn.example/exclusive.png",
+          "path:/exclusive.png",
+          "file:exclusive.png",
+          "stem:exclusive.png",
+          "raw:图片表情",
+          "name:图片表情",
+          "path:/图片表情",
+          "file:图片表情",
+          "stem:图片表情",
+        ],
+        "src": "https://cdn.example/exclusive.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/exclusive.png",
+            "name:https://cdn.example/exclusive.png",
+            "path:/exclusive.png",
+            "file:exclusive.png",
+            "stem:exclusive.png",
+            "raw:图片表情",
+            "name:图片表情",
+            "path:/图片表情",
+            "file:图片表情",
+            "stem:图片表情",
+          ],
+          "src": "https://cdn.example/exclusive.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: no metadata 1`] = `
+{
+  "assets": [
+    null,
+  ],
+  "payload": {
+    "assets": [],
+    "parts": [
+      {
+        "text": "文字😀",
+        "type": "text",
+      },
+    ],
+    "plainText": "文字😀",
+    "text": "文字😀",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: source and identity fallback 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw:https://cdn.example/fallback.png",
+        "name:https://cdn.example/fallback.png",
+        "path:/fallback.png",
+        "file:fallback.png",
+        "stem:fallback.png",
+        "raw:emoji",
+        "name:emoji",
+        "path:/emoji",
+        "file:emoji",
+        "stem:emoji",
+        "raw:0123456789abcdef",
+        "digest:0123456789abcdef",
+        "path:/0123456789abcdef",
+        "file:0123456789abcdef",
+        "stem:0123456789abcdef",
+        "fragment:0123456789abcdef",
+      ],
+      "src": "https://cdn.example/fallback.png",
+      "token": "",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw:https://cdn.example/fallback.png",
+          "name:https://cdn.example/fallback.png",
+          "path:/fallback.png",
+          "file:fallback.png",
+          "stem:fallback.png",
+          "raw:emoji",
+          "name:emoji",
+          "path:/emoji",
+          "file:emoji",
+          "stem:emoji",
+          "raw:0123456789abcdef",
+          "digest:0123456789abcdef",
+          "path:/0123456789abcdef",
+          "file:0123456789abcdef",
+          "stem:0123456789abcdef",
+          "fragment:0123456789abcdef",
+        ],
+        "src": "https://cdn.example/fallback.png",
+        "token": "",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw:https://cdn.example/fallback.png",
+            "name:https://cdn.example/fallback.png",
+            "path:/fallback.png",
+            "file:fallback.png",
+            "stem:fallback.png",
+            "raw:emoji",
+            "name:emoji",
+            "path:/emoji",
+            "file:emoji",
+            "stem:emoji",
+            "raw:0123456789abcdef",
+            "digest:0123456789abcdef",
+            "path:/0123456789abcdef",
+            "file:0123456789abcdef",
+            "stem:0123456789abcdef",
+            "fragment:0123456789abcdef",
+          ],
+          "src": "https://cdn.example/fallback.png",
+          "token": "",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "",
+  },
+  "token": "",
+}
+`;
+
+exports[`rich metadata extraction equivalence > huya: standard id before label 1`] = `
+{
+  "assets": [
+    {
+      "keys": [
+        "raw://cdn.example/asset.png?signature=secret",
+        "name://cdn.example/asset.png?signature=secret",
+        "path:/asset.png",
+        "file:asset.png",
+        "stem:asset.png",
+        "raw:[微笑]",
+        "name:微笑",
+        "path:/[微笑]",
+        "file:[微笑]",
+        "stem:[微笑]",
+        "raw:opaque-id",
+        "path:/opaque-id",
+        "file:opaque-id",
+        "stem:opaque-id",
+        "raw:official-id",
+        "path:/official-id",
+        "file:official-id",
+        "stem:official-id",
+        "fragment:official-id",
+      ],
+      "src": "//cdn.example/asset.png?signature=secret",
+      "token": "[微笑]",
+    },
+  ],
+  "payload": {
+    "assets": [
+      {
+        "keys": [
+          "raw://cdn.example/asset.png?signature=secret",
+          "name://cdn.example/asset.png?signature=secret",
+          "path:/asset.png",
+          "file:asset.png",
+          "stem:asset.png",
+          "raw:[微笑]",
+          "name:微笑",
+          "path:/[微笑]",
+          "file:[微笑]",
+          "stem:[微笑]",
+          "raw:opaque-id",
+          "path:/opaque-id",
+          "file:opaque-id",
+          "stem:opaque-id",
+          "raw:official-id",
+          "path:/official-id",
+          "file:official-id",
+          "stem:official-id",
+          "fragment:official-id",
+        ],
+        "src": "//cdn.example/asset.png?signature=secret",
+        "token": "[微笑]",
+      },
+    ],
+    "parts": [
+      {
+        "asset": {
+          "keys": [
+            "raw://cdn.example/asset.png?signature=secret",
+            "name://cdn.example/asset.png?signature=secret",
+            "path:/asset.png",
+            "file:asset.png",
+            "stem:asset.png",
+            "raw:[微笑]",
+            "name:微笑",
+            "path:/[微笑]",
+            "file:[微笑]",
+            "stem:[微笑]",
+            "raw:opaque-id",
+            "path:/opaque-id",
+            "file:opaque-id",
+            "stem:opaque-id",
+            "raw:official-id",
+            "path:/official-id",
+            "file:official-id",
+            "stem:official-id",
+            "fragment:official-id",
+          ],
+          "src": "//cdn.example/asset.png?signature=secret",
+          "token": "[微笑]",
+        },
+        "type": "emoji",
+      },
+    ],
+    "plainText": "",
+    "text": "[微笑]",
+  },
+  "token": "[微笑]",
+}
+`;

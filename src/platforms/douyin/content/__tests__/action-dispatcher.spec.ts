@@ -171,6 +171,19 @@ describe('Douyin action dispatcher', () => {
     expect(harness.copy).not.toHaveBeenCalled()
   })
 
+  it('preserves favorite assets when bracket text is sufficient for sending', async () => {
+    const harness = createHarness()
+    const asset = { src: 'https://p3.douyinpic.com/emoji/smile.png', token: '[微笑]', keys: ['name:微笑'] }
+    const payload = { text: '你好[微笑]', plainText: '你好', assets: [asset], parts: [
+      { type: 'text' as const, text: '你好' }, { type: 'emoji' as const, asset },
+    ] }
+    await harness.dispatcher.dispatchDom('favorite', { message: payload.text, richPayload: payload })
+    expect(harness.favorite).toHaveBeenCalledWith(payload.text, payload)
+    await harness.dispatcher.dispatchDom('plusOne', { message: payload.text, richPayload: payload })
+    expect(harness.repeatMessage).toHaveBeenCalledWith(payload.text, payload.text)
+    harness.dispatcher.destroy()
+  })
+
   it('enforces action settings for both DOM and renderer actions', async () => {
     const harness = createHarness({
       actions: () => ({ copy: false, favorite: false, plusOne: false, reply: false }),

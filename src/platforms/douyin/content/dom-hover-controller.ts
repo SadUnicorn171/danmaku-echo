@@ -7,6 +7,7 @@ import {
   createDouyinOverlay,
   type DouyinOverlayCallbacks,
   type DouyinOverlayHandle,
+  type DouyinNativeSettingsNotice,
 } from '../../../components/live/douyin-overlay'
 import {
   eventTouchesRepeatReminder,
@@ -111,6 +112,7 @@ export interface DouyinDomHoverController {
   setCooldown(remainingMs: number): void
   setSending(sending: boolean): void
   showToast(message: string, tone?: string): void
+  setNativeSettingsNotice(notice: DouyinNativeSettingsNotice | null): void
   snapshot(): DouyinDomHoverSnapshot
   start(): void
 }
@@ -507,6 +509,10 @@ export function createDouyinDomHoverController(
     setActions: (actions) => overlay?.setActions(actions),
     setCooldown: (remainingMs) => overlay?.setCooldown(remainingMs),
     setSending: (sending) => overlay?.setSending(sending),
+    setNativeSettingsNotice(notice) {
+      if (notice) ensureOverlay().setNativeSettingsNotice(notice)
+      else overlay?.setNativeSettingsNotice(null)
+    },
     showToast(message, tone = 'info') {
       ensureOverlay().showToast(message, tone)
     },

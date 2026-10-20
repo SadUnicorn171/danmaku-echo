@@ -17,7 +17,7 @@ export interface ConfirmedSend {
 
 export interface SendStatisticsRequest {
   type: typeof SEND_STATISTICS_MESSAGE
-  action: 'append' | 'read' | 'export' | 'clear'
+  action: 'append' | 'read' | 'export' | 'clear' | 'recover'
   event?: ConfirmedSend
   filter?: StatisticsFilter
 }
@@ -43,4 +43,4 @@ export interface StatisticsFilter {
   room?: string
   text?: string
 }
-export interface StatisticsCursor { date: string; before: number }
+export interface StatisticsCursor { date: string; before: number; revision?: string }

@@ -72,23 +72,22 @@ const emit = defineEmits<{
 .topbar {
   align-items: center;
   background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  box-shadow: var(--shadow);
+  border-bottom: 0;
   display: flex;
-  flex: 0 0 56px;
+  flex: 0 0 92px;
   gap: 20px;
-  height: 56px;
+  min-height: 92px;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 20px 48px;
   position: relative;
   z-index: 2;
 }
 
 .topbar h1 {
   flex: 0 0 auto;
-  font-size: 18px;
-  font-weight: 500;
-  line-height: 28px;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
   margin: 0;
   white-space: nowrap;
 }
@@ -109,7 +108,7 @@ const emit = defineEmits<{
 }
 
 .resource-links {
-  border-right: 1px solid var(--border);
+  border-right: 0;
   flex: 0 0 auto;
   gap: 16px;
   padding-right: 20px;
@@ -121,11 +120,11 @@ const emit = defineEmits<{
   border: 0;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   gap: 4px;
   line-height: 20px;
   margin: 0;
-  padding: 0;
+  padding: 6px 0;
   text-decoration: none;
   white-space: nowrap;
 }
@@ -138,7 +137,7 @@ const emit = defineEmits<{
 .resource-links a:focus-visible,
 .resource-links button:focus-visible {
   border-radius: 3px;
-  outline: 2px solid rgb(39 174 96 / 38%);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -164,9 +163,12 @@ const emit = defineEmits<{
 }
 
 .master-control {
+  padding: 3px 14px;
+  border-radius: 26px;
+  background: var(--canvas);
   cursor: pointer;
   flex: 0 0 auto;
-  font-size: 14px;
+  font-size: 13px;
   gap: 8px;
   line-height: 20px;
   white-space: nowrap;
@@ -219,5 +221,10 @@ const emit = defineEmits<{
   .resource-links > button span {
     display: none;
   }
+}
+@media (max-width: 700px) {
+  .topbar { height: auto; min-height: 72px; flex-basis: auto; flex-wrap: wrap; gap: 8px; padding: 10px 16px; }
+  .topbar h1 { font-size: 21px; white-space: normal; }
+  .topbar__actions { flex-wrap: wrap; }
 }
 </style>

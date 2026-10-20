@@ -82,6 +82,7 @@ function createHarness(overrides: Partial<DouyinDomHoverControllerOptions> = {})
     return {
       card: () => card,
       destroy,
+      setNativeSettingsNotice: vi.fn<DouyinOverlayHandle['setNativeSettingsNotice']>(),
       dismissToast: vi.fn<DouyinOverlayHandle['dismissToast']>(),
       ensureHost(host) {
         host.append(portal)

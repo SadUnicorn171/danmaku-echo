@@ -93,13 +93,13 @@ function reset(): void {
 
 <style lang="scss">
 .color-field {
-  border-bottom: 1px solid #dedfdf;
+  border-bottom: 1px solid var(--border);
   min-width: 0;
   padding: 12px 16px 14px;
 }
 
 .color-field:nth-child(odd) {
-  border-right: 1px solid #dedfdf;
+  border-right: 1px solid var(--border);
 }
 
 .color-field__label {
@@ -135,7 +135,7 @@ function reset(): void {
   background: transparent;
   border: 0;
   cursor: pointer;
-  height: 32px;
+  height: 36px;
   margin: 0;
   padding: 0;
   width: 34px;
@@ -147,17 +147,17 @@ function reset(): void {
 
 .color-picker::-webkit-color-swatch {
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 10px;
 }
 
 .color-text {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 10px;
   color: var(--text);
   font-family: Consolas, monospace;
   font-size: 12px;
-  height: 32px;
+  height: 36px;
   min-width: 0;
   padding: 0 9px;
   text-transform: uppercase;
@@ -184,7 +184,7 @@ function reset(): void {
 .platform-color-reset {
   background: #fff;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: 10px;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 12px;
@@ -198,7 +198,7 @@ function reset(): void {
 }
 
 .color-reset {
-  height: 32px;
+  height: 36px;
   min-width: 46px;
   padding: 0 8px;
   white-space: nowrap;

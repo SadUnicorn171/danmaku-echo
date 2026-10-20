@@ -1,18 +1,19 @@
 "use strict";
 
 const { spawn } = require("node:child_process");
-const { mkdirSync, writeFileSync } = require("node:fs");
+const { mkdirSync, readFileSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 
 const browserPath = process.argv[2];
 const profilePath = process.argv[3];
 const extensionPath = process.argv[4];
+const benchmarkFile = process.argv.find(arg => arg.startsWith("--statistics-benchmark="))?.slice("--statistics-benchmark=".length);
 const locale = process.argv[5] || "zh-CN";
 const artifactDirectory = path.resolve(process.argv[6] || "test-results/browser-e2e");
 const scenarioName = String(process.argv[7] || `settings-${locale}`)
   .replace(/[^a-z0-9._-]+/gi, "-")
   .slice(0, 80);
-const isMicrosoftEdge = /msedge/i.test(path.basename(browserPath || ""));
+const isMicrosoftEdge = /(?:msedge|microsoft-edge)/i.test(path.basename(browserPath || ""));
 const expectedText = locale.toLowerCase().startsWith("zh")
   ? { feedback: "反馈", globalStatus: "全局状态", heading: "常规设置", help: "帮助" }
   : { feedback: "Feedback", globalStatus: "Global status", heading: "General", help: "Help" };
@@ -48,6 +49,7 @@ if (process.platform === "win32") {
   browserArguments.push("--in-process-gpu", "--no-sandbox");
 }
 if (isMicrosoftEdge) browserArguments.push(`--disable-extensions-except=${extensionPath}`);
+if (benchmarkFile) browserArguments.push("--enable-precise-memory-info");
 browserArguments.push("about:blank");
 
 const browser = spawn(browserPath, browserArguments, {
@@ -157,19 +159,19 @@ async function inspect() {
   await send("Log.enable", {}, sessionId);
   await send("Page.enable", {}, sessionId);
   await send("Page.navigate", {
-    url: `chrome-extension://${loaded.id}/index.html`,
+    url: `chrome-extension://${loaded.id}/${benchmarkFile ? "manifest.json" : "index.html"}`,
   }, sessionId);
   await delay(1_500);
   await send("Target.activateTarget", { targetId: pageTarget.targetId });
   await send("Page.bringToFront", {}, sessionId);
   await send("Emulation.setFocusEmulationEnabled", { enabled: true }, sessionId);
 
-  async function evaluate(expression) {
+  async function evaluate(expression, targetSessionId = sessionId) {
     const result = await send("Runtime.evaluate", {
       awaitPromise: true,
       expression,
       returnByValue: true,
-    }, sessionId);
+    }, targetSessionId);
     if (result.exceptionDetails || !("value" in (result.result || {}))) {
       throw new Error(
         result.exceptionDetails?.exception?.description
@@ -178,6 +180,13 @@ async function inspect() {
       );
     }
     return result.result.value;
+  }
+
+  if (benchmarkFile) {
+    await evaluate(readFileSync(benchmarkFile, 'utf8') + '\ntrue')
+    const result = await send('Runtime.evaluate', { expression: 'DanmakuStatisticsBenchmark.run()', awaitPromise: true, returnByValue: true }, sessionId, 90000)
+    if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || 'Statistics benchmark failed')
+    return result.result.value
   }
 
   const languageSwitch = await evaluate(`(async () => {
@@ -339,6 +348,48 @@ async function inspect() {
     }
   }
 
+  const favoritesPreviews = [];
+  for (const width of [1280, 390]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height: 900, deviceScaleFactor: 1, mobile: false }, sessionId);
+    for (const mode of [0, 1]) {
+      await evaluate(`(() => {
+        document.querySelectorAll('.favorites-demo__switch button')[${mode}].click();
+        document.querySelector('.favorites-guide-intro').scrollIntoView({ block: 'start', behavior: 'instant' });
+        return true;
+      })()`);
+      await delay(100);
+      const layout = await evaluate(`(() => {
+        const demo = document.querySelector('.favorites-demo');
+        const rect = demo.getBoundingClientRect();
+        return { fits: demo.scrollWidth <= demo.clientWidth && rect.left >= 0 && rect.right <= innerWidth,
+          switched: !!demo.querySelector('${mode ? '.favorites-demo__wheel' : '.favorites-demo__list'}'),
+          labeled: demo.querySelector('.favorites-demo__switch small').textContent === ${JSON.stringify(locale.toLowerCase().startsWith('zh') ? '示意' : 'Example')} };
+      })()`);
+      favoritesPreviews.push({ width, mode, ...layout });
+      const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false }, sessionId);
+      writeFileSync(path.join(artifactDirectory, `${scenarioName}-favorites-${mode ? 'wheel' : 'list'}-${width}.png`), Buffer.from(screenshot.data, 'base64'));
+    }
+  }
+  const accessibilityLayouts = [];
+  for (const [width, zoom] of [[420, 1], [840, 2]]) {
+    await send('Emulation.setDeviceMetricsOverride', { deviceScaleFactor: 1, height: 800, mobile: false, width }, sessionId);
+    await evaluate(`(async () => { await chrome.tabs.setZoom(${zoom}); return true; })()`);
+    await delay(100);
+    const layout = await evaluate(`(() => {
+      const statistics = document.querySelector('.send-statistics');
+      statistics.scrollIntoView({ block: 'start', behavior: 'instant' });
+      return { zoom: ${zoom}, innerWidth, pageFits: document.documentElement.scrollWidth <= innerWidth + 1,
+        statisticsFits: statistics.scrollWidth <= statistics.clientWidth + 1,
+        buttonsFit: [...statistics.querySelectorAll('button')].every(button => button.scrollWidth <= button.clientWidth + 1),
+        scaleCopy: document.querySelector('#general-settings .repeat-reminder-mode-setting p')?.textContent?.trim() };
+    })()`);
+    accessibilityLayouts.push(layout);
+    const screenshot = await send('Page.captureScreenshot', { captureBeyondViewport: false, format: 'png' }, sessionId);
+    writeFileSync(path.join(artifactDirectory, `${scenarioName}-statistics-${width}-zoom-${zoom}.png`), Buffer.from(screenshot.data, 'base64'));
+  }
+  await evaluate('(async () => { await chrome.tabs.setZoom(1); return true; })()');
+  await send('Emulation.setDeviceMetricsOverride', { deviceScaleFactor: 1, height: 700, mobile: false, width: 1280 }, sessionId);
+
   const persistence = await evaluate(`(async () => {
     const input = document.getElementById("action-reply");
     if (!input) return { present: false };
@@ -473,7 +524,7 @@ async function inspect() {
       [key(day(current))]: { schemaVersion: 1, date: day(current), events: [first, second] },
       [key(day(previous))]: { schemaVersion: 1, date: day(previous), events: [third] },
     });
-    const buttons = [...document.querySelectorAll('.send-statistics-actions button')];
+    const buttons = [...document.querySelectorAll('.send-statistics-heading .send-statistics-actions button')];
     if (buttons.length !== 3) return false;
     buttons[0].click();
     for (let attempt = 0; attempt < 30; attempt++) {
@@ -486,18 +537,33 @@ async function inspect() {
     const messages = [...document.querySelectorAll('.send-statistics-text')].map(item => item.textContent);
     const plainTextRendered = messages.includes(first.text) && messages.includes(second.text)
       && !document.querySelector('.send-statistics-messages img');
+    let blob, downloaded = false;
+    const createUrl = URL.createObjectURL, clickAnchor = HTMLAnchorElement.prototype.click;
+    URL.createObjectURL = value => { blob = value; return createUrl(value); };
+    HTMLAnchorElement.prototype.click = function () {
+      if (this.download.startsWith('danmaku-echo-send-statistics-')) downloaded = true;
+      else clickAnchor.call(this);
+    };
+    let uiExport;
+    try {
+      buttons[1].click();
+      for (let attempt = 0; attempt < 60 && !downloaded; attempt++) await new Promise(resolve => setTimeout(resolve, 50));
+      if (blob) uiExport = JSON.parse(await blob.text());
+    } finally { URL.createObjectURL = createUrl; HTMLAnchorElement.prototype.click = clickAnchor; }
     const exported = await chrome.runtime.sendMessage({ type: 'danmaku-echo.send-statistics', action: 'export' });
     const textExported = exported?.data?.events?.some(event => event.id === first.id && event.text === first.text)
       && exported.data.events.some(event => event.id === second.id && event.text === second.text)
       && exported.data.events.some(event => event.id === third.id && !Object.hasOwn(event, 'text'));
-    return { totals, daily, perSecond, plainTextRendered, textExported, exported: exported?.ok,
+    return { totals, daily, perSecond, plainTextRendered, textExported, downloaded, uiExported: uiExport?.events?.length, exported: exported?.ok,
       exportedEvents: exported?.data?.events?.length,
       exportedSeconds: exported?.data?.perSecond?.length,
       passed: totals.join(',') === '3,2,1,0,1,1'
       && daily.join(',') === '2,1'
       && perSecond.join(',') === '×2,×1'
       && exported?.ok && exported.data.events.length === 3
-      && exported.data.perSecond.length === 2 && plainTextRendered && textExported };
+      && exported.data.perSecond.length === 2 && plainTextRendered && textExported && downloaded
+      && JSON.stringify(uiExport?.events) === JSON.stringify(exported.data.events)
+      && JSON.stringify(uiExport?.perSecond) === JSON.stringify(exported.data.perSecond) };
   })()`);
 
   const statisticsLayouts = [];
@@ -520,7 +586,7 @@ async function inspect() {
   }
   const statisticsCleared = await evaluate(`(async () => {
     window.confirm = () => true;
-    document.querySelectorAll('.send-statistics-actions button')[2].click();
+    document.querySelectorAll('.send-statistics-heading .send-statistics-actions button')[2].click();
     for (let attempt = 0; attempt < 30; attempt++) {
       if (document.querySelector('.send-statistics-summary b')?.textContent === '0') break;
       await new Promise(resolve => setTimeout(resolve, 50));
@@ -533,7 +599,12 @@ async function inspect() {
     sendStatistics.passed = sendStatistics.passed && statisticsCleared && statisticsLayouts.every(layout => layout.fits);
   }
 
+  const statisticsMultiPage = await require('./statistics-multi-page.cjs')({ send, evaluate, sessionId, extensionId: loaded.id });
+  const popup = await require('./settings-popup.cjs')({ send, evaluate, pageTargetId: pageTarget.targetId, extensionId: loaded.id, artifactDirectory, scenarioName });
   const failures = [];
+  if (favoritesPreviews.some(item => !item.fits || !item.switched || !item.labeled)) failures.push('favorites-preview-layout-or-language');
+  if (!popup.passed) failures.push('settings-action-popup-layout');
+  if (!statisticsMultiPage.passed) failures.push('statistics-multi-page-reload');
   if (Object.values(douyinNativeSettings).some(value => value !== true)) failures.push('douyin-native-settings-persistence');
   if (Object.values(languageSwitch).some(value => value !== true)) failures.push('settings-language-switch');
   for (const layout of polishLayouts) {
@@ -579,11 +650,17 @@ async function inspect() {
   }
 
   return {
-    assertionFailures: failures,
+    assertionFailures: [...failures, ...accessibilityLayouts.flatMap(layout => [
+      ...(!layout.pageFits || !layout.statisticsFits || !layout.buttonsFit ? [`narrow-zoom-${layout.zoom}-overflow`] : []),
+      ...(layout.scaleCopy !== (locale.toLowerCase().startsWith('zh') ? '根据屏幕大小自动调整界面大小。' : 'Automatically scale the interface to fit your screen.') ? ['scale-copy-mismatch'] : []),
+    ])],
+    accessibilityLayouts,
     languageSwitch,
     douyinNativeSettings,
     runtimeLogs,
     sendStatistics,
+    statisticsMultiPage,
+    popup,
     browserStderr: browserStderr.slice(-8_000),
     actionSettings,
     locale,
@@ -591,6 +668,7 @@ async function inspect() {
     protocolEvents,
     viewports,
     polishLayouts,
+    favoritesPreviews,
   };
 }
 

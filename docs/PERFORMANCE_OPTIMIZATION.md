@@ -2,6 +2,8 @@
 
 更新日期：2026-09-16。范围：四个平台的页面运行时、雷达、发送诊断、本地存储及扩展加载。
 
+2026-10-11 补充：发送统计的分批查询、汇总缓存、按日 Blob 导出、取消和容量管理已实施，实测方法与结果见 [可靠性与统计验收](RELIABILITY_VALIDATION.md)。手动基准命令为 `npm run test:browser -- --browser=all --scenario=statistics-performance --artifact-root=test-results/reliability/statistics-final`；在独立 profile 中测量 1,000／10,000 条与接近配额的数据，不加入 CI。历史默认持续保留，容量管理不自动清理数据。
+
 本文保留优化前的源码审查与实施计划，包含当时尚未提交的发送失败日志增强。**第 2～4 节的“当前”“证据”描述的是优化前基线，不能再作为优化后的实现说明。** 本轮已经实施的范围、实测对照、回归结果和未覆盖部分见 [性能优化结果](PERFORMANCE_RESULTS.md)。历史回归结果见 [入口重构回归记录](ENTRY_REFACTOR_REGRESSION.md)，不能作为当前版本的性能基线。
 
 建议先建立可复现基线，再优化雷达的逐条处理成本，随后按浏览器性能记录决定 DOM、渲染和存储的实施顺序。保持现有平台边界，遵循 [架构文档](ARCHITECTURE.md) 和 [平台适配指南](PLATFORM_ADAPTERS.md)。

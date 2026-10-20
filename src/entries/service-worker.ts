@@ -46,6 +46,7 @@ const recentRouteInjections = new Map<number, { at: number; url: string }>();
 const pendingDouyinRuntimeEnsures = new Map<string, Promise<{ contentInjected: boolean }>>();
 const favoritesRepository = createFavoritesRepository(chrome.storage.local);
 const sendStatistics = createSendStatisticsStore(chrome.storage.local);
+void sendStatistics.recover().catch(() => { /* Durable cleanup remains available for retry. */ });
 let favoriteWriteQueue: Promise<void> = Promise.resolve();
 const frameAudienceCache = new Map<number, { expiresAt: number; metric: LiveAudienceMetric }>();
 const DOUYIN_EMOJI_CATALOG_CACHE_KEY = "danmakuEchoDouyinEmojiCatalogV1";
@@ -335,7 +336,8 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     }
     const operation = request.action === 'read' ? sendStatistics.read()
       : request.action === 'export' ? sendStatistics.export(request.filter)
-      : request.action === 'clear' ? sendStatistics.clear(request.filter) : null;
+      : request.action === 'clear' ? sendStatistics.clear(request.filter)
+      : request.action === 'recover' ? sendStatistics.recover() : null;
     if (!operation) {
       sendResponse({ ok: false, error: 'invalid-send-statistics-action' });
       return false;
@@ -343,7 +345,7 @@ chrome.runtime.onMessage.addListener((message: unknown, sender, sendResponse) =>
     operation.then(
       (data) => sendResponse({ ok: true, data }),
       (error: unknown) => sendResponse({ ok: false, error: error instanceof Error
-        && /^(invalid|missing)-send-statistics-/.test(error.message) ? error.message : 'send-statistics-storage-unavailable' }),
+        && /^(?:(?:invalid|missing)-send-statistics-|send-statistics-(?:cleaning|cleanup|cursor))/.test(error.message) ? error.message : 'send-statistics-storage-unavailable' }),
     );
     return true;
   }

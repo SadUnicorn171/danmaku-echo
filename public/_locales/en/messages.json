@@ -1,12 +1,84 @@
 {
+  "favoritesWheelFailed": {
+    "message": "Send failed"
+  },
+  "favoritesWheelSending": {
+    "message": "Sending…"
+  },
+  "favoritesWheelSent": {
+    "message": "Sent"
+  },
+  "favoritesWheelCancel": {
+    "message": "Return to the center to cancel"
+  },
+  "favoritesWheelReleaseSend": {
+    "message": "Release Q to send · Esc to cancel"
+  },
+  "favoritesWheelReleaseOpen": {
+    "message": "Release Q to open · Esc to cancel"
+  },
+  "favoritesWheelFirstSix": {
+    "message": "The wheel shows this room’s first 6 favorites"
+  },
+  "favoritesPreviewMode": {
+    "message": "Preview favorites modes"
+  },
+  "favoritesPreviewExample": {
+    "message": "Example"
+  },
+  "favoritesPreviewList": {
+    "message": "Favorites list"
+  },
+  "favoritesPreviewWheel": {
+    "message": "Quick wheel"
+  },
+  "favoritesPreviewListHint": {
+    "message": "Tap Alt + Q to open the list"
+  },
+  "favoritesPreviewWheelHint": {
+    "message": "Hold Alt + Q, point at a favorite, then release Q to send."
+  },
+  "favoritesExampleGreat": {
+    "message": "Great play!"
+  },
+  "favoritesExampleCheer": {
+    "message": "Let’s go!"
+  },
+  "favoritesExampleWatch": {
+    "message": "Watch this!"
+  },
+  "favoritesExampleYes": {
+    "message": "Yes!"
+  },
+  "favoritesExampleAmazing": {
+    "message": "Amazing!"
+  },
+  "favoritesExampleHere": {
+    "message": "Here we go!"
+  },
+  "settingsBrandName": {
+    "message": "Danmaku Echo"
+  },
+  "settingsInteractionIntro": {
+    "message": "Choose the shortcuts that suit the way you chat."
+  },
+  "settingsActionPreview": {
+    "message": "Shortcut preview"
+  },
+  "settingsActionPreviewExample": {
+    "message": "A message worth a +1"
+  },
+  "settingsActionPreviewPaused": {
+    "message": "Shortcuts are turned off"
+  },
   "settingsDouyinNativeTitle": {"message": "Douyin viewing filters"},
   "settingsDouyinHideGiftMessages": {"message": "Automatically hide gift messages"},
-  "settingsDouyinHideGiftMessagesDescription": {"message": "Turn off Gift messages in Douyin’s native danmaku settings, keeping regular messages."},
+  "settingsDouyinHideGiftMessagesDescription": {"message": "Hide gift messages and keep regular danmaku."},
   "settingsDouyinHideLuckyBag": {"message": "Automatically hide lucky-bag commands"},
-  "settingsDouyinHideLuckyBagDescription": {"message": "Turn off Lucky-bag commands in Douyin’s native danmaku settings."},
+  "settingsDouyinHideLuckyBagDescription": {"message": "Hide lucky-bag command messages."},
   "settingsDouyinBlockGiftEffects": {"message": "Automatically block gift effects"},
-  "settingsDouyinBlockGiftEffectsDescription": {"message": "Enable Block gift effects in Douyin’s gift settings. Gift audio and gifting shortcuts stay unchanged."},
-  "settingsDouyinNativeNote": {"message": "Requires the extension and Douyin support to be enabled. Turning these options off stops automatic changes; Douyin may remember applied settings, which you can restore in its own panels. If a panel has not loaded, hover over Douyin’s danmaku or gift settings icon."},
+  "settingsDouyinBlockGiftEffectsDescription": {"message": "Block gift effects without changing sound or gifting shortcuts."},
+  "settingsDouyinNativeNote": {"message": "Requires the extension and Douyin support. Turning these options off does not restore prior settings; use Douyin’s panels to restore them."},
   "sendStatisticsDailyUtc": {"message": "Daily totals (UTC)"},
   "sendStatisticsFrom": {"message": "From (UTC)"},
   "sendStatisticsTo": {"message": "To (UTC)"},
@@ -15,15 +87,15 @@
   "sendStatisticsRoom": {"message": "Room ID"},
   "sendStatisticsSearch": {"message": "Search text"},
   "sendStatisticsApply": {"message": "Apply filters"},
-  "sendStatisticsFilterHelp": {"message": "Totals above cover all history. Filters apply to details, export and clearing. Pages show up to 50 records; second-level counts cover this page. Export includes complete counts."},
+  "sendStatisticsFilterHelp": {"message": "Totals cover all history; filters apply to details, export and clearing. Pages show 50 records; export includes full per-second counts."},
   "sendStatisticsPages": {"message": "Send history pages"},
   "sendStatisticsPage": {"message": "Page $VALUE1$", "placeholders": {"value1": {"content": "$1"}}},
   "sendStatisticsPrevious": {"message": "Previous"},
   "sendStatisticsNext": {"message": "Next"},
   "sendStatisticsNoMatches": {"message": "No records match these filters"},
   "sendStatisticsInvalidDates": {"message": "Check the date range: the start must not be after the end"},
-  "sendStatisticsClearFilteredConfirm": {"message": "Delete records matching the applied filters? With no filters, all records will be cleared. This cannot be undone."},
-  "sendStatisticsWriteWarning": {"message": "A statistics write failed at $VALUE1$; some records may be missing. Export runtime logs to investigate. Do not resend messages to restore statistics.", "placeholders": {"value1": {"content": "$1"}}},
+  "sendStatisticsClearFilteredConfirm": {"message": "Delete records matching the applied filters? With no filters, all records will be deleted. This cannot be undone."},
+  "sendStatisticsWriteWarning": {"message": "Some records may not have been saved ($VALUE1$). Export logs to investigate; do not resend.", "placeholders": {"value1": {"content": "$1"}}},
   "sendStatisticsUpdates": {"message": "Statistics have changed. Refresh to view updates."},
   "sendStatisticsPlatformConfirmed": {"message": "Confirmed by platform response"},
   "sendStatisticsPageConfirmed": {"message": "Success inferred from page state"},
@@ -40,27 +112,27 @@
   "settingsFeedbackCopied": {"message": "Feedback email copied: $EMAIL$", "placeholders": {"email": {"content": "$1"}}},
   "settingsFeedbackCopyFailed": {"message": "Copy failed. Please copy manually: $EMAIL$", "placeholders": {"email": {"content": "$1"}}},
   "runtimeLogTitle": { "message": "Runtime logs" },
-  "runtimeLogDescription": { "message": "Warnings and errors are saved locally, with sanitized page structure and request diagnostics on send failures. Kept for up to 7 days, 500 entries and about 1 MB. Export as JSON; no automatic uploads." },
+  "runtimeLogDescription": {"message": "Redacted errors and send diagnostics stay on this device; no automatic upload. Retained for 7 days, up to 500 entries or about 1 MB."},
   "runtimeLogExport": { "message": "Export logs" },
   "runtimeLogClear": { "message": "Clear logs" },
   "runtimeLogExported": { "message": "Logs exported" },
   "runtimeLogCleared": { "message": "Logs cleared" },
   "runtimeLogFailed": { "message": "Log operation failed. Reload the extension and retry." },
   "sendStatisticsTitle": { "message": "Extension send statistics" },
-  "sendStatisticsDescription": { "message": "Counts sends considered successful by the extension, recording the second, platform, room, and plain message text locally. Images and emoji resources are not stored." },
+  "sendStatisticsDescription": {"message": "Record extension-confirmed sends by second; time, platform, room and plain text stay on this device."},
   "sendStatisticsRefresh": { "message": "Refresh" },
   "sendStatisticsExport": { "message": "Export JSON" },
   "sendStatisticsClear": { "message": "Clear" },
   "sendStatisticsTotal": { "message": "Total" },
   "sendStatisticsToday": { "message": "Today (UTC)" },
   "sendStatisticsDaily": { "message": "Daily totals" },
-  "sendStatisticsRecent": { "message": "Recent sends (to the second)" },
+  "sendStatisticsRecent": {"message": "Send details (per-second counts on this page)"},
   "sendStatisticsEmpty": { "message": "No extension sends recorded yet" },
   "sendStatisticsLegacyText": { "message": "Text was not saved for this older record" },
   "sendStatisticsNoText": { "message": "No text content" },
   "sendStatisticsExported": { "message": "Send statistics exported" },
   "sendStatisticsExportedPartial": { "message": "Readable statistics exported. Raw data for some days remains stored locally." },
-  "sendStatisticsCleared": { "message": "Send statistics cleared" },
+  "sendStatisticsCleared": { "message": "Selected send records deleted." },
   "sendStatisticsClearConfirm": { "message": "Clear all extension send statistics? This cannot be undone." },
   "sendStatisticsFailed": { "message": "Send statistics operation failed. Please retry." },
   "sendStatisticsUnavailable": { "message": "Open the installed extension's settings page to view send statistics." },
@@ -82,36 +154,36 @@
   "settingsNavigation": { "message": "Settings navigation" },
   "settingsGeneral": { "message": "General" },
   "settingsRepeatReminder": { "message": "Danmaku radar" },
-  "settingsRepeatReminderDescription": { "message": "Only count the most repeated text danmaku in the last minute and ask whether to +1." },
+  "settingsRepeatReminderDescription": {"message": "Repeated text from the last minute can trigger a prompt or automatic +1."},
   "settingsRepeatReminderEnabled": { "message": "Enable danmaku radar" },
-  "settingsRepeatReminderEnabledDescription": { "message": "Shows the radar icon on live pages; disabling it stops counting and hides the icon and prompts." },
+  "settingsRepeatReminderEnabledDescription": {"message": "Show the radar; turning it off stops counting and prompts."},
   "settingsRepeatReminderAutoPlusOne": { "message": "Automatically +1 radar danmaku" },
-  "settingsRepeatReminderAutoPlusOneDescription": { "message": "Send when the threshold is reached. Off by default; send cooldowns and platform failure feedback still apply." },
+  "settingsRepeatReminderAutoPlusOneDescription": {"message": "Send automatically at the threshold; off by default and subject to cooldowns and platform limits."},
   "settingsRepeatReminderLocalBadge": { "message": "Lightweight mode" },
   "settingsRepeatReminderMode": { "message": "Radar mode" },
   "settingsRepeatReminderAuto": { "message": "Automatic" },
   "settingsRepeatReminderManual": { "message": "Manual" },
-  "settingsRepeatReminderAutoDescription": { "message": "Only the trigger count is automatic. Prompt duration, queue limit and prompt size remain editable for each platform." },
-  "settingsRepeatReminderManualDescription": { "message": "Set a fixed trigger count per platform. General prompt preferences are shared by both threshold modes." },
+  "settingsRepeatReminderAutoDescription": {"message": "Adjust the threshold automatically; other options stay editable."},
+  "settingsRepeatReminderManualDescription": {"message": "Set a fixed threshold for each platform."},
   "settingsRepeatReminderManualPlatform": { "message": "Choose a live platform to configure" },
-  "settingsRepeatReminderManualThresholdDescription": { "message": "Show a +1 prompt at this fixed count without adapting to audience or danmaku volume." },
+  "settingsRepeatReminderManualThresholdDescription": {"message": "Trigger when a message reaches this repeat count."},
   "settingsRepeatReminderPromptDuration": { "message": "Prompt duration" },
-  "settingsRepeatReminderPromptDurationDescription": { "message": "Defaults to 10 seconds, then hides and stays dismissed for the current window." },
+  "settingsRepeatReminderPromptDurationDescription": {"message": "How long prompts stay visible; 10 seconds by default."},
   "settingsRepeatReminderPromptDurationUnit": { "message": "sec" },
   "settingsRepeatReminderPromptScale": { "message": "+1 prompt size" },
-  "settingsRepeatReminderPromptScaleDescription": { "message": "Set the base size of the prompt queue. Automatic screen sizing applies an additional screen-resolution adjustment." },
+  "settingsRepeatReminderPromptScaleDescription": {"message": "Set the base size of the prompt queue."},
   "settingsRepeatReminderQueueLimit": { "message": "Prompt queue limit" },
-  "settingsRepeatReminderQueueLimitDescription": { "message": "Keep the newest threshold prompts first and discard the oldest overflow item." },
+  "settingsRepeatReminderQueueLimitDescription": {"message": "Remove the oldest prompt when this limit is exceeded."},
   "settingsRepeatReminderQueueLimitUnit": { "message": "items" },
   "settingsRepeatReminderThreshold": { "message": "Trigger count" },
-  "settingsRepeatReminderThresholdDescription": { "message": "Automatic mode adapts to room audience and recent danmaku volume; manual mode uses fixed per-platform values." },
+  "settingsRepeatReminderThresholdDescription": {"message": "Automatic mode adjusts the threshold; manual mode keeps it fixed."},
   "settingsRepeatReminderThresholdUnit": { "message": "times" },
   "settingsInterfaceScaleMode": { "message": "Capsule and radar sizing" },
   "settingsInterfaceScaleAuto": { "message": "Fit screen automatically" },
   "settingsInterfaceScaleManual": { "message": "Manual size" },
-  "settingsInterfaceScaleDescription": { "message": "Auto mode adjusts capsules, the radar launcher and prompts to your screen, keeping them easier to click at lower resolutions. You can still adjust the percentage below. Effective sizes stay within 50%–200%." },
+  "settingsInterfaceScaleDescription": {"message": "Automatically scale the interface to fit your screen."},
   "settingsCapsuleScale": { "message": "Danmaku capsule size" },
-  "settingsCapsuleScaleDescription": { "message": "Manual mode uses this percentage directly. Auto mode uses it as the starting size." },
+  "settingsCapsuleScaleDescription": {"message": "Set the base size of quick actions."},
   "settingsPlatforms": { "message": "Platforms" },
   "settingsSideCapsule": { "message": "Chat capsules" },
   "settingsNativeCapsule": { "message": "Native capsules" },
@@ -169,14 +241,14 @@
   "settingsCopyFeedbackAria": { "message": "Copy feedback email $EMAIL$", "placeholders": { "email": { "content": "$1" } } },
   "settingsShowPlusOneDescription": { "message": "Show the +1 action in the danmaku toolbar." },
   "settingsShowReplyDescription": { "message": "Insert @sender and focus the official editor for your reply." },
-  "settingsShowFavoriteDescription": { "message": "Save text, Unicode emoji, and platform image emotes; tap Alt+Q for the list or hold it for the wheel." },
-  "settingsShowCopyDescription": { "message": "Copy the complete danmaku to the clipboard. Off by default; at least one quick action must remain enabled." },
+  "settingsShowFavoriteDescription": {"message": "Save text and image emotes; tap Alt+Q for the list or hold it for the wheel."},
+  "settingsShowCopyDescription": {"message": "Copy message text; off by default. Keep at least one quick action enabled."},
   "settingsAltClickDescription": { "message": "Hold Alt and click a danmaku as a fallback when a live site changes its markup." },
   "settingsEnablePlatformAria": { "message": "Enable $PLATFORM$", "placeholders": { "platform": { "content": "$1" } } },
   "settingsSideCapsulePlatformTitle": { "message": "Show $PLATFORM$ chat capsule", "placeholders": { "platform": { "content": "$1" } } },
   "settingsSideCapsulePlatformDescription": { "message": "Show the currently enabled quick actions when a $PLATFORM$ side-chat message is hovered.", "placeholders": { "platform": { "content": "$1" } } },
   "settingsSideCapsulePlatformAria": { "message": "Show the danmaku capsule in $PLATFORM$ side chat", "placeholders": { "platform": { "content": "$1" } } },
-  "settingsDouyuNativeDescription": { "message": "Restore Douyu's own +1, Reply, and Favorite capsule. It may appear together with the extension actions." },
+  "settingsDouyuNativeDescription": {"message": "Show Douyu’s native actions alongside extension actions."},
   "settingsColorsDescription": { "message": "Colors apply independently per platform. Empty values use the built-in defaults." },
   "settingsCustomColorCount": { "message": "$COUNT$ customized", "placeholders": { "count": { "content": "$1" } } },
   "settingsInvalidColor": { "message": "Use #RRGGBB for color values" },
@@ -185,7 +257,7 @@
   "settingsLocal": { "message": "Local" },
   "settingsFavoritesStatementLine1": { "message": "Save it once." },
   "settingsFavoritesStatementLine2": { "message": "Send it anywhere." },
-  "settingsFavoritesGuideDescription": { "message": "The current room appears first. Other rooms and All open a room picker before the message list." },
+  "settingsFavoritesGuideDescription": {"message": "Start with this room’s favorites; choose a room to view others."},
   "settingsFavoritesSupportedAria": { "message": "Supported favorite content" },
   "settingsFavoritesPlainText": { "message": "Plain text" },
   "settingsFavoritesRichText": { "message": "Platform image emotes and mixed content" },
@@ -197,7 +269,7 @@
   "settingsFavoritesStepListDescription": { "message": ", then press 1–9 to send." },
   "settingsFavoritesStepWheel": { "message": "Hold for the wheel" },
   "settingsFavoritesStepWheelDescription": { "message": "Point to a favorite and release" },
-  "settingsFavoritesPrivacyNote": { "message": "All recognizable danmaku can be saved and remain in browser-local storage. Sending platform image emotes still requires access to that resource on the current account." },
+  "settingsFavoritesPrivacyNote": {"message": "Favorites stay on this device; resending emotes requires the current platform and account to support them."},
   "settingsEnabled": { "message": "Enabled" },
   "settingsDisabled": { "message": "Disabled" },
   "colorActionStart": { "message": "+1 gradient start" },
@@ -348,5 +420,21 @@
   "toastBilibiliDirectEmojiFailed": { "message": "Bilibili could not send this room image emoji. Confirm that you are signed in and the current account can use it." },
   "toastBilibiliRoomEmojiMismatch": { "message": "This room image emoji does not belong to the current live room. Sending was canceled." },
   "toastDouyinEmojiTextUnavailable": { "message": "The complete Douyin emote text could not be restored. +1 canceled." },
-  "toastDiagnosticsConsole": { "message": "Diagnostics written to the console" }
+  "toastDiagnosticsConsole": { "message": "Diagnostics written to the console" },
+  "sendStatisticsCleaning": {"message": "Statistics cleanup is in progress. Records are temporarily unavailable."},
+  "sendStatisticsResumeCleanup": {"message": "Resume cleanup"},
+  "sendStatisticsCleanupFailed": {"message": "Cleanup is incomplete. Please retry."},
+  "sendStatisticsReloaded": {"message": "Records changed and have been reloaded."},
+  "sendStatisticsCapacity": {"message": "Statistics $VALUE1$ · Total local storage $VALUE2$", "placeholders": {"value1": {"content": "$1"}, "value2": {"content": "$2"}}},
+  "sendStatisticsCapacityUnavailable": {"message": "Unavailable"},
+  "sendStatisticsCapacityWarning": {"message": "Local storage is over 80% full. Export and clear older records to free space."},
+  "sendStatisticsCapacityCritical": {"message": "Local storage is over 95% full. Clear records soon to keep saving new ones."},
+  "sendStatisticsClearOlder": {"message": "Clear records older than $VALUE1$ days", "placeholders": {"value1": {"content": "$1"}}},
+  "sendStatisticsClearOlderConfirm": {"message": "Delete all platforms’ send records on or before $VALUE1$ (UTC), regardless of filters? This cannot be undone.", "placeholders": {"value1": {"content": "$1"}}},
+  "sendStatisticsProgress": {"message": "Checked $VALUE1$ / $VALUE2$ records", "placeholders": {"value1": {"content": "$1"}, "value2": {"content": "$2"}}},
+  "sendStatisticsCancel": {"message": "Cancel"},
+  "sendStatisticsCancelled": {"message": "Cancelled. Records are unchanged."},
+  "douyinNativeSettingsUnavailable": {"message": "Some Douyin viewing filters could not be applied. Try again."},
+  "douyinNativeSettingsRetry": {"message": "Retry"},
+  "douyinNativeSettingsDismiss": {"message": "Dismiss"}
 }

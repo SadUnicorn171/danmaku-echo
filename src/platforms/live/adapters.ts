@@ -1,3 +1,4 @@
+import type { RichEmojiMetadataAdapter } from './rich-emoji-metadata'
 import type { LivePlatformAdapter } from '../../core/types'
 import type { LiveCandidateAdapter } from './candidate-adapter'
 import type { LivePlatformConfig } from './config'
@@ -10,6 +11,7 @@ import { createHuyaAdapter } from '../huya/adapter'
 export type LiveRuntimePlatformAdapter = LivePlatformAdapter & {
   candidates: LiveCandidateAdapter
   config: LivePlatformConfig
+  richEmojiMetadata: RichEmojiMetadataAdapter
   douyu?: DouyuRuntimeBoundary
   repeatReminderExclusionReason?: RepeatReminderExclusion
 }

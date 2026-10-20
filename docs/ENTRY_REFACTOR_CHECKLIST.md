@@ -1,5 +1,7 @@
 # 内容脚本入口拆分与类型化清单
 
+2026-10-11 补充：按可靠性计划，仅将 `content-app.ts` 中富表情元数据读取与资源归一化提取到 `platforms/live/rich-emoji-metadata.ts`，平台差异由原 adapter 提供。迁移以 27 个改前快照约束，三平台浏览器场景记录于 [本轮验收](RELIABILITY_VALIDATION.md)。薄入口、双 world 协议和发送路径保持不变；不据此将 F-05 真实页面验收标为完成。
+
 > 适用范围：`src/entries/content.ts`、`src/entries/douyin-content.ts`、`src/entries/douyin-page-hook.ts`，以及与三者直接通信的 `src/entries/douyin-bootstrap.ts`。
 >
 > 本清单只做结构重构和类型安全改造。除非某一步明确说明，否则不得顺带修改交互、动画、发送策略、雷达阈值、表情识别规则或平台兼容行为。

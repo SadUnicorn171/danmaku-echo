@@ -83,13 +83,13 @@ const customCount = computed(() => Object.values(props.colors).filter(Boolean).l
 .color-platform-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .color-platform {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: var(--radius-group);
   box-shadow: var(--shadow);
   overflow: hidden;
 }
@@ -100,8 +100,8 @@ const customCount = computed(() => Object.values(props.colors).filter(Boolean).l
   display: flex;
   justify-content: space-between;
   list-style: none;
-  min-height: 62px;
-  padding: 10px 16px;
+  min-height: 80px;
+  padding: 18px 24px;
   transition: background-color 140ms ease;
 }
 
@@ -110,11 +110,11 @@ const customCount = computed(() => Object.values(props.colors).filter(Boolean).l
 }
 
 .color-platform summary:hover {
-  background: rgb(255 255 255 / 58%);
+  background: #fffaf5;
 }
 
 .color-platform summary:focus-visible {
-  outline: 2px solid rgb(39 174 96 / 38%);
+  outline: 2px solid var(--accent);
   outline-offset: -2px;
 }
 
@@ -146,7 +146,7 @@ const customCount = computed(() => Object.values(props.colors).filter(Boolean).l
 }
 
 .color-platform__identity strong {
-  font-family: Inter, "Segoe UI", sans-serif;
+  font-family: inherit;
   font-size: 15px;
   font-weight: 500;
   line-height: 22px;
@@ -180,7 +180,7 @@ const customCount = computed(() => Object.values(props.colors).filter(Boolean).l
 .color-picker:focus-visible,
 .color-reset:focus-visible,
 .platform-color-reset:focus-visible {
-  outline: 2px solid rgb(39 174 96 / 38%);
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 

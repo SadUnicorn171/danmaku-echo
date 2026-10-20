@@ -176,3 +176,7 @@ MAIN world 不接管平台 console，通过显式诊断事件和扩展来源的�
 回归：本地 bilibili-precise-logs 浏览器场景模拟 load-wbi 请求拒绝，实际经过 content → background → MAIN world → background → storage.local，检查请求轨迹、错误原因和关联编号，并确认最终发送未被调用。
 
 2026-09-13：精确日志浏览器回归发现表情列表解析引用模块外 ROOM_EMOTICON_PATTERN，序列化注入时抛出 ReferenceError。已改为函数内部 IDENTITY_PATTERN，并用独立 VM 作用域和实际浏览器注入覆盖。
+
+### 富表情元数据装配补充（2026-10-11）
+
+`content-app.ts` 通过 `createRichEmojiMetadataReader` 注入 `platformAdapter.richEmojiMetadata`、DOM 边界判断和当前 URL。共享 reader 不直接导入任何具体平台，实现中也不按 platform ID 分支。原 Bilibili 图片身份祖先范围、斗鱼 rel 名称优先级、虎牙面板回退和资源键顺序由 adapter 提供；现有 sender/recovery、parts 顺序和降级策略保持不变。迁移前快照位于 `platforms/live/__tests__/__snapshots__/rich-emoji-metadata.spec.ts.snap`；这项提取不代表整个通用装配文件已完成拆分。

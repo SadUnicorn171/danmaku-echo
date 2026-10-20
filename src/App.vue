@@ -22,7 +22,14 @@
       <main ref="contentCanvas" class="content-canvas">
         <div class="settings-container">
           <section id="general-settings" class="settings-section" aria-labelledby="features-title">
-            <h2 id="features-title">{{ t('settingsInteractionFeatures') }}</h2>
+            <div class="section-heading general-heading">
+              <div>
+                <h2 id="features-title">{{ t('settingsInteractionFeatures') }}</h2>
+                <p>{{ t('settingsInteractionIntro') }}</p>
+              </div>
+              <small class="autosave-note">{{ t('settingsAutoSave') }}</small>
+            </div>
+            <SettingsActionPreview :actions="settings.actions" :enabled="settings.enabled" />
             <div class="settings-card">
               <SettingSwitch
                 id="feature-enabled"
@@ -75,6 +82,8 @@
                 :description="t('settingsAltClickDescription')"
                 @change="save"
               />
+            </div>
+            <div class="settings-card settings-sizing-card">
               <fieldset class="repeat-reminder-mode-setting">
                 <legend>{{ t('settingsInterfaceScaleMode') }}</legend>
                 <div class="repeat-reminder-mode-options">
@@ -366,7 +375,7 @@
             <div class="favorites-page-card">
               <div class="favorites-guide-intro">
                 <div class="favorites-guide-statement">
-                  <span class="favorites-guide-plus" aria-hidden="true">+1</span>
+                  <svg class="favorites-guide-mark" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 4h12v17l-6-4-6 4Z" /></svg>
                   <h3>{{ t('settingsFavoritesStatementLine1') }}<br>{{ t('settingsFavoritesStatementLine2') }}</h3>
                   <p>{{ t('settingsFavoritesGuideDescription') }}</p>
                   <ul :aria-label="t('settingsFavoritesSupportedAria')">
@@ -376,36 +385,7 @@
                   </ul>
                 </div>
 
-                <div class="favorites-guide-preview" :aria-label="t('settingsFavoritesPreviewAria')">
-                  <div class="favorites-preview-head">
-                    <span>{{ t('favoritesCurrentRoom') }}</span>
-                    <small>{{ t('favoritesRoomItemCount', '3') }}</small>
-                  </div>
-                  <div class="favorites-preview-tabs">
-                    <span class="is-active">{{ t('favoritesCurrent') }} <small>3</small></span>
-                    <span>{{ t('favoritesOtherRooms') }} <small>8</small></span>
-                    <span>{{ t('favoritesAll') }} <small>11</small></span>
-                  </div>
-                  <div class="favorites-preview-sort">
-                    <span>{{ t('favoritesOtherRooms') }}</span>
-                    <small>{{ t('favoritesSortSendCountLabel') }}</small>
-                  </div>
-                  <div class="favorites-preview-group">
-                    <span><strong>老张的游戏间</strong><small>3 条收藏 · 已发送 14 次</small></span>
-                    <em>3</em>
-                    <b aria-hidden="true" />
-                  </div>
-                  <div class="favorites-preview-group">
-                    <span><strong>小鱼聊电影</strong><small>2 条收藏 · 已发送 7 次</small></span>
-                    <em>2</em>
-                    <b aria-hidden="true" />
-                  </div>
-                  <div class="favorites-preview-group">
-                    <span><strong>大刘音乐台</strong><small>3 条收藏 · 已发送 9 次</small></span>
-                    <em>3</em>
-                    <b aria-hidden="true" />
-                  </div>
-                </div>
+                <FavoritesGuidePreview />
               </div>
 
               <ol class="favorites-guide-flow" :aria-label="t('settingsFavoritesFlowAria')">
@@ -455,10 +435,12 @@ import type {
   RepeatReminderSettings
 } from "./core/types";
 import ColorPlatform from "./components/ColorPlatform.vue";
+import FavoritesGuidePreview from './components/FavoritesGuidePreview.vue'
 import FavoritesDataTools from "./components/FavoritesDataTools.vue";
 import RuntimeLogTools from "./components/RuntimeLogTools.vue";
 import SendStatisticsTools from "./components/SendStatisticsTools.vue";
 import SettingSwitch from "./components/SettingSwitch.vue";
+import SettingsActionPreview from "./components/SettingsActionPreview.vue";
 import SettingsSidebar from "./components/SettingsSidebar.vue";
 import SettingsTopbar from "./components/SettingsTopbar.vue";
 import { useSectionNavigation } from "./composables/useSectionNavigation";
@@ -648,17 +630,22 @@ async function copyCurrentPageDiagnostics(): Promise<void> {
 }
 :root {
   color-scheme: light;
-  font-family: "Microsoft YaHei UI", "PingFang SC", "Segoe UI", sans-serif;
-  --canvas: #f3f3f3;
-  --surface: #f9f9f9;
-  --surface-muted: #eeeeee;
-  --border: #c4c7c7;
-  --text: #1a1c1c;
-  --text-secondary: #444748;
-  --text-muted: #747878;
+  font-family: "Segoe UI", "Microsoft YaHei UI", "PingFang SC", sans-serif;
+  --accent: #fd8101;
+  --accent-text: #934800;
+  --accent-soft: #fff0e0;
+  --canvas: #f7f5f2;
+  --surface: #ffffff;
+  --surface-muted: #f7f5f2;
+  --border: #eee7e1;
+  --text: #241a14;
+  --text-secondary: #75695f;
+  --text-muted: #75695f;
   --success: #27ae60;
   --danger: #ff4747;
-  --shadow: 0 1px 1px rgb(0 0 0 / 5%);
+  --shadow: none;
+  --radius-group: 18px;
+  --ease-spring: cubic-bezier(.2, .8, .25, 1.15);
 }
 
 * {
@@ -668,15 +655,31 @@ async function copyCurrentPageDiagnostics(): Promise<void> {
 html {
   background: var(--canvas);
   min-height: 600px;
-  min-width: 800px;
+  min-width: 320px;
   scroll-behavior: smooth;
+}
+
+html[data-extension-popup] {
+  height: 600px;
+  overflow: hidden;
+  scrollbar-width: none;
+  width: 800px;
+}
+
+// The browser can clamp the popup to the available window space. Keep the
+// content inside that viewport while the root supplies the requested size.
+html[data-extension-popup] .app-shell {
+  height: auto;
+  inset: 0;
+  position: fixed;
+  width: auto;
 }
 
 body {
   color: var(--text);
   margin: 0;
   min-height: 600px;
-  min-width: 800px;
+  min-width: 320px;
 }
 
 button,
@@ -701,8 +704,8 @@ a {
 .app-shell {
   background: var(--canvas);
   display: flex;
-  height: 100vh;
-  min-height: 600px;
+  height: 100dvh;
+  min-height: 0;
   overflow: hidden;
   width: 100%;
 }
@@ -717,6 +720,7 @@ a {
   display: flex;
   flex: 1;
   flex-direction: column;
+  min-height: 0;
   min-width: 0;
   overflow: hidden;
   position: relative;
@@ -727,9 +731,9 @@ a {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 32px max(32px, calc((100% - 768px) / 2));
+  padding: 36px 48px 56px;
   position: relative;
-  scrollbar-color: #c8caca transparent;
+  scrollbar-color: #cfc5bc transparent;
   scrollbar-width: thin;
   z-index: 1;
 }
@@ -737,41 +741,88 @@ a {
 .settings-container {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 40px;
   margin: 0 auto;
-  max-width: 768px;
+  max-width: 1064px;
   width: 100%;
 }
 
 .settings-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 24px;
   scroll-margin-top: 24px;
 }
 
 .settings-section h2 {
   color: var(--text);
-  font-size: 14px;
+  font-size: 19px;
   font-weight: 600;
-  letter-spacing: .02em;
-  line-height: 20px;
+  letter-spacing: -.02em;
+  line-height: 28px;
   margin: 0;
 }
 
 .settings-card {
   background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: var(--radius-group);
   box-shadow: var(--shadow);
   overflow: hidden;
+}
+
+.autosave-note {
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.settings-sizing-card .repeat-reminder-mode-setting {
+  border-top: 0;
+  padding-top: 24px;
+}
+
+.settings-card :is(.runtime-log-tools, .send-statistics) {
+  padding: 24px;
+}
+
+.settings-card .runtime-log-tools {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.app-shell :is(.runtime-log-actions, .send-statistics, .favorites-data-actions) button,
+.app-shell .platform-color-reset {
+  min-height: 38px;
+  border-radius: 20px;
+  border-color: transparent;
+  background: var(--canvas);
+  transition: background-color 140ms ease, transform 140ms ease;
+}
+
+.app-shell :is(.runtime-log-actions, .send-statistics, .favorites-data-actions) button:hover:not(:disabled),
+.app-shell .platform-color-reset:hover {
+  background: var(--accent-soft);
+}
+
+.app-shell :where(button):active:not(:disabled) {
+  transform: scale(.97);
+}
+
+.app-shell ::selection {
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.app-shell input {
+  caret-color: var(--accent-text);
 }
 
 .repeat-reminder-mode-setting {
   border: 0;
   border-top: 1px solid var(--border);
   margin: 0;
-  padding: 14px 16px 16px;
+  padding: 20px 24px;
 }
 
 .repeat-reminder-mode-setting legend {
@@ -784,8 +835,8 @@ a {
 
 .repeat-reminder-mode-options {
   background: var(--surface-muted);
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  border: 0;
+  border-radius: 24px;
   display: grid;
   gap: 3px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -796,7 +847,7 @@ a {
 .repeat-reminder-mode-options label {
   align-items: center;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 20px;
   color: var(--text-secondary);
   cursor: pointer;
   display: flex;
@@ -810,9 +861,9 @@ a {
 
 .repeat-reminder-mode-options label.is-active {
   background: var(--surface);
-  border-color: rgb(253 129 1 / 44%);
+  border-color: transparent;
   color: #9a4d00;
-  box-shadow: 0 1px 2px rgb(0 0 0 / 7%);
+  box-shadow: none;
 }
 
 .repeat-reminder-mode-options input {
@@ -848,7 +899,7 @@ a {
 .repeat-reminder-platform-tabs button {
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 22px;
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 11px;
@@ -888,7 +939,7 @@ a {
   gap: 24px;
   justify-content: space-between;
   min-height: 72px;
-  padding: 12px 16px;
+  padding: 16px 24px;
 }
 
 .repeat-reminder-number-setting > span:first-child {
@@ -913,7 +964,7 @@ a {
   align-items: center;
   background: var(--surface-muted);
   border: 1px solid var(--border);
-  border-radius: 7px;
+  border-radius: 12px;
   display: flex;
   flex: 0 0 auto;
   overflow: hidden;
@@ -977,226 +1028,20 @@ a {
 
 .favorites-page-card {
   background: #fff;
-  border: 1px solid var(--border);
-  border-radius: 4px;
+  border: 0;
+  border-radius: var(--radius-group);
   box-shadow: var(--shadow);
   overflow: hidden;
   position: relative;
 }
 
-.favorites-page-card::before {
-  background: #fd8101;
-  content: "";
-  height: 3px;
-  left: 0;
-  position: absolute;
-  right: 0;
-  top: 0;
-  z-index: 1;
-}
-
-.favorites-guide-intro {
-  display: grid;
-  grid-template-columns: minmax(220px, .8fr) minmax(320px, 1.2fr);
-  min-height: 300px;
-}
-
-.favorites-guide-statement {
-  align-items: flex-start;
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  padding: 36px 32px 32px;
-}
-
-.favorites-guide-plus {
-  align-items: center;
-  background: #fd8101;
-  border-radius: 16px;
-  color: #fff;
-  display: flex;
-  font: 700 17px/1 Bahnschrift, "Segoe UI", sans-serif;
-  height: 36px;
-  justify-content: center;
-  margin-bottom: 24px;
-  width: 46px;
-}
-
-.favorites-guide-statement h3 {
-  color: #171717;
-  font-size: 27px;
-  font-weight: 600;
-  letter-spacing: -.035em;
-  line-height: 37px;
-  margin: 0;
-}
-
-.favorites-guide-statement > p {
-  color: var(--text-secondary);
-  font-size: 12px;
-  line-height: 20px;
-  margin: 15px 0 0;
-  max-width: 290px;
-}
-
-.favorites-guide-statement ul {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 15px;
-  list-style: none;
-  margin: auto 0 0;
-  padding: 20px 0 0;
-}
-
-.favorites-guide-statement li {
-  color: var(--text-muted);
-  font-size: 9px;
-  line-height: 16px;
-  padding-left: 10px;
-  position: relative;
-}
-
-.favorites-guide-statement li::before {
-  background: #fd8101;
-  border-radius: 999px;
-  content: "";
-  height: 4px;
-  left: 0;
-  position: absolute;
-  top: 6px;
-  width: 4px;
-}
-
-.favorites-guide-preview {
-  align-self: stretch;
-  background: #fffaf5;
-  border-left: 1px solid rgb(253 129 1 / 22%);
-  min-width: 0;
-  padding: 35px 30px 26px;
-}
-
-.favorites-preview-head,
-.favorites-preview-tabs,
-.favorites-preview-sort,
-.favorites-preview-group {
-  align-items: center;
-  display: flex;
-}
-
-.favorites-preview-head {
-  justify-content: space-between;
-  margin-bottom: 18px;
-}
-
-.favorites-preview-head > span {
-  color: #202020;
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.favorites-preview-head > small {
-  color: #777;
-  font-size: 8px;
-}
-
-.favorites-preview-tabs {
-  border-bottom: 1px solid #d4d5d3;
-  gap: 20px;
-  margin-bottom: 0;
-}
-
-.favorites-preview-tabs > span {
-  color: #888;
-  font-size: 8px;
-  line-height: 30px;
-  padding: 0;
-  position: relative;
-  white-space: nowrap;
-}
-
-.favorites-preview-tabs > span.is-active {
-  color: #202020;
-}
-
-.favorites-preview-tabs > span.is-active::after {
-  background: #fd8101;
-  bottom: -1px;
-  content: "";
-  height: 2px;
-  left: 0;
-  position: absolute;
-  right: 0;
-}
-
-.favorites-preview-tabs small {
-  color: inherit;
-  font-size: 7px;
-  margin-left: 3px;
-}
-
-.favorites-preview-sort {
-  border-bottom: 1px solid #dedfdd;
-  justify-content: space-between;
-  min-height: 30px;
-}
-
-.favorites-preview-sort > span {
-  color: #555;
-  font-size: 8px;
-  font-weight: 600;
-}
-
-.favorites-preview-sort > small {
-  color: #777;
-  font-size: 7px;
-}
-
-.favorites-preview-group {
-  border-bottom: 1px solid #dedfdd;
-  gap: 8px;
-  min-height: 47px;
-}
-
-.favorites-preview-group > b {
-  border-color: transparent transparent transparent #fd8101;
-  border-style: solid;
-  border-width: 4px 0 4px 6px;
-  height: 0;
-  transform-origin: 3px 4px;
-  width: 0;
-}
-
-.favorites-preview-group > span {
-  display: flex;
-  flex: 1;
-  flex-direction: column;
-  min-width: 0;
-}
-
-.favorites-preview-group strong {
-  color: #222;
-  font-size: 9px;
-  font-weight: 600;
-}
-
-.favorites-preview-group small {
-  color: #888;
-  font-size: 7px;
-  margin-top: 1px;
-}
-
-.favorites-preview-group > em {
-  align-items: center;
-  border: 1px solid #d4d5d3;
-  border-radius: 10px;
-  color: #777;
-  display: flex;
-  font-size: 7px;
-  font-style: normal;
-  height: 19px;
-  justify-content: center;
-  width: 25px;
-}
+.favorites-guide-intro { display: grid; grid-template-columns: minmax(220px, .8fr) minmax(300px, 1.2fr); gap: 32px; padding: 28px; }
+.favorites-guide-statement { display: flex; flex-direction: column; align-items: flex-start; gap: 18px; min-width: 0; }
+.favorites-guide-mark { width: 28px; height: 28px; fill: none; stroke: var(--accent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.favorites-guide-statement h3 { margin: 0; font-size: 28px; line-height: 1.5; font-weight: 600; letter-spacing: -.02em; }
+.favorites-guide-statement > p { margin: 0; max-width: 30ch; color: var(--text-secondary); font-size: 14px; line-height: 1.7; }
+.favorites-guide-statement ul { display: flex; flex-wrap: wrap; gap: 8px 16px; list-style: none; padding: 0; margin: 0; }
+.favorites-guide-statement li { color: var(--text-secondary); font-size: 12px; }
 
 .favorites-guide-flow {
   display: grid;
@@ -1241,22 +1086,22 @@ a {
 
 .favorites-guide-flow li strong {
   color: #222;
-  font-size: 11px;
+  font-size: 14px;
   font-weight: 600;
-  line-height: 17px;
+  line-height: 1.5;
 }
 
 .favorites-guide-flow li small {
-  color: var(--text-muted);
-  font-size: 11px;
-  line-height: 17px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.6;
   margin-top: 2px;
 }
 
 .favorites-guide-flow kbd {
   background: #f0f2f2;
   border: 1px solid #d2d7d7;
-  border-radius: 4px;
+  border-radius: 20px;
   box-shadow: inset 0 -1px #c8cdcd;
   color: #303535;
   font-family: inherit;
@@ -1282,7 +1127,7 @@ a {
 
 .favorites-guide-note > span {
   color: var(--text-secondary);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 18px;
 }
 
@@ -1351,11 +1196,6 @@ a {
     margin-top: 0;
   }
 
-  .favorites-guide-preview {
-    border-left: 0;
-    border-top: 1px solid #dedfdd;
-  }
-
   .favorites-guide-flow {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -1380,6 +1220,19 @@ a {
   }
 }
 
+@media (max-width: 700px) {
+  html, body { min-width: 320px; min-height: 0; }
+  .app-shell { flex-direction: column; min-height: 0; height: 100dvh; }
+  .main-area { min-height: 0; }
+  .content-canvas { padding: 16px; }
+  .settings-section { gap: 20px; }
+  .favorites-guide-intro { padding: 20px 18px; gap: 24px; }
+  .general-heading { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .settings-card :is(.runtime-log-tools, .send-statistics) { padding: 20px 18px; }
+  .repeat-reminder-number-setting { gap: 12px; }
+  .repeat-reminder-platform-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 @media (max-height: 700px) {
   .content-canvas {
     padding-bottom: 24px;
@@ -1397,6 +1250,8 @@ a {
   *::after {
     scroll-behavior: auto !important;
     transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
   }
 }
 </style>

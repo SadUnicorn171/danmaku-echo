@@ -34,7 +34,7 @@ const scenarioName = String(
   .slice(0, 80)
 const targetParameters = new URL(targetUrl).searchParams
 const realPerformanceMode = process.argv.find((argument) => argument.startsWith('--realperf='))?.slice('--realperf='.length)
-const isMicrosoftEdge = /msedge/i.test(path.basename(edgePath || ''))
+const isMicrosoftEdge = /(?:msedge|microsoft-edge)/i.test(path.basename(edgePath || ''))
 const expectedDouyinReplyMention =
   targetParameters.get('nativefill') === '1'
     ? '@native用户ID '
@@ -231,6 +231,13 @@ async function inspect() {
 
   let sendBrowser
   if (useExtensionDebuggingPipe) {
+    const failPipe = (error) => {
+      const detail = new Error(`Browser debugging pipe failed: ${error.message}; ${browserStderr.slice(-2000)}`)
+      for (const request of pending.values()) request.reject(detail)
+      pending.clear()
+    }
+    browser.stdio[3].on('error', failPipe)
+    browser.stdio[4].on('error', failPipe)
     let pipeBuffer = Buffer.alloc(0)
     browser.stdio[4].on('data', (chunk) => {
       pipeBuffer = Buffer.concat([pipeBuffer, chunk])
@@ -351,6 +358,15 @@ async function inspect() {
   }
 
   const send = (method, params = {}) => sendBrowser(method, params, pageSessionId)
+
+  if (normalizedInjectPlatform === 'douyin' && targetParameters.get('fullscreen') === '1') {
+    // A MAIN-world property stub is invisible to the actual isolated content script.
+    const fullscreen = await send('Runtime.evaluate', {
+      expression: `document.querySelector('#douyin-player').requestFullscreen()`,
+      userGesture: true, awaitPromise: true, returnByValue: true,
+    })
+    if (fullscreen.exceptionDetails) throw new Error('Could not enter fixture fullscreen')
+  }
 
   let extensionProbe = null
   if (extensionOnlyPlatform) {
@@ -594,6 +610,14 @@ async function inspect() {
     const favoritesDesign = await require('./inspect-favorites-design.cjs')({ send, evaluateValue, artifactDirectory })
     socket?.close()
     return { favoritesDesign, assertionFailures: favoritesDesign.assertionFailures, extensionProbe, consoleEvents }
+  }
+
+  if (targetParameters.get('radaronboarding') === '1') {
+    const isolatedContextId = [...executionContexts].reverse().find(context =>
+      context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))?.id
+    const radarOnboarding = await require('./inspect-radar-onboarding.cjs')({ send, evaluateValue, artifactDirectory, isolatedContextId })
+    socket?.close()
+    return { radarOnboarding, assertionFailures: radarOnboarding.assertionFailures, extensionProbe, consoleEvents }
   }
 
   if (targetParameters.get('nativesettings') === '1') {
@@ -1237,7 +1261,7 @@ async function inspect() {
             trackId: node.dataset.trackId || (action && action.dataset.trackId) || "",
             instanceId: node.dataset.instanceId || (action && action.dataset.instanceId) || "",
             own: node.dataset.own || "",
-            ownFrame: Boolean(contentStyle && contentStyle.boxShadow !== "none"),
+            ownFrame: Boolean(node.dataset.own === "true" && nodeStyle.boxShadow !== "none"),
             backgroundColor: nodeStyle.backgroundColor,
             frameShadow: nodeStyle.boxShadow,
             hovered: track && track.dataset.hovered || "",
@@ -1246,6 +1270,7 @@ async function inspect() {
             trackPointerEvents: track ? getComputedStyle(track).pointerEvents : "missing",
             rect: rectValue(node),
             contentRect: rectValue(content),
+            imageSources: content ? Array.from(content.querySelectorAll('img')).map(image => image.src) : [],
             actionRect: rectValue(action),
             plusOneRect: rectValue(plusOne),
             replyRect: rectValue(reply),
@@ -1260,8 +1285,10 @@ async function inspect() {
             actionDividerCount: action ? action.querySelectorAll(
               ".bcp-douyin-dom-action-divider"
             ).length : 0,
+            actionSide: action && action.getBoundingClientRect().right <= node.getBoundingClientRect().left ? 'left' : 'right',
             actionGap: action
-              ? action.getBoundingClientRect().left - node.getBoundingClientRect().right
+              ? Math.max(action.getBoundingClientRect().left - node.getBoundingClientRect().right,
+                node.getBoundingClientRect().left - action.getBoundingClientRect().right)
               : null,
             trailingHoverSpace: action && track
               ? track.getBoundingClientRect().right - action.getBoundingClientRect().right
@@ -1426,12 +1453,13 @@ async function inspect() {
       let replyResult = null
       let favoriteResult = null
       let richFavoriteResult = null
+      let sendHeld = hoverEnd
       if (action) {
         const barrage = hoverEnd.target.rect
-        if (barrage && action.left > barrage.right) {
+        if (barrage && (action.left > barrage.right || action.right < barrage.left)) {
           await dispatchMouse(
             'mouseMoved',
-            barrage.right + (action.left - barrage.right) / 2,
+            action.left > barrage.right ? (barrage.right + action.left) / 2 : (action.right + barrage.left) / 2,
             action.top + action.height / 2,
           )
           await delay(280)
@@ -1447,7 +1475,20 @@ async function inspect() {
           await delay(280)
           trailingHover = await readTakeoverState()
         }
-        const favoriteTarget = hoverEnd.target.favoriteRect
+        const hoverTargetAgain = async () => {
+          await dispatchMouse('mouseMoved', 1, 449)
+          for (let attempt = 0; attempt < 30; attempt++) {
+            const before = await readTakeoverState()
+            const rect = before.target?.rect
+            if (!rect) throw new Error('douyin-target-disappeared')
+            await dispatchMouse('mouseMoved', rect.left + rect.width / 2, rect.top + rect.height / 2)
+            await delay(20)
+            const after = await readTakeoverState()
+            if (after.target?.hovered === 'true' && after.target.actionVisibility === 'visible') return after.target
+          }
+          throw new Error('douyin-target-not-interactive')
+        }
+        const favoriteTarget = (await hoverTargetAgain()).favoriteRect
         if (favoriteTarget) {
           const favoriteX = Math.max(
             1,
@@ -1477,7 +1518,7 @@ async function inspect() {
             };
           })()`)
         }
-        const replyTarget = hoverEnd.target.replyRect
+        const replyTarget = (await hoverTargetAgain()).replyRect
         if (replyTarget) {
           const replyX = Math.max(
             1,
@@ -1511,7 +1552,9 @@ async function inspect() {
             };
           })()`)
         }
-        const clickTarget = hoverEnd.target.plusOneRect || action
+        await hoverTargetAgain()
+        sendHeld = await readTakeoverState()
+        const clickTarget = sendHeld.target.plusOneRect
         const visibleLeft = Math.max(0, clickTarget.left)
         const visibleRight = Math.min(hoverEnd.viewport.width - 1, clickTarget.right)
         const visibleTop = Math.max(0, clickTarget.top)
@@ -1544,9 +1587,7 @@ async function inspect() {
         (item) => item.message === clickedMessage && item.own === 'true',
       )
 
-      // The selected fixture barrage contains an official image asset and must
-      // be rejected by the text-only first version.  Verify a second, plain
-      // barrage separately so rejection is not mistaken for a broken store.
+      // Verify both rich and plain favorites through the actual local repository.
       const favoriteCandidate = afterClick.other
       if (favoriteCandidate && favoriteCandidate.rect) {
         await dispatchMouse(
@@ -1610,7 +1651,7 @@ async function inspect() {
                   ".bcp-favorites-tabs [data-view='current'][aria-selected='true']"
                 )),
               listed: texts.some((text) => text.includes("其他弹幕继续移动")),
-              richAssetAbsent: !texts.some((text) => text.includes(${JSON.stringify(clickedMessage)}))
+              richAssetListed: texts.some((text) => text.replace(/\\s+/g, "").includes(${JSON.stringify(clickedMessage)}.replace(/\\s+/g, "")))
             };
           })()`)
           await send('Input.dispatchKeyEvent', {
@@ -1631,22 +1672,37 @@ async function inspect() {
         }
       }
 
-      const disableRenderer = () =>
-        evaluateValue(String.raw`(() => {
-        window.dispatchEvent(new MessageEvent("message", {
-          source: window,
-          data: {
-            source: "danmaku-echo-douyin-content",
-            type: "renderer-settings",
-            enabled: false,
-            reason: "fixture-disable-regression"
-          }
-        }));
-        return true;
-      })()`)
-      await disableRenderer()
-      await delay(60)
-      const afterDisable = await readTakeoverState()
+      if (favoriteResult && extensionOnlyPlatform) {
+        const isolated = [...executionContexts].reverse().find(context => context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))
+        const evidence = isolated && await send('Runtime.evaluate', {
+          contextId: isolated.id, awaitPromise: true, returnByValue: true,
+          expression: `(async () => {
+            const db = (await chrome.storage.local.get('danmakuEchoFavoritesV1')).danmakuEchoFavoritesV1;
+            const expected = ${JSON.stringify(initial.target.imageSources)};
+            return Boolean(expected.length && db?.items?.some(item =>
+              item.payload?.parts?.some(part => part.type === 'text' && part.text.includes('抖音画面弹幕'))
+              && expected.every(src => item.payload.assets?.some(asset => asset.src === src)
+                && item.payload.parts.some(part => part.type === 'emoji' && part.asset.src === src))));
+          })()`,
+        })
+        favoriteResult.richAssetsStored = evidence?.result?.value === true
+      }
+
+      const disableRenderer = async () => {
+        if (extensionOnlyPlatform) {
+          const isolated = [...executionContexts].reverse().find(context => context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))
+          if (!isolated) throw new Error('missing-douyin-isolated-context')
+          await send('Runtime.evaluate', { contextId: isolated.id, expression: 'chrome.storage.sync.set({ enabled: false })', awaitPromise: true, returnByValue: true })
+        } else {
+          await evaluateValue(`window.dispatchEvent(new MessageEvent('message', { source: window, data: { source: 'danmaku-echo-douyin-content', type: 'renderer-settings', enabled: false, repeatReminderEnabled: false, actions: { plusOne: true, reply: true, favorite: true, copy: false }, capsuleScale: 100 } }))`)
+        }
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const sample = await readTakeoverState()
+          if (sample.canvasVisibility !== 'hidden' && (!sample.layerPresent || sample.layerHidden)) return
+          await delay(25)
+        }
+      }
+
 
       if (initial.richMode) {
         const manualButtonRect = await evaluateValue(`(() => {
@@ -1683,7 +1739,7 @@ async function inspect() {
           }
         }
         douyinRichRegression = {
-          emojiIncludedInPlusOne: afterClick.sentRich === '抖音😀画面弹幕',
+          emojiIncludedInPlusOne: afterClick.sentRich.includes('[微笑]'),
           emojiOwnChatFramed: afterClick.ownChatRows.some(
             (row) => row.kind === 'emoji' && row.framed,
           ),
@@ -1730,12 +1786,12 @@ async function inspect() {
       const resumeMaxStep = targetResumeSteps.length ? Math.max(...targetResumeSteps) : null
       const otherResumeMaxStep = otherResumeSteps.length ? Math.max(...otherResumeSteps) : null
       const releaseTargetTravel =
-        hoverEnd.target && releaseStart && releaseStart.target
-          ? hoverEnd.target.rect.left - releaseStart.target.rect.left
+        sendHeld.target && releaseStart && releaseStart.target
+          ? sendHeld.target.rect.left - releaseStart.target.rect.left
           : null
       const releaseOtherTravel =
-        hoverEnd.other && releaseStart && releaseStart.other
-          ? hoverEnd.other.rect.left - releaseStart.other.rect.left
+        sendHeld.other && releaseStart && releaseStart.other
+          ? sendHeld.other.rect.left - releaseStart.other.rect.left
           : null
       const noReleaseSpring =
         releaseTargetTravel != null &&
@@ -1766,6 +1822,8 @@ async function inspect() {
         )} }).then(() => true)`, douyinStorageContext,
       )
       await delay(100)
+      await disableRenderer()
+      const afterDisable = await readTakeoverState()
       douyinDomRegression = {
         ready: initial.canvasVisibility === 'hidden' && !initial.layerHidden,
         layerPresent: initial.layerPresent,
@@ -1816,12 +1874,14 @@ async function inspect() {
           hoverEnd.target.actionDividerCount === 2,
         ),
         copyActionAvailable,
-        actionBehindMessage: Boolean(
+        actionBesideMessage: Boolean(
           hoverEnd.target &&
           hoverEnd.target.contentRect &&
           hoverEnd.target.actionRect &&
           hoverEnd.target.actionAfterContent &&
-          hoverEnd.target.actionRect.left >= hoverEnd.target.contentRect.right - 1,
+          (hoverEnd.target.actionSide === 'left'
+            ? hoverEnd.target.actionRect.right <= hoverEnd.target.contentRect.left + 1
+            : hoverEnd.target.actionRect.left >= hoverEnd.target.contentRect.right - 1),
         ),
         trackOwnsHover: Boolean(hoverEnd.target && hoverEnd.target.trackPointerEvents !== 'none'),
         actionGapReserved: Boolean(hoverEnd.target && hoverEnd.target.actionGap >= 7.5),
@@ -1868,12 +1928,12 @@ async function inspect() {
         ),
         replyResult,
         favoriteButtonAvailable: Boolean(hoverEnd.target && hoverEnd.target.favoriteRect),
-        favoriteRichAssetsRejected: Boolean(
+        favoriteRichAssetsPreserved: Boolean(
           richFavoriteResult &&
           richFavoriteResult.buttonPresent &&
-          richFavoriteResult.warningVisible &&
+          !richFavoriteResult.warningVisible &&
           favoriteResult &&
-          favoriteResult.richAssetAbsent,
+          favoriteResult.richAssetListed && (!extensionOnlyPlatform || favoriteResult.richAssetsStored),
         ),
         favoriteSavedAndListed: Boolean(favoriteResult && favoriteResult.listed),
         favoriteUiSingleton: Boolean(favoriteResult && favoriteResult.singleton),
@@ -3519,7 +3579,8 @@ async function inspect() {
         ? document.body.dataset.chatSent === expectedEmojiName
         : document.body.dataset.douyuNativePe === "3"
           && document.body.dataset.douyuSent !== expectedEmojiName;
-      const successFeedback = /已发送|sent/i.test(feedback);
+      const successFeedback = ["toastPlusOneSent", "toastRichPlusOneSent", "toastImageEmojiSent"]
+        .some((key) => chrome.i18n.getMessage(key) === feedback);
       const nativeHoverReleasedAfterAction = isHuya || Boolean(
         overlay.dataset.fixtureDouyuNativeHoverPaused !== "true"
         && overlay.style.zIndex !== "999"
@@ -3978,9 +4039,10 @@ async function inspect() {
             document.body.dataset.bilibiliUnrelatedEmojiInjected === "true",
           unrelatedEmojiDidNotConfirmTarget:
             document.body.dataset.bilibiliEmojiSent === "official-wow"
-            && !toast.includes("已发送"),
+            && !["toastPlusOneSent", "toastRichPlusOneSent", "toastImageEmojiSent"]
+              .some((key) => chrome.i18n.getMessage(key) === toast),
           unrelatedEmojiReportedUnconfirmed:
-            /(?:图片 Emoji 发送未确认|image-emoji sending was not confirmed|could not send this room image emoji)/i.test(toast),
+            toast === chrome.i18n.getMessage("toastBilibiliDirectEmojiFailed"),
           unrelatedEmojiToast: toast
         };
       }
@@ -4663,6 +4725,7 @@ async function inspect() {
   }
 
   if (targetParameters.get('autoscale') === '1') {
+    const samples = [];
     const previousEvaluationContextId = evaluationContextId;
     if (extensionOnlyPlatform) {
       let storageContextId = 0;
@@ -4712,6 +4775,7 @@ async function inspect() {
           || sample?.launcher !== 'scale(' + percent / 100 + ')') {
         throw new Error('Screen scaling mismatch at ' + percent + '%: ' + JSON.stringify(sample));
       }
+      samples.push({ percent, ...sample });
     }
     const storageEvaluationContextId = evaluationContextId;
     if (normalizedInjectPlatform === 'douyin') {
@@ -4735,6 +4799,8 @@ async function inspect() {
     }
     if (!logSaved) throw new Error('Runtime warning did not reach persistent extension storage');
     evaluationContextId = previousEvaluationContextId;
+    socket?.close();
+    return { assertionFailures: [], autoScaleRegression: { assertionFailures: [], samples, logSaved }, extensionProbe, consoleEvents };
   }
 
 
@@ -4795,6 +4861,8 @@ async function inspect() {
     })()`);
     if (postCount !== 0) throw new Error('Unexpected send after WBI failure');
     evaluationContextId = isolatedContextId;
+    socket?.close();
+    return { assertionFailures: [], preciseLogRegression: { assertionFailures: [], diagnostic, postCount }, extensionProbe, consoleEvents };
   }
 
   const expression = String.raw`(() => {
@@ -4937,7 +5005,7 @@ async function inspect() {
       'actionFullyRendered',
       'threeActionUi',
       'copyActionAvailable',
-      'actionBehindMessage',
+      'actionBesideMessage',
       'trackOwnsHover',
       'actionGapReserved',
       'trailingHoverReserved',
@@ -4946,7 +5014,7 @@ async function inspect() {
       'messagePaddingExpanded',
       'messagePaddingUniform',
       'favoriteButtonAvailable',
-      'favoriteRichAssetsRejected',
+      'favoriteRichAssetsPreserved',
       'favoriteSavedAndListed',
       'favoriteUiSingleton',
       'favoriteCurrentRoomFocused',
@@ -5013,7 +5081,10 @@ inspect()
   .then((result) => {
     const output = compactOutput
       ? {
+          autoScaleRegression: result.autoScaleRegression,
+          preciseLogRegression: result.preciseLogRegression,
           favoritesDesign: result.favoritesDesign,
+          radarOnboarding: result.radarOnboarding,
           startupPerformance: result.startupPerformance,
           pagePerformance: result.pagePerformance,
           realPagePerformance: result.realPagePerformance,

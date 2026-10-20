@@ -381,3 +381,11 @@ Coverage 对 `src/core/**/*.ts`、`src/features/**/*.ts` 和 `src/platforms/**/*
 `docs/ENTRY_REFACTOR_CHECKLIST.md`，详细消息基线和手工回归表记录在
 `docs/ENTRY_RUNTIME_ARCHITECTURE.md`，实际浏览器与真实直播间结果记录在
 `docs/ENTRY_REFACTOR_REGRESSION.md`，不要在这些文档中复制完整清单。
+
+## 统计维护与富表情读取边界（2026-10-11）
+
+Service Worker 还串行处理成功发送统计的追加和清理，并在启动时恢复持久化清理任务。设置页可直接读取统计，清理及恢复必须通过后台。清理任务和索引结构 revision 分别负责中断恢复和分页一致性；具体键、兼容与容量策略见 [数据模型文档](DATA_MODEL_AND_BACKEND_PLAN.md#可恢复清理与分页版本2026-10-11)。汇总缓存属于读取实例，设置页通过 `storage.onChanged` 失效，不把缓存当作持久状态。
+
+`platforms/live/rich-emoji-metadata.ts` 从通用装配文件提取元数据祖先遍历、文字 token 读取和资源归一化。共享模块仅接收 `RichEmojiMetadataAdapter` 能力；Bilibili 的原生资源身份与装饰过滤、斗鱼 rel 优先级、虎牙面板名称和资源 ID 由各平台现有 adapter 提供。发送、恢复和 token 排列的既有控制器不变；27 组迁移前快照约束提取后的结果。
+
+抖音原生设置控制器持有 idle/applying/applied/unavailable 状态、可见页面的 5 秒探测预算及 retry/dismiss。正常应用不展示 UI。异常合并复用现有 `DouyinOverlay`，与发送反馈分开存放；发送反馈显示期间隐藏异常提示。切房、相关设置关闭和销毁清理提示、监听与计时器，不新增 page/content 协议。

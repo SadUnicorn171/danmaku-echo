@@ -17,7 +17,7 @@ describe('large favorites lists', () => {
       items, groups: [], currentCount: items.length, otherCount: 0, totalCount: items.length,
       mode: 'panel', loading: false, search: '', sort: 'custom', view: 'current', selectedRoomKey: '',
       room: { roomId: '123', roomKey: 'huya:123', roomName: '测试直播间', platform: 'huya', url: 'https://www.huya.com/123' },
-      centerX: 0, centerY: 0, radialOptions: [], radialGazeAngle: 0, radialGazeX: 0, radialGazeY: 0, selectedRadialKey: '',
+      centerX: 0, centerY: 0, radialOptions: [], radialScale: 1, radialPhase: 'idle', radialGazeAngle: 0, radialGazeX: 0, radialGazeY: 0, selectedRadialKey: '',
     }
     const wrapper = mount(FavoritesLauncher, { props: { state }, global: { stubs: { FavoriteItemRow: true } } })
     await flushPromises()

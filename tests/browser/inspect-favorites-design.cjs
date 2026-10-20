@@ -7,6 +7,8 @@ const path = require('node:path')
 module.exports = async function inspectFavoritesDesign({ send, evaluateValue, artifactDirectory }) {
   const failures = []
   const samples = []
+  const panelLayouts = []
+  const longMessage = '保留完整的长收藏内容，轮盘预览应省略并始终显示松开和取消提示。'.repeat(12).normalize('NFKC')
   const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
   const root = `document.querySelector('.bcp-favorites-host')?.shadowRoot`
   const key = (type, value = 'q') => send('Input.dispatchKeyEvent', {
@@ -15,8 +17,8 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
     windowsVirtualKeyCode: value === 'q' ? 81 : 27,
   })
   const mouse = (x, y) => send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y })
-  const waitFor = async (expression) => {
-    for (let attempt = 0; attempt < 60; attempt += 1) {
+  const waitFor = async (expression, timeout = 3000) => {
+    for (let attempt = 0; attempt < Math.ceil(timeout / 50); attempt += 1) {
       if (await evaluateValue(expression)) return
       await delay(50)
     }
@@ -27,21 +29,31 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
     const center = root?.querySelector('.bcp-favorites-radial-center');
     if (!center) return null;
     const style = getComputedStyle(center);
+    const width = document.documentElement.clientWidth, height = document.documentElement.clientHeight;
     const rect = center.getBoundingClientRect();
     const face = center.querySelector('.bcp-favorites-radial-bot-eyes');
     return {
       classes: center.className,
+      transparentBackdrop: getComputedStyle(root.querySelector('.bcp-favorites-layer')).backgroundColor === 'rgba(0, 0, 0, 0)',
+      sectorCount: root.querySelectorAll('.bcp-favorites-radial-pie path').length,
+      caption: root.querySelector('.bcp-favorites-radial-caption strong')?.textContent,
+      decorationsVisible: ['.bcp-favorites-radial-hint', '.bcp-favorites-radial-caption'].every(selector => {
+        const node = root.querySelector(selector);
+        if (!node) return Boolean(root.querySelector('.bcp-favorites-radial.is-submitted'));
+        const r = node.getBoundingClientRect();
+        return r.left >= 0 && r.top >= 0 && r.right <= width && r.bottom <= height;
+      }),
       x: rect.x + rect.width / 2, y: rect.y + rect.height / 2,
       gazeX: style.getPropertyValue('--bcp-favorites-gaze-x').trim(),
       gazeY: style.getPropertyValue('--bcp-favorites-gaze-y').trim(),
-      faceTransform: getComputedStyle(face).transform,
+      faceTransform: face ? getComputedStyle(face).transform : null,
       background: style.backgroundImage,
       runningAnimations: center.getAnimations({ subtree: true }).length,
       options: Array.from(root.querySelectorAll('.bcp-favorites-radial-item')).map(item => {
         const r = item.getBoundingClientRect();
-        return { kind: item.classList.contains('is-favorite') ? 'favorite' : item.classList.contains('is-other') ? 'other' : 'more',
+        return { detail: item.getAttribute('aria-label'), kind: item.classList.contains('is-favorite') ? 'favorite' : item.classList.contains('is-other') ? 'other' : 'more',
           x: r.x + r.width / 2, y: r.y + r.height / 2,
-          visible: r.left >= 0 && r.top >= 0 && r.right <= innerWidth && r.bottom <= innerHeight };
+          visible: r.left >= 0 && r.top >= 0 && r.right <= width && r.bottom <= height };
       })
     };
   })()`)
@@ -124,12 +136,12 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
       }
       await capture('')
       await evaluateValue(`(() => {
-        const body = document.querySelector('[data-bcp-repeat-reminder-owned]').shadowRoot.querySelector('.onboarding-body');
-        body.scrollTop = body.scrollHeight;
+        const scroll = document.querySelector('[data-bcp-repeat-reminder-owned]').shadowRoot.querySelector('.onboarding-scroll');
+        scroll.scrollTop = scroll.scrollHeight;
         return true;
       })()`)
       await capture('-scrolled')
-      await evaluateValue(`document.querySelector('[data-bcp-repeat-reminder-owned]').shadowRoot.querySelector('.onboarding-body').scrollTop = 0`)
+      await evaluateValue(`document.querySelector('[data-bcp-repeat-reminder-owned]').shadowRoot.querySelector('.onboarding-scroll').scrollTop = 0`)
     }
   }
   await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 720, deviceScaleFactor: 1, mobile: false })
@@ -139,22 +151,37 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
       ?.querySelector('.onboarding-acknowledge')?.click();
     const runtime = globalThis.__danmakuEchoFavoritesRuntime;
     if (!runtime) throw new Error('Favorites runtime unavailable');
-    for (const text of ['这波操作漂亮', '一起加油', '前方高能', '好耶', '精彩', '来了来了']) {
+    for (const text of ['这波操作漂亮', '一起加油', '前方高能', '好耶', '精彩', ${JSON.stringify(longMessage)}]) {
       await runtime.favoriteText(text);
     }
     return true;
   })()`)
-  await waitFor(`!document.querySelector('.bcp-one-toast.is-visible')`)
+  await waitFor(`!Array.from(document.querySelectorAll('*')).some(node => node.shadowRoot?.querySelector('.bcp-one-toast.is-visible'))`)
   await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 720, deviceScaleFactor: 1, mobile: false })
   await open()
   const idle = await snapshot('idle')
   if (idle.options.length !== 8) failures.push('six favorites and two navigation options')
+  if (!idle.transparentBackdrop || idle.sectorCount !== 8) failures.push('transparent wheel with eight pie sectors')
   for (const kind of ['favorite', 'other', 'more']) {
     const option = idle.options.find((item) => item.kind === kind)
     await mouse(option.x, option.y)
     await waitFor(`Boolean(${root}?.querySelector('.bcp-favorites-radial-center.is-${kind}'))`)
-    await snapshot(kind)
+    const selected = await snapshot(kind)
+    if (selected.caption !== option.detail) failures.push(`${kind}: selected caption must preserve full content`)
   }
+  const longOption = idle.options.find(item => item.detail === longMessage)
+  await mouse(longOption.x, longOption.y)
+  await snapshot('long-text')
+  const longCaption = await evaluateValue(`(() => {
+    const caption = ${root}.querySelector('.bcp-favorites-radial-caption');
+    const text = caption.querySelector('strong'), hint = caption.querySelector('span');
+    const c = caption.getBoundingClientRect(), h = hint.getBoundingClientRect();
+    return { retainsContent: text.textContent === ${JSON.stringify(longMessage)},
+      truncatedPreview: text.scrollHeight > text.clientHeight,
+      hintVisible: h.top >= c.top && h.bottom <= c.bottom,
+      noScrollInteraction: caption.scrollHeight <= caption.clientHeight && getComputedStyle(caption).pointerEvents === 'none' };
+  })()`)
+  if (Object.values(longCaption).some(value => !value)) failures.push('long caption must preserve data with a readable fixed hint and no scroll interaction')
   await mouse(idle.x, idle.y)
   await delay(150)
   const centered = await read()
@@ -185,6 +212,73 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
   await mouse(more.x, more.y)
   await key('keyUp')
   await waitFor(`Boolean(${root}?.querySelector('.bcp-favorites-panel'))`)
+  for (const [name, width, height] of [['desktop', 1000, 720], ['compact', 390, 640], ['narrow', 320, 480], ['short', 640, 300]]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    await evaluateValue(`(() => { ${root}.querySelector('[data-view="current"]').click(); return true; })()`)
+    await waitFor(`Boolean(${root}?.querySelector('.bcp-favorites-list li'))`)
+    await delay(200)
+    const layout = await evaluateValue(`(() => {
+      const root = ${root};
+      const panel = root.querySelector('.bcp-favorites-panel');
+      const list = root.querySelector('.bcp-favorites-list');
+      const p = panel.getBoundingClientRect(), f = root.querySelector('footer').getBoundingClientRect();
+      list.scrollTop = list.scrollHeight;
+      const last = list.lastElementChild.getBoundingClientRect();
+      const result = {
+        inside: p.left >= 0 && p.top >= 0 && p.right <= innerWidth && p.bottom <= innerHeight,
+        noOverflow: panel.scrollWidth <= panel.clientWidth && list.scrollWidth <= list.clientWidth,
+        footerVisible: f.bottom <= p.bottom && f.top >= p.top,
+        lastRowReachable: last.bottom <= list.getBoundingClientRect().bottom + 1,
+      };
+      list.scrollTop = 0;
+      return result;
+    })()`)
+    panelLayouts.push({ name, ...layout })
+    if (Object.values(layout).some(value => !value)) failures.push(`${name}: panel must scroll and keep actions reachable`)
+    if (artifactDirectory) {
+      const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+      writeFileSync(path.join(artifactDirectory, `favorites-panel-${name}.png`), Buffer.from(screenshot.data, 'base64'))
+    }
+  }
+  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 720, deviceScaleFactor: 1, mobile: false })
+  for (const kind of ['groups', 'room', 'empty']) {
+    await evaluateValue(`(() => {
+      const root = ${root};
+      if ('${kind}' === 'groups') root.querySelector('[data-view="all"]').click();
+      else if ('${kind}' === 'room') root.querySelector('.bcp-favorites-group-toggle').click();
+      else { const input = root.querySelector('input[type="search"]'); input.value = 'no-match-for-this-search'; input.dispatchEvent(new Event('input', { bubbles: true })); }
+      return true;
+    })()`)
+    await delay(200)
+    if (artifactDirectory) {
+      const screenshot = await send('Page.captureScreenshot', { format: 'png', captureBeyondViewport: false })
+      writeFileSync(path.join(artifactDirectory, `favorites-panel-${kind}.png`), Buffer.from(screenshot.data, 'base64'))
+    }
+  }
+  await cancel()
+  await cancel()
+
+  // Every visible option must select the same item after viewport scaling.
+  for (const [width, height] of [[390, 640], [320, 480], [640, 300]]) {
+    await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: false })
+    await open()
+    const wheel = await snapshot(`scaled-${width}-${height}`)
+    if (!wheel.decorationsVisible || wheel.options.some(item => !item.visible)) failures.push(`${width}x${height}: wheel clipped`)
+    for (const option of wheel.options) {
+      await mouse(option.x, option.y)
+      const selected = await read()
+      if (selected.caption !== option.detail) failures.push(`${width}x${height}: scaled hit target differs from visible option`)
+    }
+    await mouse(wheel.x, wheel.y)
+    if (!(await read()).classes.includes('is-idle')) failures.push(`${width}x${height}: scaled center must cancel`)
+    await cancel()
+  }
+  // Resizing while a gesture is held cancels it, and releasing cannot send.
+  await open()
+  await send('Emulation.setDeviceMetricsOverride', { width: 480, height: 600, deviceScaleFactor: 1, mobile: false })
+  await waitFor(`!${root}?.querySelector('.bcp-favorites-radial')`)
+  await key('keyUp')
+  if (await evaluateValue(`Boolean(document.querySelector('.bcp-favorites-host')?.dataset.bcpFavoritesLastSend)`)) failures.push('resize cancellation must not send')
   await cancel()
 
   await send('Emulation.setDeviceMetricsOverride', { width: 420, height: 640, deviceScaleFactor: 1, mobile: false })
@@ -197,6 +291,89 @@ module.exports = async function inspectFavoritesDesign({ send, evaluateValue, ar
   if (reduced.runningAnimations !== 0) failures.push('reduced motion must disable animations')
   await cancel()
   await send('Emulation.setEmulatedMedia', { features: [] })
+  await send('Emulation.setDeviceMetricsOverride', { width: 1000, height: 720, deviceScaleFactor: 1, mobile: false })
+  await open()
+  const sendOption = (await read()).options.find(item => item.kind === 'favorite')
+  // Hold the simulated site's input consumption so pending UI can be inspected.
+  await evaluateValue(`(() => {
+    const button = document.querySelector('#msg_send_bt');
+    globalThis.__favoritesFixtureHoldSend = event => {
+      event.stopImmediatePropagation();
+      document.body.dataset.favoritesFixtureHeld = 'true';
+    };
+    button.addEventListener('click', globalThis.__favoritesFixtureHoldSend, true);
+    return true;
+  })()`)
+  await mouse(sendOption.x, sendOption.y)
+  await key('keyUp')
+  await waitFor(`document.body.dataset.favoritesFixtureHeld === 'true'`)
+  await snapshot('send-pending')
+  const pendingFeedback = await evaluateValue(`(() => {
+    const root = ${root}, sectors = root.querySelector('.bcp-favorites-radial-sectors');
+    globalThis.__favoritesCollapseStart = sectors.getAnimations()[0]?.startTime;
+    return {
+      pending: document.querySelector('.bcp-favorites-host').dataset.bcpFavoritesLastSendResult === 'pending',
+      collapsed: Number(getComputedStyle(sectors).opacity) < .1,
+      bot: Boolean(root.querySelector('.bcp-favorites-radial-bot')),
+      noResultYet: !root.querySelector('.bcp-favorites-radial-check, .bcp-favorites-radial-cross'),
+      noTextBoxes: !root.querySelector('.bcp-favorites-radial-caption, .bcp-favorites-radial-hint'),
+    };
+  })()`)
+  if (Object.values(pendingFeedback).some(value => !value)) failures.push('wheel must collapse before the sender resolves, retaining only the pending bot')
+  await evaluateValue(`(() => {
+    const button = document.querySelector('#msg_send_bt');
+    button.removeEventListener('click', globalThis.__favoritesFixtureHoldSend, true);
+    button.click();
+    return true;
+  })()`)
+  await waitFor(`Boolean(${root}?.querySelector('.bcp-favorites-radial.is-success'))`)
+  await snapshot('send-success')
+  const feedback = await evaluateValue(`(() => {
+    const root = ${root};
+    return {
+      confirmed: document.querySelector('.bcp-favorites-host').dataset.bcpFavoritesLastSendResult === 'success',
+      check: Boolean(root.querySelector('.bcp-favorites-radial-check')),
+      botReplaced: !root.querySelector('.bcp-favorites-radial-bot'),
+      captionRemoved: !root.querySelector('.bcp-favorites-radial-caption'),
+      noCollapseRestart: root.querySelector('.bcp-favorites-radial-sectors').getAnimations()[0]?.startTime === globalThis.__favoritesCollapseStart,
+      collapsed: Number(getComputedStyle(root.querySelector('.bcp-favorites-radial-sectors')).opacity) < .1,
+    };
+  })()`)
+  if (Object.values(feedback).some(value => !value)) failures.push('confirmed send collapses sectors and replaces bot with check')
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
+  const reducedFeedback = await evaluateValue(`Array.from(${root}.querySelectorAll('.bcp-favorites-radial-sectors, .bcp-favorites-radial-check')).every(node => node.getAnimations().length === 0)`)
+  if (!reducedFeedback) failures.push('success feedback respects reduced motion')
+  await waitFor(`!${root}?.querySelector('.bcp-favorites-radial')`)
+  await send('Emulation.setEmulatedMedia', { features: [] })
+  await open()
+  const failedOption = (await read()).options.filter(item => item.kind === 'favorite')[1]
+  await evaluateValue(`(() => {
+    document.querySelector('#msg_send_bt').addEventListener('click', globalThis.__favoritesFixtureHoldSend, true);
+    return true;
+  })()`)
+  await mouse(failedOption.x, failedOption.y)
+  await key('keyUp')
+  // Exhausted input retries (900ms), feedback wait (1800ms), and network observation exceed 3s with setup.
+  await waitFor(`Boolean(${root}?.querySelector('.bcp-favorites-radial.is-failed'))`, 5000)
+  await snapshot('send-failed')
+  const failedFeedback = await evaluateValue(`(() => {
+    const root = ${root};
+    return {
+      failed: document.querySelector('.bcp-favorites-host').dataset.bcpFavoritesLastSendResult === 'failed',
+      cross: Boolean(root.querySelector('.bcp-favorites-radial-cross')),
+      noCheck: !root.querySelector('.bcp-favorites-radial-check'),
+      noTextBoxes: !root.querySelector('.bcp-favorites-radial-caption, .bcp-favorites-radial-hint'),
+      collapsed: Number(getComputedStyle(root.querySelector('.bcp-favorites-radial-sectors')).opacity) < .1,
+    };
+  })()`)
+  if (Object.values(failedFeedback).some(value => !value)) failures.push('failed sender shows only a red cross after collapsing')
+  await waitFor(`!${root}?.querySelector('.bcp-favorites-radial')`)
+  await evaluateValue(`(() => {
+    document.querySelector('#msg_send_bt').removeEventListener('click', globalThis.__favoritesFixtureHoldSend, true);
+    delete globalThis.__favoritesFixtureHoldSend;
+    delete globalThis.__favoritesCollapseStart;
+    return true;
+  })()`)
   await send('Emulation.clearDeviceMetricsOverride')
-  return { samples, onboardingAppearance, onboardingLayouts, assertionFailures: failures }
+  return { samples, panelLayouts, longCaption, pendingFeedback, feedback, failedFeedback, reducedFeedback, onboardingAppearance, onboardingLayouts, assertionFailures: failures }
 }

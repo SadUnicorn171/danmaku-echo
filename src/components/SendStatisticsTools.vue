@@ -6,11 +6,22 @@
         <p>{{ t('sendStatisticsDescription') }}</p>
       </div>
       <div class="send-statistics-actions">
-        <button type="button" :disabled="busy || !store" @click="refresh">{{ t('sendStatisticsRefresh') }}</button>
+        <button type="button" :disabled="busy || !store" @click="reload">{{ t('sendStatisticsRefresh') }}</button>
         <button type="button" :disabled="busy || !store" @click="exportStatistics">{{ t('sendStatisticsExport') }}</button>
-        <button type="button" :disabled="busy || !store || totalCount === 0" @click="clearStatistics">{{ t('sendStatisticsClear') }}</button>
+        <button type="button" :disabled="busy || !store" @click="clearStatistics()">{{ t('sendStatisticsClear') }}</button>
       </div>
     </div>
+    <div class="send-statistics-capacity">
+      <p>{{ t('sendStatisticsCapacity', [formatBytes(capacity.statisticsBytes), formatBytes(capacity.totalBytes)]) }}</p>
+      <p v-if="capacityLevel" class="send-statistics-warning" :class="{ 'is-critical': capacityLevel === 'critical' }" role="status">{{ t(capacityLevel === 'critical' ? 'sendStatisticsCapacityCritical' : 'sendStatisticsCapacityWarning') }}</p>
+      <div class="send-statistics-actions"><button v-for="days in ageOptions" :key="days" type="button" :disabled="busy || !store" @click="clearOlder(days)">{{ t('sendStatisticsClearOlder', String(days)) }}</button></div>
+    </div>
+    <div v-if="progress" class="send-statistics-progress" role="status">
+      <progress :value="progress.completed" :max="Math.max(progress.total, 1)" :aria-label="t('sendStatisticsProgress', [String(progress.completed), String(progress.total)])" />
+      <span>{{ t('sendStatisticsProgress', [String(progress.completed), String(progress.total)]) }}</span>
+      <button type="button" @click="cancelOperation">{{ t('sendStatisticsCancel') }}</button>
+    </div>
+    <p v-if="cleaning" role="status">{{ t('sendStatisticsCleaning') }} <button type="button" :disabled="busy" @click="resumeCleanup">{{ t('sendStatisticsResumeCleanup') }}</button></p>
     <p v-if="lastFailureAt" class="send-statistics-warning" role="status">{{ t('sendStatisticsWriteWarning', formatSecond(lastFailureAt / 1000)) }}</p>
     <p v-if="hasUpdates" role="status">{{ t('sendStatisticsUpdates') }}</p>
     <div class="send-statistics-summary">
@@ -52,7 +63,7 @@
         </ul>
       </div>
     </div>
-    <p v-else-if="!unavailableDays.length" class="send-statistics-empty">{{ t(store ? (totalCount ? 'sendStatisticsNoMatches' : 'sendStatisticsEmpty') : 'sendStatisticsUnavailable') }}</p>
+    <p v-else-if="!busy && !cleaning && !unavailableDays.length" class="send-statistics-empty">{{ t(store ? (totalCount ? 'sendStatisticsNoMatches' : 'sendStatisticsEmpty') : 'sendStatisticsUnavailable') }}</p>
     <nav v-if="store" class="send-statistics-pagination" :aria-label="t('sendStatisticsPages')">
       <button type="button" :disabled="busy || !cursors.length" @click="previousPage">{{ t('sendStatisticsPrevious') }}</button>
       <span>{{ t('sendStatisticsPage', String(cursors.length + 1)) }}</span>
@@ -68,15 +79,52 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { t } from '../composables/settings-language'
 import type { PlatformId } from '../core/types'
+import { STATISTICS_CLEANUP_KEY, STATISTICS_REVISION_KEY } from '../features/send-statistics/cleanup'
+import { statisticsAgeFilter, type StatisticsCapacity, type StatisticsProgress } from '../features/send-statistics/operations'
 import { createSendStatisticsStore } from '../features/send-statistics/store'
 import { SEND_STATISTICS_MESSAGE, type ConfirmedSend, type StatisticsCursor, type StatisticsFilter } from '../features/send-statistics/types'
 
 const emit = defineEmits<{ status: [message: string, kind: 'error' | 'saved'] }>()
 const busy = ref(false)
+const cleaning = ref(false)
 const events = ref<ConfirmedSend[]>([])
 const unavailableDays = ref<string[]>([])
 const store = globalThis.chrome?.storage?.local
-  ? createSendStatisticsStore(chrome.storage.local) : null
+  ? createSendStatisticsStore(chrome.storage.local, { cacheSummary: true }) : null
+const ageOptions = [30, 90, 180] as const
+const capacity = ref<StatisticsCapacity>({ statisticsBytes: null, totalBytes: null, quotaBytes: null })
+const capacityLevel = computed(() => {
+  const { totalBytes, quotaBytes } = capacity.value
+  if (totalBytes === null || quotaBytes === null) return ''
+  return totalBytes / quotaBytes >= .95 ? 'critical' : totalBytes / quotaBytes >= .8 ? 'warning' : ''
+})
+const progress = ref<StatisticsProgress>()
+let controller: AbortController | undefined
+let capacityStale = true
+let reloadPending = false
+let disposed = false
+function formatBytes(bytes: number | null): string {
+  return bytes === null ? t('sendStatisticsCapacityUnavailable') : `${(bytes / 1024 / 1024).toFixed(2)} MB`
+}
+function cancelOperation(): void { controller?.abort() }
+function startOperation() {
+  controller = new AbortController()
+  return { signal: controller.signal, onProgress: (value: StatisticsProgress) => { progress.value = value } }
+}
+function finishOperation(): void {
+  controller = undefined
+  progress.value = undefined
+  busy.value = false
+  if (reloadPending && !cleaning.value && !disposed) {
+    reloadPending = false
+    void refresh()
+  }
+}
+async function reload(): Promise<void> {
+  store?.invalidate()
+  capacityStale = true
+  await refresh()
+}
 const platforms: { id: PlatformId; label: string }[] = [
   { id: 'bilibili', label: 'platformBilibili' },
   { id: 'douyin', label: 'platformDouyin' },
@@ -144,30 +192,68 @@ async function previousPage(): Promise<void> {
   currentCursor.value = cursors.value.pop()
   await refresh()
 }
+function resetPages(): void {
+  cursors.value = []
+  currentCursor.value = undefined
+  nextCursor.value = undefined
+}
+async function resumeCleanup(): Promise<void> {
+  busy.value = true
+  try {
+    const response = await chrome.runtime.sendMessage({ type: SEND_STATISTICS_MESSAGE, action: 'recover' })
+    if (!response?.ok) throw new Error('statistics-cleanup-failed')
+    await refresh()
+  } catch {
+    emit('status', t('sendStatisticsCleanupFailed'), 'error')
+  } finally { busy.value = false }
+}
 async function refresh(): Promise<void> {
   if (!store) return
   busy.value = true
+  const operation = startOperation()
   try {
-    const totals = await store.summary()
-    const result = await store.query(filter.value, currentCursor.value)
-    summary.value = totals
-    events.value = result.events
-    nextCursor.value = result.nextCursor
-    unavailableDays.value = [...new Set([...totals.unavailableDays, ...result.unavailableDays])]
-    hasUpdates.value = false
+    if (capacityStale) { capacity.value = await store.capacity(); capacityStale = false }
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const totals = await store.summary()
+        const result = await store.query(filter.value, currentCursor.value, 50, operation)
+        summary.value = totals
+        events.value = result.events
+        nextCursor.value = result.nextCursor
+        unavailableDays.value = [...new Set([...totals.unavailableDays, ...result.unavailableDays])]
+        hasUpdates.value = false
+        cleaning.value = false
+        break
+      } catch (error) {
+        if (error instanceof Error && error.message === 'send-statistics-cursor-expired' && attempt === 0) {
+          resetPages()
+          events.value = []
+          emit('status', t('sendStatisticsReloaded'), 'saved')
+          continue
+        }
+        throw error
+      }
+    }
   } catch (error) {
-    emit('status', failureText(error), 'error')
-  } finally {
-    busy.value = false
-  }
+    if (operation.signal.aborted) {
+      resetPages()
+      events.value = []
+      emit('status', t('sendStatisticsCancelled'), 'saved')
+    } else if (error instanceof Error && error.message === 'send-statistics-cleaning') {
+      cleaning.value = true
+      events.value = []
+      resetPages()
+    } else emit('status', failureText(error), 'error')
+  } finally { finishOperation() }
 }
 async function exportStatistics(): Promise<void> {
   if (!store) return
   busy.value = true
   let url = ''
+  const operation = startOperation()
   try {
-    const data = await store.export(filter.value)
-    url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }))
+    const data = await store.exportBlob(filter.value, operation)
+    url = URL.createObjectURL(data.blob)
     const anchor = document.createElement('a')
     anchor.href = url
     anchor.download = `danmaku-echo-send-statistics-${new Date().toISOString().slice(0, 10)}.json`
@@ -176,20 +262,27 @@ async function exportStatistics(): Promise<void> {
     anchor.remove()
     emit('status', t(data.unavailableDays.length ? 'sendStatisticsExportedPartial' : 'sendStatisticsExported'), 'saved')
   } catch (error) {
-    emit('status', failureText(error), 'error')
+    emit('status', operation.signal.aborted ? t('sendStatisticsCancelled') : failureText(error), operation.signal.aborted ? 'saved' : 'error')
   } finally {
     if (url) setTimeout(() => URL.revokeObjectURL(url), 1_000)
-    busy.value = false
+    finishOperation()
   }
 }
-async function clearStatistics(): Promise<void> {
+async function clearOlder(days: 30 | 90 | 180): Promise<void> {
+  const selection = statisticsAgeFilter(days)
+  await clearStatistics(selection, t('sendStatisticsClearOlderConfirm', selection.to))
+}
+async function clearStatistics(selection: StatisticsFilter = filter.value, confirmation = t('sendStatisticsClearFilteredConfirm')): Promise<void> {
   if (!store) return
-  if (!window.confirm(t('sendStatisticsClearFilteredConfirm'))) return
+  if (!window.confirm(confirmation)) return
   busy.value = true
   try {
-    const response = await chrome.runtime.sendMessage({ type: SEND_STATISTICS_MESSAGE, action: 'clear', filter: filter.value })
+    const response = await chrome.runtime.sendMessage({ type: SEND_STATISTICS_MESSAGE, action: 'clear', filter: selection })
       .catch(() => { throw new Error('statistics-worker-unavailable') })
     if (!response?.ok) throw new Error(response?.error || 'statistics-clear-failed')
+    store.invalidate()
+    capacityStale = true
+    reloadPending = false
     cursors.value = []
     currentCursor.value = undefined
     await refresh()
@@ -202,16 +295,40 @@ async function clearStatistics(): Promise<void> {
   }
 }
 const storageChanged = (changes: Record<string, chrome.storage.StorageChange>, area: string) => {
-  if (area === 'local' && Object.keys(changes).some((key) => key.startsWith('danmakuEchoSendStatistics'))) hasUpdates.value = true
+  if (area !== 'local') return
+  if (Object.keys(changes).some(key => key.startsWith('danmakuEchoSendStatistics'))) {
+    hasUpdates.value = true
+    store?.invalidate()
+    capacityStale = true
+  }
+  if (changes[STATISTICS_REVISION_KEY] || changes[STATISTICS_CLEANUP_KEY]) {
+    resetPages()
+    events.value = []
+    if (changes[STATISTICS_CLEANUP_KEY]) cleaning.value = changes[STATISTICS_CLEANUP_KEY]!.newValue !== undefined
+    if (!cleaning.value) {
+      emit('status', t('sendStatisticsReloaded'), 'saved')
+      if (busy.value) reloadPending = true
+      else void refresh()
+    }
+  }
 }
 onMounted(() => {
   if (store) void refresh()
   globalThis.chrome?.storage?.onChanged?.addListener(storageChanged)
 })
-onUnmounted(() => globalThis.chrome?.storage?.onChanged?.removeListener(storageChanged))
+onUnmounted(() => {
+  disposed = true
+  controller?.abort()
+  globalThis.chrome?.storage?.onChanged?.removeListener(storageChanged)
+})
 </script>
 
 <style scoped>
+.send-statistics-capacity { margin: 12px 0; }
+.send-statistics-capacity .send-statistics-actions { margin-top: 8px; }
+.send-statistics-progress { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; font-size: 12px; margin: 10px 0; }
+progress { accent-color: #fd8101; max-width: 100%; }
+.send-statistics-warning.is-critical { color: var(--error, #b3261e); font-weight: 600; }
 .send-statistics { padding: 16px; }
 .send-statistics-heading, .send-statistics-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .send-statistics-heading { justify-content: space-between; }

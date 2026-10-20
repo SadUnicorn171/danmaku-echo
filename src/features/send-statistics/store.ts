@@ -1,22 +1,16 @@
+import { checkpoint, yieldStatisticsOperation, statisticsCapacity, type StatisticsOperation } from './operations'
+import { createStatisticsCleanup, statisticsKeys, ownedStatisticsKey, CHUNK_PREFIX, EVENT_PREFIX, BACKUP_PREFIX, STATISTICS_HEALTH_KEY, type StatisticsStorage } from './cleanup'
+export { STATISTICS_HEALTH_KEY } from './cleanup'
 import {
   SEND_STATISTICS_DAY_PREFIX, SEND_STATISTICS_INDEX_KEY, isConfirmedSend,
   type ConfirmedSend, type StatisticsFilter, type StatisticsCursor,
 } from './types'
 
 export const STATISTICS_CHUNK_SIZE = 128
-export const STATISTICS_HEALTH_KEY = 'danmakuEchoSendStatisticsHealthV1'
-const CHUNK_PREFIX = 'danmakuEchoSendStatisticsChunkV2:'
-const EVENT_PREFIX = 'danmakuEchoSendStatisticsEventV2:'
-const BACKUP_PREFIX = 'danmakuEchoSendStatisticsBackupV1:'
 type Counts = Record<string, number>
 interface LegacyDay { schemaVersion: 1; date: string; events: ConfirmedSend[] }
 interface Day { schemaVersion: 2; date: string; total: number; platforms: Counts }
 interface Index { schemaVersion: 1; days: string[] }
-interface Storage {
-  get(key: string | string[]): Promise<Record<string, unknown>>
-  set(items: Record<string, unknown>): Promise<void>
-  remove(keys: string | string[]): Promise<void>
-}
 const datePattern = /^\d{4}-\d{2}-\d{2}$/
 const dateFor = (second: number) => new Date(second * 1_000).toISOString().slice(0, 10)
 const eventKey = (date: string, id: string) => EVENT_PREFIX + date + ':' + id
@@ -46,12 +40,47 @@ function validateFilter(filter: StatisticsFilter): void {
     || (filter.room !== undefined && typeof filter.room !== 'string')
     || (filter.text !== undefined && typeof filter.text !== 'string')) throw new Error('invalid-send-statistics-filter')
 }
-export function createSendStatisticsStore(storage: Storage) {
+export function createSendStatisticsStore(storage: StatisticsStorage, options: { cacheSummary?: boolean } = {}) {
+  let cacheEpoch = 0
+  let summaryCache: { epoch: number; revision: string; value: { days: Day[]; unavailableDays: string[]; lastFailureAt: number | undefined } } | undefined
+  function invalidate(): void { cacheEpoch++; summaryCache = undefined }
   let tail: Promise<unknown> = Promise.resolve()
   function serial<T>(operation: () => Promise<T>): Promise<T> {
     const task = tail.then(operation)
     tail = task.catch(() => {})
     return task
+  }
+  const cleanup = createStatisticsCleanup(storage, async (task) => {
+    if (!task.rewrite) return { [SEND_STATISTICS_INDEX_KEY]: { schemaVersion: 1, days: [] } }
+    const updates: Record<string, unknown> = { [SEND_STATISTICS_INDEX_KEY]: { schemaVersion: 1, days: task.rewrite.days } }
+    for (const { date, keepIds } of task.rewrite.dates) {
+      const value = await day(date)
+      const events = await eventsFor(value)
+      const wanted = new Set(keepIds)
+      const kept = events.filter(event => wanted.has(event.id))
+      if (kept.length !== keepIds.length) throw new Error('invalid-send-statistics-cleanup-source')
+      if (value.schemaVersion === 1) {
+        // Keep legacy days readable without duplicating text into a migration buffer.
+        updates[SEND_STATISTICS_DAY_PREFIX + date] = { schemaVersion: 1, date, events: kept }
+      } else {
+        const replacement = encode(date, kept)
+        for (const event of kept) delete replacement[eventKey(date, event.id)]
+        Object.assign(updates, replacement)
+      }
+    }
+    return updates
+  })
+  async function consistent<T>(operation: (revision: string) => Promise<T>, expected?: string): Promise<T> {
+    const revision = await cleanup.revision()
+    if (expected !== undefined && expected !== revision) throw new Error('send-statistics-cursor-expired')
+    try {
+      const result = await operation(revision)
+      if (await cleanup.revision() !== revision) throw new Error('send-statistics-cursor-expired')
+      return result
+    } catch (error) {
+      if (await cleanup.revision() !== revision) throw new Error('send-statistics-cursor-expired')
+      throw error
+    }
   }
   async function index(): Promise<Index> {
     const value = (await storage.get(SEND_STATISTICS_INDEX_KEY))[SEND_STATISTICS_INDEX_KEY] as Index | undefined
@@ -62,6 +91,9 @@ export function createSendStatisticsStore(storage: Storage) {
   }
   async function day(date: string, required = true): Promise<Day | LegacyDay> {
     const value = (await storage.get(SEND_STATISTICS_DAY_PREFIX + date))[SEND_STATISTICS_DAY_PREFIX + date] as Day | LegacyDay | undefined
+    return parseDay(date, value, required)
+  }
+  function parseDay(date: string, value: Day | LegacyDay | undefined, required = true): Day | LegacyDay {
     if (value === undefined && !required) return daySummary(date, [])
     if (value?.date === date) {
       if (value.schemaVersion === 1 && Array.isArray(value.events)
@@ -121,12 +153,37 @@ export function createSendStatisticsStore(storage: Storage) {
     events.sort((a, b) => a.sentAtSec - b.sentAtSec || a.id.localeCompare(b.id))
     return { events, unavailableDays }
   }
+  async function summaries(revision: string) {
+    if (summaryCache?.revision === revision && summaryCache.epoch === cacheEpoch) return summaryCache.value
+    const epoch = cacheEpoch
+    const days: Day[] = [], unavailableDays: string[] = []
+    const dates = (await index()).days
+    for (let start = 0; start < dates.length; start += STATISTICS_CHUNK_SIZE) {
+      const batch = dates.slice(start, start + STATISTICS_CHUNK_SIZE)
+      const values = await storage.get(batch.map(date => SEND_STATISTICS_DAY_PREFIX + date))
+      for (const date of batch) {
+        try {
+          const value = parseDay(date, values[SEND_STATISTICS_DAY_PREFIX + date] as Day | LegacyDay | undefined)
+          days.push(value.schemaVersion === 1 ? daySummary(date, value.events) : value)
+        } catch (error) {
+          if (!(error instanceof Error) || !/^(invalid|missing)-send-statistics-/.test(error.message)) throw error
+          unavailableDays.push(date)
+        }
+      }
+    }
+    const health = (await storage.get(STATISTICS_HEALTH_KEY))[STATISTICS_HEALTH_KEY] as { lastFailureAt?: number } | undefined
+    const value = { days, unavailableDays, lastFailureAt: Number.isFinite(health?.lastFailureAt) ? health!.lastFailureAt : undefined }
+    if (options.cacheSummary && epoch === cacheEpoch) summaryCache = { epoch, revision, value }
+    return value
+  }
   return {
     append(event: ConfirmedSend): Promise<void> {
       if (!isConfirmedSend(event)) return Promise.reject(new Error('invalid-send-statistics-event'))
       const record = snapshot(event)
       return serial(async () => {
         try {
+          invalidate()
+          await cleanup.recover()
           const date = dateFor(record.sentAtSec)
           const current = await index()
           const value = await day(date, current.days.includes(date))
@@ -156,53 +213,57 @@ export function createSendStatisticsStore(storage: Storage) {
         }
       })
     },
-    read(): Promise<ConfirmedSend[]> { return serial(async () => (await inspect()).events) },
-    inspect(filter: StatisticsFilter = {}) { return serial(() => inspect(filter)) },
-    summary() {
-      return serial(async () => {
-        const days: Day[] = []
-        const unavailableDays: string[] = []
-        for (const date of (await index()).days) {
-          try {
-            const value = await day(date)
-            days.push(value.schemaVersion === 1 ? daySummary(date, value.events) : value)
-          } catch (error) {
-            if (!(error instanceof Error) || !/^(invalid|missing)-send-statistics-/.test(error.message)) throw error
-            unavailableDays.push(date)
-          }
-        }
-        const health = (await storage.get(STATISTICS_HEALTH_KEY))[STATISTICS_HEALTH_KEY] as { lastFailureAt?: number } | undefined
-        return { days, unavailableDays, lastFailureAt: Number.isFinite(health?.lastFailureAt) ? health!.lastFailureAt : undefined }
-      })
-    },
-    query(filter: StatisticsFilter = {}, cursor?: StatisticsCursor, limit = 50) {
-      return serial(async () => {
+    recover(): Promise<void> { return serial(() => { invalidate(); return cleanup.recover() }) },
+    read(): Promise<ConfirmedSend[]> { return serial(() => consistent(async () => (await inspect()).events)) },
+    inspect(filter: StatisticsFilter = {}) { return serial(() => consistent(() => inspect(filter))) },
+    invalidate,
+    capacity: () => statisticsCapacity(storage),
+    summary() { return serial(() => consistent(revision => summaries(revision))) },
+    query(filter: StatisticsFilter = {}, cursor?: StatisticsCursor, limit = 50, operation: StatisticsOperation = {}) {
+      return serial(() => consistent(async (revision) => {
+        if (cursor && !cursor.revision) throw new Error('send-statistics-cursor-expired')
         validateFilter(filter)
         if (cursor && (!datePattern.test(cursor.date) || !Number.isSafeInteger(cursor.before) || cursor.before < 0)) throw new Error('invalid-send-statistics-cursor')
         const events: ConfirmedSend[] = []
         const unavailableDays: string[] = []
+        checkpoint(operation)
+        let completed = 0
+        const total = operation.onProgress ? (await summaries(revision)).days
+          .filter(day => selected(day.date, filter) && (!cursor || day.date <= cursor.date) && (!filter.platform || day.platforms[filter.platform]))
+          .reduce((sum, day) => sum + Math.min(day.total, cursor?.date === day.date ? cursor.before : day.total), 0) : 0
+        checkpoint(operation, { completed, total, unit: 'records' })
         const pageSize = Math.min(100, Math.max(1, Math.floor(limit) || 50))
         let nextCursor: StatisticsCursor | undefined
         const dates = (await index()).days.filter((date) => selected(date, filter) && (!cursor || date <= cursor.date)).reverse()
         for (const date of dates) {
           try {
             const value = await day(date)
-            if (value.schemaVersion === 2 && filter.platform && !value.platforms[filter.platform]) continue
-            const total = value.schemaVersion === 1 ? value.events.length : value.total
-            let before = Math.min(total, cursor?.date === date ? cursor.before : total)
+            if (filter.platform && (value.schemaVersion === 1
+              ? !value.events.some(event => event.platform === filter.platform)
+              : !value.platforms[filter.platform])) continue
+            const dayTotal = value.schemaVersion === 1 ? value.events.length : value.total
+            let before = Math.min(dayTotal, cursor?.date === date ? cursor.before : dayTotal)
             while (before > 0) {
+              checkpoint(operation)
               const chunk = Math.floor((before - 1) / STATISTICS_CHUNK_SIZE)
+              if (value.schemaVersion === 1 && completed > 0) await yieldStatisticsOperation(operation)
               const batch = value.schemaVersion === 1
                 ? value.events.slice(chunk * STATISTICS_CHUNK_SIZE, (chunk + 1) * STATISTICS_CHUNK_SIZE)
-                : await readChunk(date, chunk, total)
+                : await readChunk(date, chunk, dayTotal)
+              checkpoint(operation)
               for (let i = before - chunk * STATISTICS_CHUNK_SIZE - 1; i >= 0; i--) {
                 const event = batch[i]!
                 before--
+                completed++
                 if (!matching(event, filter)) continue
-                if (events.length === pageSize) return { events, unavailableDays, nextCursor }
+                if (events.length === pageSize) {
+                  checkpoint(operation, { completed, total, unit: 'records' })
+                  return { events, unavailableDays, nextCursor }
+                }
                 events.push(event)
-                if (events.length === pageSize) nextCursor = { date, before }
+                if (events.length === pageSize) nextCursor = { date, before, revision }
               }
+              checkpoint(operation, { completed, total, unit: 'records' })
             }
           } catch (error) {
             if (!(error instanceof Error) || !/^(invalid|missing)-send-statistics-/.test(error.message)) throw error
@@ -210,44 +271,102 @@ export function createSendStatisticsStore(storage: Storage) {
           }
         }
         return { events, unavailableDays, nextCursor: undefined as StatisticsCursor | undefined }
-      })
+      }, cursor?.revision))
     },
     export(filter: StatisticsFilter = {}) {
-      return serial(async () => {
+      return serial(() => consistent(async () => {
         const { events, unavailableDays } = await inspect(filter)
         const counts = new Map<number, number>()
         for (const event of events) counts.set(event.sentAtSec, (counts.get(event.sentAtSec) || 0) + 1)
         return { format: 'danmaku-echo-send-statistics', schemaVersion: 1 as const,
           exportedAt: new Date().toISOString(), events,
           perSecond: [...counts].map(([second, count]) => ({ second, count })), unavailableDays }
-      })
+      }))
+    },
+    exportBlob(filter: StatisticsFilter = {}, operation: StatisticsOperation = {}) {
+      return serial(() => consistent(async revision => {
+        validateFilter(filter)
+        checkpoint(operation)
+        const totals = await summaries(revision)
+        const total = totals.days.filter(day => selected(day.date, filter)).reduce((sum, day) => sum + day.total, 0)
+        let completed = 0, hasEvents = false, hasSeconds = false
+        const unavailableDays: string[] = []
+        const eventParts: BlobPart[] = [], secondParts: BlobPart[] = []
+        checkpoint(operation, { completed, total, unit: 'records' })
+        for (const date of (await index()).days.filter(date => selected(date, filter))) {
+          checkpoint(operation)
+          try {
+            const value = await day(date)
+            const events: ConfirmedSend[] = []
+            const count = value.schemaVersion === 1 ? value.events.length : value.total
+            for (let chunk = 0; chunk < Math.ceil(count / STATISTICS_CHUNK_SIZE); chunk++) {
+              checkpoint(operation)
+              if (value.schemaVersion === 1 && completed > 0) await yieldStatisticsOperation(operation)
+              const batch = value.schemaVersion === 1
+                ? value.events.slice(chunk * STATISTICS_CHUNK_SIZE, (chunk + 1) * STATISTICS_CHUNK_SIZE)
+                : await readChunk(date, chunk, count)
+              events.push(...batch.filter(event => matching(event, filter)))
+              completed += batch.length
+              checkpoint(operation, { completed, total, unit: 'records' })
+            }
+            events.sort((a, b) => a.sentAtSec - b.sentAtSec || a.id.localeCompare(b.id))
+            if (events.length) {
+              eventParts.push(new Blob([hasEvents ? ',' : '', JSON.stringify(events).slice(1, -1)]))
+              hasEvents = true
+              const counts = new Map<number, number>()
+              for (const event of events) counts.set(event.sentAtSec, (counts.get(event.sentAtSec) || 0) + 1)
+              secondParts.push(new Blob([hasSeconds ? ',' : '', JSON.stringify([...counts].map(([second, count]) => ({ second, count }))).slice(1, -1)]))
+              hasSeconds = true
+            }
+          } catch (error) {
+            if (!(error instanceof Error) || !/^(invalid|missing)-send-statistics-/.test(error.message)) throw error
+            unavailableDays.push(date)
+          }
+        }
+        checkpoint(operation)
+        const header = JSON.stringify({ format: 'danmaku-echo-send-statistics', schemaVersion: 1, exportedAt: new Date().toISOString() }).slice(0, -1)
+        return { blob: new Blob([header, ',"events":[', ...eventParts, '],"perSecond":[', ...secondParts, '],"unavailableDays":', JSON.stringify(unavailableDays), '}'], { type: 'application/json' }), unavailableDays }
+      }))
     },
     clear(filter: StatisticsFilter = {}): Promise<void> {
       return serial(async () => {
         validateFilter(filter)
+        invalidate()
+        await cleanup.recover()
         const current = await index()
-        for (const date of [...current.days].filter((date) => selected(date, filter))) {
+        if (!Object.values(filter).some(Boolean)) {
+          const keys = (await statisticsKeys(storage)).filter(ownedStatisticsKey)
+          // Preserve future schemas even under a known key. Corrupt known data can be explicitly cleared.
+          for (let start = 0; start < keys.length; start += 128) {
+            const values = await storage.get(keys.slice(start, start + 128))
+            for (const [key, value] of Object.entries(values)) {
+              if (value && typeof value === 'object' && 'schemaVersion' in value
+                && !((key.startsWith(SEND_STATISTICS_DAY_PREFIX) ? [1, 2] : [1]).includes(Number(value.schemaVersion)))) {
+                throw new Error('invalid-send-statistics-future-schema')
+              }
+            }
+          }
+          await cleanup.start([...new Set([...keys, SEND_STATISTICS_INDEX_KEY])])
+          return
+        }
+        const removeKeys: string[] = []
+        const dates: { date: string; keepIds: string[] }[] = []
+        for (const date of [...current.days].filter(date => selected(date, filter))) {
           const value = await day(date)
           const events = await eventsFor(value)
-          const kept = events.filter((event) => !matching(event, filter))
+          const kept = events.filter(event => !matching(event, filter))
           if (kept.length === events.length) continue
-          const removed = events.filter((event) => matching(event, filter)).map((event) => eventKey(date, event.id))
-          const oldChunks = Math.ceil(events.length / STATISTICS_CHUNK_SIZE)
-          for (let chunk = Math.ceil(kept.length / STATISTICS_CHUNK_SIZE); chunk < oldChunks; chunk++) removed.push(chunkKey(date, chunk))
+          const removed = events.filter(event => matching(event, filter)).map(event => eventKey(date, event.id))
+          for (let chunk = Math.ceil(kept.length / STATISTICS_CHUNK_SIZE); chunk < Math.ceil(events.length / STATISTICS_CHUNK_SIZE); chunk++) removed.push(chunkKey(date, chunk))
           removed.push(BACKUP_PREFIX + date)
-          if (kept.length) await storage.set(encode(date, kept))
-          else {
-            current.days = current.days.filter((item) => item !== date)
-            // Empty the manifest before deleting records so interrupted cleanup never exposes deleted text.
-            await storage.set({ [SEND_STATISTICS_INDEX_KEY]: current, [SEND_STATISTICS_DAY_PREFIX + date]: daySummary(date, []) })
+          if (!kept.length) {
+            current.days = current.days.filter(item => item !== date)
             removed.push(SEND_STATISTICS_DAY_PREFIX + date)
           }
-          await storage.remove(removed)
+          removeKeys.push(...removed)
+          dates.push({ date, keepIds: kept.map(event => event.id) })
         }
-        if (!Object.values(filter).some(Boolean)) {
-          await storage.remove(STATISTICS_HEALTH_KEY)
-          if (!current.days.length) await storage.remove(SEND_STATISTICS_INDEX_KEY)
-        }
+        if (dates.length) await cleanup.start(removeKeys, { dates, days: current.days })
       })
     },
   }

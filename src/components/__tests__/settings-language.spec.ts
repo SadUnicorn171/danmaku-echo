@@ -110,3 +110,12 @@ describe('settings language preference', () => {
     expect(t('missing-key')).toBe('missing-key')
   })
 })
+
+it('keeps short scale copy and multi-value statistics placeholders consistent in both languages', () => {
+  expect(t('settingsInterfaceScaleDescription')).toBe('根据屏幕大小自动调整界面大小。')
+  expect(t('sendStatisticsCapacity', ['1 MB', '2 MB'])).toBe('统计占用 1 MB · 本地总占用 2 MB')
+  expect(t('sendStatisticsProgress', ['128', '1000'])).toBe('已检查 128 / 1000 条记录')
+  settingsLanguage.value = 'en'
+  expect(t('settingsInterfaceScaleDescription')).toBe('Automatically scale the interface to fit your screen.')
+  expect(t('sendStatisticsCapacity', ['1 MB', '2 MB'])).toBe('Statistics 1 MB · Total local storage 2 MB')
+})

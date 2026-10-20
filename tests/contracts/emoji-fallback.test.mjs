@@ -160,7 +160,10 @@ test("Bilibili uses its native editor and Emoji panel", () => {
     "utf8"
   );
   const fixtureSource = readFileSync(resolve(root, "tests", "browser", "fixture-server.cjs"), "utf8");
-  assert.match(contentSource, /function emojiMetadataElements\([\s\S]*?element: Element,[\s\S]*?image: HTMLImageElement \| null/);
+  const metadataSource = readFileSync(resolve(root, "src/platforms/live/rich-emoji-metadata.ts"), "utf8");
+  assert.match(contentSource, /createRichEmojiMetadataReader\(/);
+  assert.match(contentSource, /adapter: platformAdapter\.richEmojiMetadata/);
+  assert.match(metadataSource, /function emojiMetadataElements\([\s\S]*?element: Element,[\s\S]*?image: HTMLImageElement \| null/);
   assert.match(contentSource, /closestMatching\(element, config\.overlayMessages\)/);
   assert.match(contentSource, /function refreshRichPayloadText\(payload: RichMessagePayload\)/);
   assert.doesNotMatch(contentSource, /async function repeatPlatformRichPayload\(payload\)/);
@@ -284,7 +287,8 @@ test("Huya, Douyu and Bilibili use independent rich-message senders", () => {
   assert.match(nameMessageSource, /orderedBracketEmojiText\(payload\)/);
   assert.match(nameMessageSource, /图片表情/);
   assert.match(editorConfigSource, /['"]rel['"]/);
-  assert.match(contentSource, /douyuEmojiToken\(element/);
+  const douyuAdapterSource = readFileSync(resolve(root, "src/platforms/douyu/adapter.ts"), "utf8");
+  assert.match(douyuAdapterSource, /douyuEmojiToken\(element/);
   assert.match(douyuRichEmojiSource, /image\.getAttribute\(['"]rel['"]\)/);
   assert.match(bilibiliRichMessageSource, /bilibiliAutoRecognizedEmojiText/);
   assert.match(bilibiliRichMessageSource, /runtime\.sendText\(message\)/);

@@ -23,6 +23,63 @@ const ENABLED_SETTINGS = {
 } as const
 
 describe('repeat reminder UI', () => {
+  it('expands settings without enabling sending and keeps keyboard focus inside the introduction', async () => {
+    const acknowledge = vi.fn<() => Promise<void>>(async () => {})
+    const setAutoPlusOne = vi.fn<(enabled: boolean) => void>()
+    const ui = createRepeatReminderUi({
+      dismiss() {}, openSettings() {}, plusOne() {}, setAutoPlusOne,
+      onboardingStorage: { acknowledge, isAcknowledged: async () => false },
+    })
+    try {
+      ui.applySettings(ENABLED_SETTINGS)
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')!.shadowRoot!
+      const confirm = shadow.querySelector<HTMLButtonElement>('.onboarding-acknowledge')!
+      const toggle = shadow.querySelector<HTMLInputElement>('.onboarding-auto-plus-one input')!
+      const details = shadow.querySelector<HTMLDetailsElement>('.onboarding-settings')!
+      const summary = details.querySelector('summary')!
+      await vi.waitFor(() => expect(shadow.activeElement).toBe(confirm))
+      expect(details.open).toBe(false)
+      summary.click()
+      expect(details.open).toBe(true)
+      expect(acknowledge).not.toHaveBeenCalled()
+      expect(setAutoPlusOne).not.toHaveBeenCalled()
+      confirm.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true }))
+      expect(shadow.activeElement).toBe(toggle)
+      toggle.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', shiftKey: true, bubbles: true }))
+      expect(shadow.activeElement).toBe(confirm)
+      summary.focus()
+      const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
+      summary.dispatchEvent(tab)
+      expect(tab.defaultPrevented).toBe(false)
+    } finally { ui.destroy() }
+  })
+
+  it('acknowledges Escape without enabling automatic sending and restores the queued prompt focus', async () => {
+    const acknowledge = vi.fn<() => Promise<void>>(async () => {})
+    const openSettings = vi.fn<() => void>()
+    const setAutoPlusOne = vi.fn<(enabled: boolean) => void>()
+    const ui = createRepeatReminderUi({
+      dismiss() {}, openSettings, plusOne() {}, setAutoPlusOne,
+      onboardingStorage: { acknowledge, isAcknowledged: async () => false },
+    })
+    try {
+      ui.applySettings(ENABLED_SETTINGS)
+      const shadow = document.querySelector('[data-bcp-repeat-reminder-owned]')!.shadowRoot!
+      await vi.waitFor(() => expect(shadow.querySelector('.onboarding.is-visible')).not.toBeNull())
+      ui.setSuggestions([suggestion()])
+      const escape = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })
+      document.dispatchEvent(escape)
+      expect(escape.defaultPrevented).toBe(true)
+      expect(acknowledge).toHaveBeenCalledOnce()
+      expect(shadow.querySelector('.onboarding.is-visible')).toBeNull()
+      expect(setAutoPlusOne).not.toHaveBeenCalled()
+      expect(openSettings).not.toHaveBeenCalled()
+      await vi.waitFor(() => expect(shadow.activeElement).toBe(shadow.querySelector('.prompt .is-primary')))
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+      expect(acknowledge).toHaveBeenCalledOnce()
+    } finally { ui.destroy() }
+  })
+
   it('preserves countdown text nodes until the displayed second changes', () => {
     vi.useFakeTimers()
     const ui = createRepeatReminderUi({ dismiss() {}, openSettings() {}, plusOne() {} })

@@ -734,13 +734,14 @@ test("derives stable platform room identifiers from live URLs", () => {
   assert.equal(favorites.roomIdFromLocation("douyu", "https://www.douyu.com/12152200"), "12152200");
 });
 
-test("keeps only the themed outer ring on the favorites radial menu", () => {
+test("keeps transparent pie sectors and borderless labels on the favorites radial menu", () => {
   const styles = readFileSync(
     resolve(root, "src", "assets", "styles", "favorites.scss"),
     "utf8"
   );
   assert.doesNotMatch(styles, /\.bcp-favorites-panel::before/);
-  assert.match(styles, /\.bcp-favorites-radial::before\s*\{[\s\S]*?border:\s*2px solid var\(--bcp-favorite-accent\)/);
+  assert.doesNotMatch(styles, /\.bcp-favorites-radial::before\s*\{/);
+  assert.match(styles, /\.bcp-favorites-radial-pie path\.is-selected\s*\{\s*fill: var\(--bcp-favorite-accent\)/);
   assert.match(styles, /\.bcp-favorites-radial-item\s*\{[\s\S]*?border:\s*0;/);
   assert.doesNotMatch(styles, /\.bcp-favorites-radial-item\.is-selected\s*\{[\s\S]*?border-color:/);
 });
@@ -811,7 +812,7 @@ test("uses a compact text-only send button in favorite rows", () => {
   assert.match(row, /class="bcp-favorites-send"/);
   assert.match(row, /t\(["']favoritesSend["']\)/);
   assert.doesNotMatch(row, /telegram/);
-  assert.match(styles, /\.bcp-favorites-send\s*\{[\s\S]*?border-radius:\s*14px/);
+  assert.match(styles, /\.bcp-favorites-send\s*\{[\s\S]*?border-radius:\s*16px/);
 });
 
 test("offers drag reordering with a keyboard-accessible fallback", () => {

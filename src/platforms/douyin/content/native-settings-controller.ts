@@ -2,6 +2,11 @@ import { detectPlatform } from '../../../core/shared'
 import type { DouyinNativeSettings, ExtensionSettings } from '../../../core/types'
 
 type Key = keyof DouyinNativeSettings
+export interface DouyinNativeApplicationState {
+  status: 'idle' | 'applying' | 'applied' | 'unavailable'
+  failed: Key[]
+  showNotice: boolean
+}
 type Panel = 'danmaku-setting-icon' | 'gift-setting'
 const ANCHORS = '[data-e2e="danmaku-setting-icon"], [data-e2e="gift-setting"]'
 const SWITCH = '[role="switch"], input[type="checkbox"], ._h3OuAw5'
@@ -52,6 +57,7 @@ export function createDouyinNativeSettingsController(options: {
   href(): string
   settings(): ExtensionSettings
   onUnavailable?(key: Key): void
+  onStateChange?(state: DouyinNativeApplicationState): void
 }) {
   const doc = options.document
   let running = false
@@ -59,6 +65,44 @@ export function createDouyinNativeSettingsController(options: {
   let scheduled = false
   let generation = 0
   let signature = ''
+  let context = ''
+  let dismissed = false
+  let noticeReported = false
+  let expired = false
+  let remaining = 5000
+  let visibleSince = 0
+  let deadline: ReturnType<typeof setTimeout> | undefined
+  let application: DouyinNativeApplicationState = { status: 'idle', failed: [], showNotice: false }
+  function publish(status: DouyinNativeApplicationState['status'], failed: Key[] = []): void {
+    const next = { status, failed, showNotice: status === 'unavailable' && !dismissed && !noticeReported }
+    if (next.showNotice) noticeReported = true
+    // Keep an already visible notice until dismissal, success or a new context.
+    if (status === 'unavailable' && application.showNotice && !dismissed) next.showNotice = true
+    if (JSON.stringify(next) !== JSON.stringify(application)) {
+      application = next
+      options.onStateChange?.({ ...next, failed: [...failed] })
+    }
+  }
+  function pauseDeadline(): void {
+    if (deadline === undefined) return
+    clearTimeout(deadline)
+    deadline = undefined
+    remaining = Math.max(0, remaining - (Date.now() - visibleSince))
+  }
+  function armDeadline(): void {
+    if (deadline !== undefined || expired || doc.visibilityState === 'hidden' || !active()) return
+    visibleSince = Date.now()
+    deadline = setTimeout(() => {
+      deadline = undefined
+      expired = true
+      remaining = 0
+      reconcile()
+    }, remaining)
+  }
+  function visibilityChanged(): void {
+    if (doc.visibilityState === 'hidden') { pauseDeadline(); closeOpened() }
+    else { schedule(); if (application.status === 'applying') armDeadline() }
+  }
   let opened: { anchor: HTMLElement; timer: ReturnType<typeof setTimeout> } | undefined
   let hovered = new WeakSet<HTMLElement>()
   let attempted = new WeakSet<HTMLElement>()
@@ -81,7 +125,7 @@ export function createDouyinNativeSettingsController(options: {
     )
   }
   function report(key: Key): void {
-    if (reported.has(key)) return
+    if (!expired || reported.has(key)) return
     reported.add(key)
     options.onUnavailable?.(key)
   }
@@ -116,6 +160,7 @@ export function createDouyinNativeSettingsController(options: {
   }
   function reconcile(): void {
     const prefs = options.settings().douyinNativeSettings
+    const matched = new Set<Key>()
     for (const [root, entry] of roots) {
       if (!root.isConnected || !entry.anchor.isConnected) {
         entry.observer.disconnect()
@@ -134,11 +179,12 @@ export function createDouyinNativeSettingsController(options: {
         }
         const state = checked(control)
         if (state === rule.checked) {
+          matched.add(rule.key)
           attempts.delete(rule.key)
           continue
         }
         settled = false
-        if (state === null || control.closest('[disabled], [aria-disabled="true"]')) {
+        if (expired || doc.visibilityState === 'hidden' || state === null || control.closest('[disabled], [aria-disabled="true"]')) {
           report(rule.key)
           continue
         }
@@ -153,7 +199,7 @@ export function createDouyinNativeSettingsController(options: {
         schedule()
       }
       if (opened?.anchor === entry.anchor && settled) closeOpened()
-      if (missing && !opened && !hovered.has(entry.anchor)) {
+      if (!expired && doc.visibilityState !== 'hidden' && missing && !opened && !hovered.has(entry.anchor)) {
         hovered.add(entry.anchor)
         // This timeout only closes our temporary hover. Applying settings is mutation-driven.
         const timer = setTimeout(() => {
@@ -164,8 +210,22 @@ export function createDouyinNativeSettingsController(options: {
         }, 1200)
         opened = { anchor: entry.anchor, timer }
         hover(entry.anchor, true)
-        break // Lazy panels can be mutually exclusive; open one at a time.
+        // Lazy panels can be mutually exclusive; opened prevents opening another.
       }
+    }
+    const failed = RULES.filter(rule => prefs[rule.key] && !matched.has(rule.key)).map(rule => rule.key)
+    if (!failed.length) {
+      pauseDeadline()
+      remaining = 5000
+      expired = false
+      publish('applied')
+    } else if (expired) {
+      closeOpened()
+      failed.forEach(report)
+      publish('unavailable', failed)
+    } else {
+      publish('applying', failed)
+      armDeadline()
     }
   }
   function discover(node: ParentNode): void {
@@ -197,6 +257,8 @@ export function createDouyinNativeSettingsController(options: {
     if (added) schedule()
   }
   function disconnect(): void {
+    pauseDeadline()
+    doc.removeEventListener('visibilitychange', visibilityChanged)
     generation++
     scheduled = false
     discovery?.disconnect()
@@ -210,8 +272,18 @@ export function createDouyinNativeSettingsController(options: {
     hovered = new WeakSet()
     attempted = new WeakSet()
     attempts.clear()
-    reported.clear()
+    const settings = options.settings()
+    signature = JSON.stringify([settings.enabled, settings.platforms.douyin, settings.douyinNativeSettings])
+    const url = new URL(options.href())
+    const nextContext = JSON.stringify([url.origin + url.pathname, signature])
+    if (context !== nextContext) { context = nextContext; reported.clear(); dismissed = false; noticeReported = false }
+    expired = false
+    remaining = 5000
+    publish('idle')
     if (!active()) return
+    publish('applying')
+    doc.addEventListener('visibilitychange', visibilityChanged)
+    armDeadline()
     discover(doc)
     discovery = new MutationObserver((records) => {
       // Only inspect newly added subtrees for native setting anchors. No document polling.
@@ -220,6 +292,7 @@ export function createDouyinNativeSettingsController(options: {
           entry.observer.disconnect()
           roots.delete(root)
         }
+      if (records.some(record => record.removedNodes.length)) schedule()
       for (const record of records)
         for (const node of record.addedNodes) {
           if (node instanceof HTMLElement) discover(node)
@@ -237,8 +310,12 @@ export function createDouyinNativeSettingsController(options: {
     destroy(): void {
       running = false
       disconnect()
+      publish('idle')
     },
     routeChanged: refresh,
+    retry(): void { reported.clear(); dismissed = false; noticeReported = false; refresh() },
+    dismiss(): void { dismissed = true; publish(application.status, application.failed) },
+    state(): DouyinNativeApplicationState { return { ...application, failed: [...application.failed] } },
     applySettings(): void {
       const settings = options.settings()
       const next = JSON.stringify([

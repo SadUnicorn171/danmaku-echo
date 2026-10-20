@@ -38,6 +38,8 @@ export interface FavoritesLauncherState {
   mode: "closed" | "panel" | "radial";
   otherCount: number;
   radialOptions: RadialOption[];
+  radialScale: number;
+  radialPhase: "idle" | "sending" | "success" | "failed";
   radialGazeAngle: number;
   radialGazeX: number;
   radialGazeY: number;
@@ -181,11 +183,6 @@ function editableTarget(target: EventTarget | null): boolean {
   ));
 }
 
-function shortLabel(text: string): string {
-  const chars = Array.from(text);
-  return chars.length > 8 ? `${chars.slice(0, 8).join("")}…` : text;
-}
-
 function angularDistance(first: number, second: number): number {
   return Math.abs(((first - second + 540) % 360) - 180);
 }
@@ -240,6 +237,8 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     mode: "closed",
     otherCount: 0,
     radialOptions: [],
+    radialScale: 1,
+    radialPhase: "idle",
     radialGazeAngle: -45,
     radialGazeX: 5.5,
     radialGazeY: -5.5,
@@ -375,7 +374,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
       favoriteId: item.id,
       key: `favorite:${item.id}`,
       kind: "favorite",
-      label: shortLabel(item.text)
+      label: item.text
     }));
     raw.push({ detail: t("favoritesRadialOtherDetail"), key: "other", kind: "other", label: t("favoritesRadialOther") });
     raw.push({ detail: t("favoritesRadialMoreDetail"), key: "more", kind: "more", label: t("favoritesRadialMore") });
@@ -385,7 +384,19 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     }));
   }
 
+  let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
+  let feedbackRevision = 0;
+  let sendInFlight = false;
+
+  function resetRadialFeedback(): void {
+    feedbackRevision += 1;
+    if (feedbackTimer !== undefined) clearTimeout(feedbackTimer);
+    feedbackTimer = undefined;
+    state.radialPhase = "idle";
+  }
+
   function close(): void {
+    resetRadialFeedback();
     const focusTarget = state.mode === "panel" ? restoreFocus : null;
     state.mode = "closed";
     state.selectedRadialKey = "";
@@ -397,6 +408,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
 
   function openPanel(view: FavoriteView = "current"): void {
     if (!options.enabled()) return;
+    resetRadialFeedback();
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement
         && !portal.contains(activeElement) && !shadowRoot.contains(activeElement)) {
@@ -411,19 +423,25 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   function openRadial(): void {
-    if (!options.enabled()) return;
+    if (!options.enabled() || sendInFlight) return;
+    resetRadialFeedback();
     ensureHost();
-    const horizontalInset = Math.min(190, innerWidth / 2);
-    const verticalInset = Math.min(235, innerHeight / 2);
-    state.centerX = Math.max(horizontalInset, Math.min(pointerX, innerWidth - horizontalInset));
-    state.centerY = Math.max(verticalInset, Math.min(pointerY, innerHeight - verticalInset));
+    // The wheel, hint and caption share one coordinate system with hit testing.
+    const viewportWidth = document.documentElement.clientWidth || innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || innerHeight;
+    state.radialScale = Math.min(1, Math.max(1, viewportWidth - 24) / 360, Math.max(1, viewportHeight - 24) / 526);
+    const horizontalInset = 180 * state.radialScale + 12;
+    const topInset = 240 * state.radialScale + 12;
+    const bottomInset = 286 * state.radialScale + 12;
+    state.centerX = Math.max(horizontalInset, Math.min(pointerX, viewportWidth - horizontalInset));
+    state.centerY = Math.max(topInset, Math.min(pointerY, viewportHeight - bottomInset));
     state.radialOptions = radialOptions();
     state.selectedRadialKey = "";
     state.radialGazeAngle = -45;
     state.radialGazeX = 5.5;
     state.radialGazeY = -5.5;
     state.mode = "radial";
-    updateRadialGaze(pointerX - state.centerX, pointerY - state.centerY);
+    updateRadialGaze((pointerX - state.centerX) / state.radialScale, (pointerY - state.centerY) / state.radialScale);
   }
 
   function updateRadialGaze(deltaX: number, deltaY: number): number {
@@ -440,9 +458,9 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   function updateRadialSelection(x: number, y: number): void {
-    if (state.mode !== "radial") return;
-    const deltaX = x - state.centerX;
-    const deltaY = y - state.centerY;
+    if (state.mode !== "radial" || state.radialPhase !== "idle") return;
+    const deltaX = (x - state.centerX) / state.radialScale;
+    const deltaY = (y - state.centerY) / state.radialScale;
     const distance = updateRadialGaze(deltaX, deltaY);
     if (distance < RADIAL_CANCEL_RADIUS || distance > RADIAL_MAX_RADIUS) {
       state.selectedRadialKey = "";
@@ -455,19 +473,44 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   async function sendById(id: string): Promise<void> {
+    if (sendInFlight || destroyed) return;
     const item = repository.database.items.find((entry) => entry.id === id);
     if (!item) return;
+    const radial = state.mode === "radial";
+    if (radial) state.radialPhase = "sending";
+    else close();
+    const revision = feedbackRevision;
+    const currentRoom = room();
+    const canShowFeedback = () => !destroyed && options.enabled() && revision === feedbackRevision
+      && state.mode === "radial" && room().roomKey === currentRoom.roomKey;
     portal.dataset.bcpFavoritesLastSend = item.text;
     portal.dataset.bcpFavoritesLastSendResult = "pending";
-    close();
-    const currentRoom = room();
-    const success = await options.sendFavorite(item.payload);
+    sendInFlight = true;
+    let success = false;
+    try {
+      success = await options.sendFavorite(item.payload);
+    } catch (error) {
+      if (!destroyed) options.showToast(favoriteErrorMessage(error), "error");
+    } finally {
+      sendInFlight = false;
+    }
+    if (destroyed) return;
     portal.dataset.bcpFavoritesLastSendResult = success ? "success" : "failed";
+    if (radial && canShowFeedback()) {
+      state.radialPhase = success ? "success" : "failed";
+      // Presentation dwell only; the result comes from the platform sender.
+      feedbackTimer = setTimeout(() => {
+        feedbackTimer = undefined;
+        if (!destroyed && revision === feedbackRevision && state.mode === "radial") close();
+      }, 900);
+    } else if (radial && revision === feedbackRevision && state.mode === "radial") {
+      close();
+    }
     if (success) {
       try {
         await mutateFavoriteInBackground({ id, operation: "record-sent", room: currentRoom });
       } catch (error) {
-        options.showToast(t("favoritesSendCountSaveFailed", favoriteErrorMessage(error)), "warning");
+        if (!destroyed) options.showToast(t("favoritesSendCountSaveFailed", favoriteErrorMessage(error)), "warning");
       }
     }
   }
@@ -635,7 +678,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
       else openPanel("current");
       return;
     }
-    if (state.mode !== "radial") return;
+    if (state.mode !== "radial" || state.radialPhase !== "idle") return;
     const option = state.radialOptions.find((entry) => entry.key === state.selectedRadialKey);
     if (!option) {
       close();
@@ -669,6 +712,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
       if (destroyed) return;
       destroyed = true;
       cancelGesture();
+      resetRadialFeedback();
       unsubscribe();
       uiObserver.disconnect();
       try {
@@ -684,6 +728,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
       document.removeEventListener("webkitfullscreenchange", ensureHost, true);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
+      window.removeEventListener("resize", onWindowBlur);
       app.unmount();
       portal.remove();
       if (activeOwnerMarker.dataset.bcpFavoritesOwnerId === ownerId) activeOwnerMarker.remove();
@@ -739,6 +784,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   document.addEventListener("webkitfullscreenchange", ensureHost, true);
   document.addEventListener("visibilitychange", onVisibilityChange);
   window.addEventListener("blur", onWindowBlur);
+  window.addEventListener("resize", onWindowBlur);
   chrome.storage.onChanged.addListener(storageChanged);
 
   return runtime;
