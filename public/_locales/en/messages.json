@@ -436,5 +436,9 @@
   "sendStatisticsCancelled": {"message": "Cancelled. Records are unchanged."},
   "douyinNativeSettingsUnavailable": {"message": "Some Douyin viewing filters could not be applied. Try again."},
   "douyinNativeSettingsRetry": {"message": "Retry"},
-  "douyinNativeSettingsDismiss": {"message": "Dismiss"}
+  "douyinNativeSettingsDismiss": {"message": "Dismiss"},
+  "settingsPerformance": {"message": "Performance"},
+  "settingsPerformanceIntro": {"message": "Reduce interface rendering work while watching live streams."},
+  "settingsPerformanceMode": {"message": "Performance mode"},
+  "settingsPerformanceModeDescription": {"message": "Turn off transitions, list motion, wheel collapse, bot interaction and animated counters. Keep static loading placeholders and real send results. Applies immediately."}
 }

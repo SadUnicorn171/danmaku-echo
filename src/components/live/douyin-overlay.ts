@@ -1,3 +1,4 @@
+import { mountUiMotion, uiMotionAllowed } from '../../core/ui-motion'
 import { createApp, nextTick, reactive } from "vue";
 import type { ActionSettings } from "../../core/types";
 import DouyinOverlay from "./DouyinOverlay.vue";
@@ -84,6 +85,7 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     onPointerdown: callbacks.onPointerDown
   });
   app.mount(portal);
+  const stopMotion = mountUiMotion(portal)
   let toastId = 0;
   let toastTimer: ReturnType<typeof setTimeout> | undefined;
   let toastCleanupTimer: ReturnType<typeof setTimeout> | undefined;
@@ -116,19 +118,20 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
     if (toastTimer !== undefined) clearTimeout(toastTimer);
     if (toastCleanupTimer !== undefined) clearTimeout(toastCleanupTimer);
     if (toastAnimationFrame) cancelAnimationFrame(toastAnimationFrame);
-    toastId += 1;
-    state.toast = { id: toastId, message, tone, visible: false };
-    void nextTick(() => {
-      if (destroyed) return;
+    const id = ++toastId;
+    state.toast = { id, message, tone, visible: !uiMotionAllowed() };
+    if (uiMotionAllowed()) void nextTick(() => {
+      if (destroyed || id !== toastId) return;
       toastAnimationFrame = requestAnimationFrame(() => {
         toastAnimationFrame = 0;
-        if (state.toast?.id === toastId) state.toast.visible = true;
+        if (state.toast?.id === id) state.toast.visible = true;
       });
     });
     toastTimer = setTimeout(() => {
       toastTimer = undefined;
       if (state.toast?.id !== toastId) return;
       state.toast.visible = false;
+      if (!uiMotionAllowed()) { state.toast = null; return; }
       toastCleanupTimer = setTimeout(() => {
         toastCleanupTimer = undefined;
         if (state.toast?.id === toastId) state.toast = null;
@@ -161,6 +164,7 @@ export function createDouyinOverlay(callbacks: DouyinOverlayCallbacks) {
       toastCleanupTimer = undefined;
       toastAnimationFrame = 0;
       cardAnimationFrame = 0;
+      stopMotion()
       app.unmount();
       portal.remove();
     },

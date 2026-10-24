@@ -1,4 +1,9 @@
 const ZH_CN_FALLBACK: Record<string, string> = {
+  settingsPerformance: "性能设置",
+  settingsPerformanceIntro: "调整界面动效，减轻直播时的界面渲染开销。",
+  settingsPerformanceMode: "性能模式",
+  settingsPerformanceModeDescription: "关闭界面过渡、列表动效、轮盘收缩、机器人互动与数字滚动。保留静态加载结构和真实发送结果，保存后立即生效。",
+
   favoritesWheelSending: "正在发送…",
   favoritesWheelFailed: "发送失败",
   favoritesWheelSent: "发送完成",

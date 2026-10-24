@@ -1,3 +1,4 @@
+import { mountUiMotion, uiMotionAllowed } from '../../core/ui-motion'
 import { createApp, nextTick, reactive } from 'vue'
 import type { ActionSettings } from '../../core/types'
 import ContentOverlay from './ContentOverlay.vue'
@@ -48,8 +49,12 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
     onPointerleave: callbacks.onPointerLeave,
   })
   app.mount(portal)
+  const stopMotion = mountUiMotion(portal)
   let toastTimer: ReturnType<typeof setTimeout> | undefined
   let toastId = 0
+  let destroyed = false
+  let toastFrame = 0
+  let cleanupTimer: ReturnType<typeof setTimeout> | undefined
 
   function ensureHost(host: Element): HTMLElement {
     if (portal.parentNode !== host) {
@@ -71,30 +76,37 @@ export function createContentOverlay(callbacks: OverlayCallbacks) {
   }
 
   function showToast(message: string, tone = 'info'): void {
-    if (toastTimer !== undefined) clearTimeout(toastTimer)
-    toastId += 1
-    state.toast = { id: toastId, message, tone, visible: false }
-    void nextTick(() =>
-      requestAnimationFrame(() => {
-        if (state.toast?.id === toastId) state.toast.visible = true
-      }),
-    )
-    toastTimer = setTimeout(
-      () => {
-        if (state.toast?.id !== toastId) return
-        state.toast.visible = false
-        setTimeout(() => {
-          if (state.toast?.id === toastId) state.toast = null
-        }, 180)
-      },
-      message.length > 80 ? 6000 : tone === 'error' ? 3600 : 2400,
-    )
+    if (destroyed) return
+    clearTimeout(toastTimer)
+    clearTimeout(cleanupTimer)
+    cancelAnimationFrame(toastFrame)
+    const id = ++toastId
+    state.toast = { id, message, tone, visible: !uiMotionAllowed() }
+    if (uiMotionAllowed()) void nextTick(() => {
+      if (destroyed || id !== toastId) return
+      toastFrame = requestAnimationFrame(() => {
+        toastFrame = 0
+        if (state.toast?.id === id) state.toast.visible = true
+      })
+    })
+    toastTimer = setTimeout(() => {
+      if (state.toast?.id !== id) return
+      state.toast.visible = false
+      if (!uiMotionAllowed()) state.toast = null
+      else cleanupTimer = setTimeout(() => {
+        if (state.toast?.id === id) state.toast = null
+      }, 180)
+    }, message.length > 80 ? 6000 : tone === 'error' ? 3600 : 2400)
   }
 
   return {
     actionBar,
     destroy(): void {
+      destroyed = true
+      cancelAnimationFrame(toastFrame)
+      clearTimeout(cleanupTimer)
       if (toastTimer !== undefined) clearTimeout(toastTimer)
+      stopMotion()
       app.unmount()
       portal.remove()
     },

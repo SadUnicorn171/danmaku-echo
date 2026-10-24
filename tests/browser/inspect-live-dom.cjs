@@ -607,7 +607,8 @@ async function inspect() {
   }
 
   if (targetParameters.get('favoritesdesign') === '1') {
-    const favoritesDesign = await require('./inspect-favorites-design.cjs')({ send, evaluateValue, artifactDirectory })
+    const isolatedContextId = [...executionContexts].reverse().find(context => context.type === 'isolated' && context.origin.startsWith('chrome-extension://'))?.id
+    const favoritesDesign = await require('./inspect-favorites-design.cjs')({ send, evaluateValue, artifactDirectory, isolatedContextId })
     socket?.close()
     return { favoritesDesign, assertionFailures: favoritesDesign.assertionFailures, extensionProbe, consoleEvents }
   }

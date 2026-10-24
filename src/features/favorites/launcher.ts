@@ -1,3 +1,4 @@
+import { createUiAnimator, mountUiMotion, uiMotionAllowed } from '../../core/ui-motion';
 import { createApp, nextTick, reactive } from "vue";
 import type { PlatformId } from "../../core/types";
 import { t } from "../../core/i18n";
@@ -29,6 +30,7 @@ export interface RadialOption {
 }
 
 export interface FavoritesLauncherState {
+  closing?: boolean;
   centerX: number;
   centerY: number;
   currentCount: number;
@@ -39,7 +41,7 @@ export interface FavoritesLauncherState {
   otherCount: number;
   radialOptions: RadialOption[];
   radialScale: number;
-  radialPhase: "idle" | "sending" | "success" | "failed";
+  radialPhase: "idle" | "sending";
   radialGazeAngle: number;
   radialGazeX: number;
   radialGazeY: number;
@@ -268,6 +270,9 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   const mountPoint = document.createElement("div");
   mountPoint.className = "bcp-favorites-portal";
   shadowRoot.append(style, mountPoint);
+  const stopMotion = mountUiMotion(portal);
+  const animator = createUiAnimator();
+  let closeRevision = 0;
   const app = createApp(FavoritesLauncher, {
     state,
     onAddToRoom: (id: string) => void addToRoom(id),
@@ -384,30 +389,45 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     }));
   }
 
-  let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
   let feedbackRevision = 0;
   let sendInFlight = false;
 
   function resetRadialFeedback(): void {
     feedbackRevision += 1;
-    if (feedbackTimer !== undefined) clearTimeout(feedbackTimer);
-    feedbackTimer = undefined;
     state.radialPhase = "idle";
   }
 
   function close(): void {
+    if (state.closing) return;
     resetRadialFeedback();
+    const revision = ++closeRevision;
     const focusTarget = state.mode === "panel" ? restoreFocus : null;
-    state.mode = "closed";
-    state.selectedRadialKey = "";
-    restoreFocus = null;
-    if (focusTarget?.isConnected) {
-      void nextTick(() => focusTarget.focus({ preventScroll: true }));
-    }
+    const panel = shadowRoot.querySelector<HTMLElement>('.bcp-favorites-panel');
+    state.closing = true;
+    const finish = () => {
+      if (revision !== closeRevision || destroyed) return;
+      state.mode = "closed";
+      state.closing = false;
+      state.selectedRadialKey = "";
+      restoreFocus = null;
+      if (focusTarget?.isConnected) void nextTick(() => {
+        if (revision === closeRevision && !destroyed) focusTarget.focus({ preventScroll: true });
+      });
+    };
+    const animation = panel && animator.play(panel, [{ opacity: 1 }, { opacity: 0 }], 140);
+    if (animation) void animation.finished.then(finish, finish);
+    else finish();
+  }
+
+  function cancelClose(): void {
+    closeRevision++;
+    animator.clear();
+    state.closing = false;
   }
 
   function openPanel(view: FavoriteView = "current"): void {
     if (!options.enabled()) return;
+    cancelClose();
     resetRadialFeedback();
     const activeElement = document.activeElement;
     if (activeElement instanceof HTMLElement
@@ -424,6 +444,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
 
   function openRadial(): void {
     if (!options.enabled() || sendInFlight) return;
+    cancelClose();
     resetRadialFeedback();
     ensureHost();
     // The wheel, hint and caption share one coordinate system with hit testing.
@@ -446,7 +467,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
 
   function updateRadialGaze(deltaX: number, deltaY: number): number {
     const distance = Math.hypot(deltaX, deltaY);
-    if (distance < 1) {
+    if (!uiMotionAllowed() || distance < 1) {
       return distance;
     }
     const angle = Math.atan2(deltaY, deltaX) * 180 / Math.PI;
@@ -473,16 +494,27 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   async function sendById(id: string): Promise<void> {
-    if (sendInFlight || destroyed) return;
+    if (sendInFlight || destroyed || state.closing) return;
     const item = repository.database.items.find((entry) => entry.id === id);
     if (!item) return;
     const radial = state.mode === "radial";
     if (radial) state.radialPhase = "sending";
     else close();
     const revision = feedbackRevision;
+    const closeSubmittedRadial = () => {
+      if (!destroyed && revision === feedbackRevision && state.mode === "radial") close();
+    };
+    if (radial) void nextTick(() => {
+      if (destroyed || revision !== feedbackRevision || state.mode !== "radial") return;
+      const wheel = shadowRoot.querySelector<HTMLElement>('.bcp-favorites-radial');
+      const animation = wheel && animator.play(wheel, [
+        { transform: 'scale(1)', opacity: 1 },
+        { transform: 'scale(.18)', opacity: 0 }
+      ], 240);
+      if (animation) void animation.finished.then(closeSubmittedRadial, closeSubmittedRadial);
+      else closeSubmittedRadial();
+    });
     const currentRoom = room();
-    const canShowFeedback = () => !destroyed && options.enabled() && revision === feedbackRevision
-      && state.mode === "radial" && room().roomKey === currentRoom.roomKey;
     portal.dataset.bcpFavoritesLastSend = item.text;
     portal.dataset.bcpFavoritesLastSendResult = "pending";
     sendInFlight = true;
@@ -496,16 +528,7 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
     }
     if (destroyed) return;
     portal.dataset.bcpFavoritesLastSendResult = success ? "success" : "failed";
-    if (radial && canShowFeedback()) {
-      state.radialPhase = success ? "success" : "failed";
-      // Presentation dwell only; the result comes from the platform sender.
-      feedbackTimer = setTimeout(() => {
-        feedbackTimer = undefined;
-        if (!destroyed && revision === feedbackRevision && state.mode === "radial") close();
-      }, 900);
-    } else if (radial && revision === feedbackRevision && state.mode === "radial") {
-      close();
-    }
+    if (radial) closeSubmittedRadial();
     if (success) {
       try {
         await mutateFavoriteInBackground({ id, operation: "record-sent", room: currentRoom });
@@ -636,6 +659,14 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
   }
 
   function onKeyDown(event: KeyboardEvent): void {
+    if (state.closing && event.code === 'KeyQ' && event.altKey && !event.ctrlKey
+        && !event.metaKey && !event.repeat && options.enabled()) {
+      cancelClose();
+      state.mode = 'closed';
+    }
+    if (state.closing && event.key !== 'Tab') { event.preventDefault(); return; }
+    if (state.mode === 'panel' && shadowRoot.querySelector('.bcp-favorites-sort-menu')) return;
+
     if (event.key === "Escape" && state.mode !== "closed") {
       event.preventDefault();
       event.stopImmediatePropagation();
@@ -729,6 +760,9 @@ export function createFavoritesRuntime(options: FavoritesRuntimeOptions) {
       document.removeEventListener("visibilitychange", onVisibilityChange);
       window.removeEventListener("blur", onWindowBlur);
       window.removeEventListener("resize", onWindowBlur);
+      closeRevision++;
+      animator.destroy();
+      stopMotion();
       app.unmount();
       portal.remove();
       if (activeOwnerMarker.dataset.bcpFavoritesOwnerId === ownerId) activeOwnerMarker.remove();

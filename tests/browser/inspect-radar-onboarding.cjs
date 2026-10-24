@@ -94,6 +94,16 @@ module.exports = async function inspectRadarOnboarding({ send, evaluateValue: ev
     if (scrolled.scrollable && scrolled.scrollTop <= 0) assertionFailures.push(`${name}: content scroll is unreachable`)
   }
 
+  await evaluateValue(`chrome.storage.sync.set({ performanceMode: true }).then(() => true)`, isolatedContextId);
+  await waitFor(`document.querySelector('[data-bcp-repeat-reminder-owned]')?.dataset.bcpMotion === 'off'`);
+  const performanceMode = await evaluateValue(`(() => {
+    const shadow = ${root};
+    return getComputedStyle(shadow.querySelector('.onboarding-card')).animationName === 'none'
+      && getComputedStyle(shadow.querySelector('.onboarding-auto-plus-one input'), '::after').transitionDuration === '0s';
+  })()`);
+  if (!performanceMode) assertionFailures.push('performance mode disables radar entrance and switch motion');
+  await evaluateValue(`chrome.storage.sync.set({ performanceMode: false }).then(() => true)`, isolatedContextId);
+  await waitFor(`document.querySelector('[data-bcp-repeat-reminder-owned]')?.dataset.bcpMotion === 'on'`);
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] })
   const reduced = await evaluateValue(`(() => {
     const root = ${root};
@@ -115,5 +125,5 @@ module.exports = async function inspectRadarOnboarding({ send, evaluateValue: ev
   await waitFor(`performance.timeOrigin !== ${timeOrigin} && Boolean(${root}?.querySelector('.launcher.is-visible'))`)
   await settle()
   if (await evaluateValue(`Boolean(${root}?.querySelector('.onboarding.is-visible'))`)) assertionFailures.push('acknowledged introduction reappeared after reload')
-  return { samples, reducedMotion: reduced, assertionFailures }
+  return { performanceMode, samples, reducedMotion: reduced, assertionFailures }
 }

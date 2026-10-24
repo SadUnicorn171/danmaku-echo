@@ -33,6 +33,7 @@ export function useSettings() {
     baseline = mergeSettings(value);
     const next = mergeSettings(applySettingsPatch(value, edits));
     settings.enabled = next.enabled;
+    settings.performanceMode = next.performanceMode;
     settings.interfaceScale = next.interfaceScale;
     settings.altClick = next.altClick;
     settings.actions = next.actions;

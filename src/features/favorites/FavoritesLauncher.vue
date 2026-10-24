@@ -1,20 +1,23 @@
 <template>
   <div
     v-if="state.mode !== 'closed'"
-    :class="['bcp-favorites-layer', `is-${state.mode}`]"
+    :class="['bcp-favorites-layer', `is-${state.mode}`, { 'is-closing': state.closing, 'is-submitted': state.mode === 'radial' && state.radialPhase === 'sending' }]"
+    @click.capture="guardClosing"
     data-bcp-favorites-owned="true"
-    @pointerdown.self="emit('close')"
+    @pointerdown.self="sortOpen ? closeSortMenu(true) : emit('close')"
   >
     <section
       v-if="state.mode === 'panel'"
       ref="panelRef"
       class="bcp-favorites-panel"
       data-bcp-favorites-owned="true"
+      :aria-busy="state.loading"
       role="dialog"
       aria-modal="true"
       aria-labelledby="bcp-favorites-title"
       tabindex="-1"
       @pointerdown.stop="handlePanelPointerDown"
+      @keydown.tab="trapPanelFocus"
       @keydown.ctrl.k.prevent="focusSearch"
     >
       <header class="bcp-favorites-header">
@@ -134,14 +137,19 @@
             <span>{{ selectedSortOption.label }}</span>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 10 4 4 4-4" /></svg>
           </button>
+          <Transition :css="false" @leave="leaveSort" @leave-cancelled="cancelSortLeave">
+          <div v-if="sortOpen" class="bcp-favorites-sort-popover"
+            :role="narrow ? 'dialog' : undefined" :aria-modal="narrow ? true : undefined"
+            :aria-label="narrow ? t('favoritesSort') : undefined"
+            @keydown="handleSortKeydown">
+          <button class="bcp-favorites-sort-backdrop" type="button" tabindex="-1" :aria-label="t('favoritesClosePanel')" @click="closeSortMenu(true)" />
           <div
-            v-if="sortOpen"
             id="bcp-favorites-sort-options"
             ref="sortMenuRef"
             class="bcp-favorites-sort-menu"
-            role="listbox"
-            aria-labelledby="bcp-favorites-sort-label"
           >
+            <header v-if="narrow" class="bcp-favorites-sheet-heading"><strong>{{ t('favoritesSort') }}</strong><button type="button" @click="closeSortMenu(true)">{{ t('favoritesClose') }}</button></header>
+            <div role="listbox" aria-labelledby="bcp-favorites-sort-label">
             <button
               v-for="(option, index) in sortOptions"
               :id="`bcp-favorites-sort-${option.key}`"
@@ -158,16 +166,19 @@
               @keydown.home.prevent="focusSortOption(0)"
               @keydown.end.prevent="focusSortOption(sortOptions.length - 1)"
               @keydown.esc.stop.prevent="closeSortMenu(true)"
-              @keydown.tab="closeSortMenu(false)"
+              @keydown.tab="!narrow && closeSortMenu(false)"
             >
               <span>{{ option.label }}</span>
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6.5 12.5 3.5 3.5 7.5-8" /></svg>
             </button>
           </div>
+          </div>
+          </div>
+          </Transition>
         </div>
       </div>
 
-      <div v-if="state.loading" class="bcp-favorites-loading" role="status" aria-busy="true" :aria-label="t('favoritesLoading')">
+      <div v-if="state.loading && !hasResults" class="bcp-favorites-loading" role="status" aria-busy="true" :aria-label="t('favoritesLoading')">
         <span v-for="index in 3" :key="index" class="bcp-favorites-skeleton" />
       </div>
 
@@ -222,6 +233,7 @@
           v-for="group in visibleGroups.slice(0, visibleLimit)"
           :key="group.roomKey"
           class="bcp-favorites-group"
+          :data-motion-id="group.roomKey"
         >
           <button
             type="button"
@@ -316,9 +328,7 @@
         ]"
         :style="radialBotStyle"
       >
-        <svg v-if="state.radialPhase === 'success'" class="bcp-favorites-radial-check" viewBox="0 0 40 40" aria-hidden="true"><path d="m10 20 7 7 14-14" /></svg>
-        <svg v-else-if="state.radialPhase === 'failed'" class="bcp-favorites-radial-cross" viewBox="0 0 40 40" aria-hidden="true"><path d="m12 12 16 16m0-16L12 28" /></svg>
-        <span v-else class="bcp-favorites-radial-bot" aria-hidden="true">
+        <span class="bcp-favorites-radial-bot" aria-hidden="true">
           <span class="bcp-favorites-radial-bot-eyes">
             <span
               :key="selectedOption?.key || 'idle'"
@@ -365,7 +375,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch, type CSSProperties } from "vue";
+import { createUiAnimator } from '../../core/ui-motion';
+import { useFavoritesMotion } from "./use-favorites-motion";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type CSSProperties } from "vue";
 import FavoriteItemRow from "./FavoriteItemRow.vue";
 import { radialSectorPath } from "./radial-geometry";
 import type { PlatformId } from "../../core/types";
@@ -376,8 +388,6 @@ import { t } from "../../core/i18n";
 const props = defineProps<{ state: FavoritesLauncherState }>();
 const radialStatus = computed(() => {
   if (props.state.radialPhase === 'sending') return t('favoritesWheelSending');
-  if (props.state.radialPhase === 'success') return t('favoritesWheelSent');
-  if (props.state.radialPhase === 'failed') return t('favoritesWheelFailed');
   return '';
 });
 const emit = defineEmits<{
@@ -504,6 +514,55 @@ const emptyState = computed(() => {
   };
 });
 
+const sortAnimator = createUiAnimator();
+onUnmounted(() => sortAnimator.destroy());
+function cancelSortLeave(element: Element): void { sortAnimator.clear(); element.removeAttribute('inert'); }
+function leaveSort(element: Element, done: () => void): void {
+  const menu = element.querySelector<HTMLElement>('.bcp-favorites-sort-menu');
+  element.setAttribute('inert', '');
+  const animation = menu && sortAnimator.play(menu, [{ opacity: 1 }, { opacity: 0 }], narrow.value ? 160 : 140);
+  if (animation) void animation.finished.then(done, done);
+  else done();
+}
+const narrow = ref(false);
+let narrowMedia: MediaQueryList | undefined;
+function syncNarrow(): void { narrow.value = narrowMedia?.matches ?? false; }
+onMounted(() => {
+  narrowMedia = window.matchMedia?.('(max-width: 480px)');
+  syncNarrow();
+  narrowMedia?.addEventListener?.('change', syncNarrow);
+});
+onUnmounted(() => narrowMedia?.removeEventListener?.('change', syncNarrow));
+let pressedRow: string | undefined;
+function trapPanelFocus(event: KeyboardEvent): void {
+  if (event.key !== 'Tab' || event.defaultPrevented) return;
+  const root = narrow.value && sortOpen.value ? sortMenuRef.value : panelRef.value;
+  const controls = Array.from(root?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), [tabindex="0"]') ?? [])
+    .filter(element => element.getClientRects().length && element.tabIndex >= 0);
+  const active = (root?.getRootNode() as ShadowRoot | undefined)?.activeElement;
+  const first = controls[0], last = controls.at(-1);
+  if (!first) { event.preventDefault(); panelRef.value?.focus(); }
+  else if (event.shiftKey && (active === first || active === panelRef.value)) { event.preventDefault(); last?.focus(); }
+  else if (!event.shiftKey && (active === last || active === panelRef.value)) { event.preventDefault(); first.focus(); }
+}
+function guardClosing(event: MouseEvent): void {
+  const row = (event.target as Element).closest<HTMLElement>('[data-motion-id]')?.dataset.motionId;
+  const movedTarget = event.detail > 0 && pressedRow !== undefined && row !== pressedRow;
+  pressedRow = undefined;
+  if (props.state.closing || movedTarget) { event.preventDefault(); event.stopImmediatePropagation(); }
+}
+function handleSortKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Escape') {
+    event.preventDefault(); event.stopPropagation(); closeSortMenu(true);
+  } else if (event.key === 'Tab' && narrow.value) {
+    event.preventDefault(); event.stopPropagation();
+    const controls = Array.from(sortMenuRef.value?.querySelectorAll<HTMLButtonElement>('button') ?? []);
+    const active = (sortMenuRef.value?.getRootNode() as ShadowRoot)?.activeElement;
+    const index = controls.indexOf(active as HTMLButtonElement);
+    controls[(index + (event.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
+  }
+}
+
 function tabCount(view: FavoriteView): number {
   if (view === "current") return props.state.currentCount;
   if (view === "other") return props.state.otherCount;
@@ -579,6 +638,7 @@ function selectSort(sort: FavoriteSort): void {
 
 function handlePanelPointerDown(event: PointerEvent): void {
   const target = event.target;
+  pressedRow = target instanceof Element ? target.closest<HTMLElement>('[data-motion-id]')?.dataset.motionId : undefined;
   if (target instanceof Node && sortRootRef.value?.contains(target)) return;
   closeSortMenu(false);
 }
@@ -646,6 +706,8 @@ watch(() => [props.state.mode, props.state.view, props.state.search,
   pendingRemoveId.value = "";
   finishDrag();
 });
+
+useFavoritesMotion(() => props.state, panelRef, visibleLimit);
 
 watch(() => props.state.mode, async (mode) => {
   if (mode !== "panel") return;

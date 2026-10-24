@@ -1,5 +1,5 @@
 <template>
-  <div class="app-shell">
+  <div ref="motionRoot" class="app-shell">
     <SettingsSidebar
       :active-section="activeSection"
       :version="version"
@@ -119,6 +119,18 @@
             <div class="settings-card"><SendStatisticsTools @status="setStatus" /></div>
           </section>
 
+          <section id="performance-settings" class="settings-section" aria-labelledby="performance-title">
+            <div class="section-heading"><div>
+              <h2 id="performance-title">{{ t('settingsPerformance') }}</h2>
+              <p>{{ t('settingsPerformanceIntro') }}</p>
+            </div></div>
+            <div class="settings-card">
+              <SettingSwitch id="performance-mode" v-model="settings.performanceMode"
+                :title="t('settingsPerformanceMode')" :description="t('settingsPerformanceModeDescription')"
+                @change="save" />
+            </div>
+          </section>
+
           <section id="repeat-reminder-settings" class="settings-section" aria-labelledby="repeat-reminder-title">
             <div class="section-heading">
               <div>
@@ -191,7 +203,7 @@
                   role="tabpanel"
                   :aria-labelledby="`repeat-reminder-tab-${manualRepeatReminderPlatform}`"
                 >
-                  <label v-if="settings.repeatReminder.mode === 'manual'" class="repeat-reminder-number-setting" :for="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`">
+                  <label v-if="settings.repeatReminder.mode === 'manual'" class="repeat-reminder-number-setting motion-reveal" :for="`repeat-reminder-threshold-${manualRepeatReminderPlatform}`">
                     <span>
                       <strong>{{ t('settingsRepeatReminderThreshold') }}</strong>
                       <small>{{ t('settingsRepeatReminderManualThresholdDescription') }}</small>
@@ -427,6 +439,7 @@
 </template>
 
 <script setup lang="ts">
+import { useUiMotion } from "./composables/useUiMotion";
 import { computed, ref } from "vue";
 import type {
   ActionSettings,
@@ -509,6 +522,7 @@ const {
   statusVisible,
   version
 } = useSettings();
+const { root: motionRoot } = useUiMotion(() => settings.performanceMode);
 const { activeSection, contentCanvas, scrollToSection } = useSectionNavigation(SETTINGS_SECTION_IDS);
 
 const customColorCount = computed(() => platforms.value.reduce((total, platform) => (
@@ -520,6 +534,7 @@ const manualRepeatReminderSettings = computed(() => (
 const activeSectionTitle = computed(() => ({
   "favorites-guide": t("settingsFavorites"),
   "general-settings": t("settingsGeneral"),
+  "performance-settings": t("settingsPerformance"),
   "native-danmaku-capsule": t("settingsNativeCapsule"),
   "douyin-native-settings": t("settingsDouyinNativeTitle"),
   "platform-colors": t("settingsColors"),
@@ -1254,4 +1269,9 @@ a {
     animation-iteration-count: 1 !important;
   }
 }
+</style>
+
+<style>
+.motion-reveal { animation: bcp-field-reveal 140ms ease-out; }
+@keyframes bcp-field-reveal { from { opacity: 0; } to { opacity: 1; } }
 </style>

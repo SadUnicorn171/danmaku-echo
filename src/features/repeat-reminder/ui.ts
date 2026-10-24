@@ -1,3 +1,4 @@
+import { mountUiMotion, subscribeUiMotion, uiMotionAllowed } from '../../core/ui-motion'
 import { REPEAT_REMINDER_HIT_REGIONS_ATTRIBUTE } from './pointer-guard'
 import {
   formatLiveAudienceMetric,
@@ -121,6 +122,14 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
   portal.style.setProperty('pointer-events', 'none', 'important')
   portal.style.setProperty('z-index', '2147483647', 'important')
   const shadow = portal.attachShadow({ mode: 'open' })
+  const stopMotion = mountUiMotion(portal)
+  const promptAnimations = new Set<Animation>()
+  const stopPromptMotion = subscribeUiMotion(allowed => {
+    if (!allowed) {
+      for (const animation of promptAnimations) animation.cancel()
+      promptAnimations.clear()
+    }
+  })
   const style = document.createElement('style')
   style.textContent = `
     :host { all: initial; font-family: "Noto Sans SC", "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif; }
@@ -808,29 +817,22 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     void animation.finished.then(finish, finish)
   }
 
-  function prefersReducedPromptMotion(): boolean {
-    try {
-      return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches || false
-    } catch {
-      return false
-    }
-  }
-
   function playPromptAnimation(
     prompt: HTMLElement,
     keyframes: Keyframe[],
     duration: number,
   ): Animation | null {
-    if (prefersReducedPromptMotion() || typeof prompt.animate !== 'function') return null
+    if (!uiMotionAllowed() || typeof prompt.animate !== 'function') return null
     try {
       const animation = prompt.animate(keyframes, {
         duration,
         easing: PROMPT_MOTION_EASING,
         fill: 'both',
       })
+      promptAnimations.add(animation)
       void animation.finished.then(
-        () => animation.cancel(),
-        () => undefined,
+        () => { promptAnimations.delete(animation); animation.cancel() },
+        () => { promptAnimations.delete(animation) },
       )
       return animation
     } catch {
@@ -1096,6 +1098,10 @@ export function createRepeatReminderUi(options: RepeatReminderUiOptions) {
     destroy(): void {
       if (destroyed) return
       destroyed = true
+      stopMotion()
+      stopPromptMotion()
+      for (const animation of promptAnimations) animation.cancel()
+      promptAnimations.clear()
       stopCountdown()
       clearAllSnoozes()
       ownershipObserver?.disconnect()

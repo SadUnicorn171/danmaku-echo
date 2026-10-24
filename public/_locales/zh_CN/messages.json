@@ -436,5 +436,9 @@
   "sendStatisticsCancelled": {"message": "已取消，记录未修改。"},
   "douyinNativeSettingsUnavailable": {"message": "部分抖音净化设置未能应用，可重试。"},
   "douyinNativeSettingsRetry": {"message": "重试"},
-  "douyinNativeSettingsDismiss": {"message": "关闭"}
+  "douyinNativeSettingsDismiss": {"message": "关闭"},
+  "settingsPerformance": {"message": "性能设置"},
+  "settingsPerformanceIntro": {"message": "调整界面动效，减轻直播时的界面渲染开销。"},
+  "settingsPerformanceMode": {"message": "性能模式"},
+  "settingsPerformanceModeDescription": {"message": "关闭界面过渡、列表动效、轮盘收缩、机器人互动与数字滚动。保留静态加载结构和真实发送结果，保存后立即生效。"}
 }

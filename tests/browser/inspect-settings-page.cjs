@@ -189,6 +189,27 @@ async function inspect() {
     return result.result.value
   }
 
+  const performanceMode = await evaluate(`(async () => {
+    const control = document.querySelector('#performance-mode');
+    if (!control) return { present: false };
+    const wait = async predicate => {
+      for (let i = 0; i < 50; i++) { if (await predicate()) return true; await new Promise(resolve => setTimeout(resolve, 20)); }
+      return false;
+    };
+    const defaultOff = !control.checked;
+    control.click();
+    const persisted = await wait(async () => (await chrome.storage.sync.get('performanceMode')).performanceMode === true);
+    const instant = document.querySelector('.app-shell').dataset.bcpMotion === 'off'
+      && getComputedStyle(control, '::after').transitionDuration === '0s';
+    return { present: true, defaultOff, persisted, instant };
+  })()`);
+  await send('Page.reload', {}, sessionId);
+  await delay(1000);
+  performanceMode.restored = await evaluate(`document.querySelector('#performance-mode').checked && document.querySelector('.app-shell').dataset.bcpMotion === 'off'`);
+  await evaluate(`(async () => { await chrome.storage.sync.set({ performanceMode: false }); return true; })()`);
+  await delay(100);
+  performanceMode.resumed = await evaluate(`!document.querySelector('#performance-mode').checked && document.querySelector('.app-shell').dataset.bcpMotion === 'on'`);
+
   const languageSwitch = await evaluate(`(async () => {
     const root = document.querySelector('.app-shell');
     const autoPlusOneTitle = () => document.querySelector('label[for="repeat-reminder-auto-plus-one"] strong')?.textContent?.trim();
@@ -318,7 +339,7 @@ async function inspect() {
     );
     viewports.push({ width, ...layout });
     if (width === 800 || width === 1280) {
-      for (const section of ['platform-colors', 'favorites-guide']) {
+      for (const section of ['performance-settings', 'platform-colors', 'favorites-guide']) {
         await evaluate(`(() => {
           if (${JSON.stringify(section)} === 'platform-colors') {
             document.querySelector('.color-platform').open = true;
@@ -602,6 +623,7 @@ async function inspect() {
   const statisticsMultiPage = await require('./statistics-multi-page.cjs')({ send, evaluate, sessionId, extensionId: loaded.id });
   const popup = await require('./settings-popup.cjs')({ send, evaluate, pageTargetId: pageTarget.targetId, extensionId: loaded.id, artifactDirectory, scenarioName });
   const failures = [];
+  if (Object.values(performanceMode).some(value => value !== true)) failures.push("performance-mode-policy");
   if (favoritesPreviews.some(item => !item.fits || !item.switched || !item.labeled)) failures.push('favorites-preview-layout-or-language');
   if (!popup.passed) failures.push('settings-action-popup-layout');
   if (!statisticsMultiPage.passed) failures.push('statistics-multi-page-reload');
@@ -663,6 +685,7 @@ async function inspect() {
     popup,
     browserStderr: browserStderr.slice(-8_000),
     actionSettings,
+    performanceMode,
     locale,
     persistence,
     protocolEvents,

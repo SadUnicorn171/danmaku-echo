@@ -1,3 +1,4 @@
+import { subscribeUiMotion, uiMotionAllowed } from '../core/ui-motion'
 import { nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 
 export interface SectionMetric<T extends string> {
@@ -37,6 +38,10 @@ export function useSectionNavigation<const T extends string>(sectionIds: readonl
   const activeSection = ref<T>(sectionIds[0] as T)
   const contentCanvas = ref<HTMLElement | null>(null)
   let animationFrame = 0
+  const stopMotion = subscribeUiMotion(allowed => {
+    const root = contentCanvas.value
+    if (!allowed && root) root.scrollTo?.({ top: root.scrollTop, left: root.scrollLeft, behavior: 'instant' })
+  })
 
   function isSectionId(value: string): value is T {
     return sectionIds.includes(value as T)
@@ -90,7 +95,7 @@ export function useSectionNavigation<const T extends string>(sectionIds: readonl
     section.scrollIntoView({
       behavior:
         behavior ??
-        (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'),
+        (uiMotionAllowed() ? 'smooth' : 'auto'),
       block: 'start',
     })
     queueActiveSectionSync()
@@ -118,6 +123,7 @@ export function useSectionNavigation<const T extends string>(sectionIds: readonl
   })
 
   onBeforeUnmount(() => {
+    stopMotion()
     contentCanvas.value?.removeEventListener('scroll', queueActiveSectionSync)
     window.removeEventListener('resize', queueActiveSectionSync)
     window.removeEventListener('hashchange', handleHashChange)

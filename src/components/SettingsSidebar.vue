@@ -25,6 +25,12 @@
         <img class="nav-item__icon" src="/assets/icons/settings.svg" alt="" aria-hidden="true">
         <span>{{ t('settingsGeneral') }}</span>
       </a>
+      <a :class="['nav-item', { 'is-active': activeSection === 'performance-settings' }]"
+        href="#performance-settings" :aria-current="activeSection === 'performance-settings' ? 'location' : undefined"
+        @click.prevent="emit('navigate', 'performance-settings')">
+        <img class="nav-item__icon" src="/assets/icons/settings.svg" alt="" aria-hidden="true">
+        <span>{{ t('settingsPerformance') }}</span>
+      </a>
       <a
         :class="['nav-item', { 'is-active': activeSection === 'repeat-reminder-settings' }]"
         href="#repeat-reminder-settings"

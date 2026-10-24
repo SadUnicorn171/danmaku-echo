@@ -101,6 +101,7 @@ function normalizedManualRepeatReminderSettings(
 }
 
 export const DEFAULT_SETTINGS: ExtensionSettings = Object.freeze({
+  performanceMode: false,
   douyinNativeSettings: Object.freeze({
     hideGiftMessages: false,
     hideLuckyBagCommands: false,
@@ -383,6 +384,7 @@ export function mergeSettings(saved?: unknown): ExtensionSettings {
   }
   if (!Object.values(actions).some(Boolean)) actions.plusOne = true
   return {
+    performanceMode: typeof value.performanceMode === 'boolean' ? value.performanceMode : false,
     enabled: typeof value.enabled === 'boolean' ? value.enabled : DEFAULT_SETTINGS.enabled,
     altClick: typeof value.altClick === 'boolean' ? value.altClick : DEFAULT_SETTINGS.altClick,
     interfaceScale: {

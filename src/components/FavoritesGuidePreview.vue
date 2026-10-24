@@ -6,6 +6,7 @@
       </button>
       <small>{{ t('favoritesPreviewExample') }}</small>
     </div>
+    <Transition name="preview" :css="allowed">
     <div v-if="view === 'list'" class="favorites-demo__list">
       <p>{{ t('favoritesCurrent') }} · {{ t('favoritesCount', '3') }}</p>
       <ol>
@@ -29,11 +30,14 @@
       </div>
       <p class="favorites-demo__hint">{{ t('favoritesPreviewWheelHint') }}</p>
     </div>
+    </Transition>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import { useUiMotion } from '../composables/useUiMotion'
+const { allowed } = useUiMotion()
 import { radialSectorPath } from '../features/favorites/radial-geometry'
 import { t } from '../composables/settings-language'
 
@@ -48,6 +52,9 @@ function position(index: number) {
 </script>
 
 <style scoped>
+.preview-enter-active { transition: opacity 140ms ease-out; }
+.preview-enter-from { opacity: 0; }
+.preview-leave-active { display: none; }
 .favorites-demo { min-width: 0; padding: 20px; border-radius: 16px; background: var(--surface-soft, #f7f5f2); }
 .favorites-demo__switch { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
 .favorites-demo__switch button { min-height: 36px; padding: 6px 12px; border: 0; border-radius: 18px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }

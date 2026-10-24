@@ -1,5 +1,6 @@
 <template>
   <li
+    :data-motion-id="item.id"
     :class="{
       'is-pinned': item.pinned,
       'is-draggable': customSorting,

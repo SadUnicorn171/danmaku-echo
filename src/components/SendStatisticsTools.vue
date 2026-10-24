@@ -1,5 +1,5 @@
 <template>
-  <div class="send-statistics" aria-labelledby="send-statistics-title">
+  <div class="send-statistics" :aria-busy="busy" aria-labelledby="send-statistics-title">
     <div class="send-statistics-heading">
       <div>
         <strong id="send-statistics-title">{{ t('sendStatisticsTitle') }}</strong>
@@ -24,9 +24,10 @@
     <p v-if="cleaning" role="status">{{ t('sendStatisticsCleaning') }} <button type="button" :disabled="busy" @click="resumeCleanup">{{ t('sendStatisticsResumeCleanup') }}</button></p>
     <p v-if="lastFailureAt" class="send-statistics-warning" role="status">{{ t('sendStatisticsWriteWarning', formatSecond(lastFailureAt / 1000)) }}</p>
     <p v-if="hasUpdates" role="status">{{ t('sendStatisticsUpdates') }}</p>
-    <div class="send-statistics-summary">
-      <span><small>{{ t('sendStatisticsTotal') }}</small><b>{{ totalCount }}</b></span>
-      <span><small>{{ t('sendStatisticsToday') }}</small><b>{{ todayCount }}</b></span>
+    <div v-if="busy && !loaded" class="send-statistics-skeleton" aria-hidden="true"><span v-for="i in 3" :key="i" /></div>
+    <div v-else class="send-statistics-summary">
+      <span><small>{{ t('sendStatisticsTotal') }}</small><AnimatedCount :value="totalCount" :ready="loaded" /></span>
+      <span><small>{{ t('sendStatisticsToday') }}</small><AnimatedCount :value="todayCount" :ready="loaded" /></span>
       <span v-for="platform in platforms" :key="platform.id">
         <small>{{ t(platform.label) }}</small><b>{{ platformCount(platform.id) }}</b>
       </span>
@@ -76,6 +77,7 @@
 </template>
 
 <script setup lang="ts">
+import AnimatedCount from "./AnimatedCount.vue"
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { t } from '../composables/settings-language'
 import type { PlatformId } from '../core/types'
@@ -86,6 +88,7 @@ import { SEND_STATISTICS_MESSAGE, type ConfirmedSend, type StatisticsCursor, typ
 
 const emit = defineEmits<{ status: [message: string, kind: 'error' | 'saved'] }>()
 const busy = ref(false)
+const loaded = ref(false)
 const cleaning = ref(false)
 const events = ref<ConfirmedSend[]>([])
 const unavailableDays = ref<string[]>([])
@@ -218,6 +221,7 @@ async function refresh(): Promise<void> {
         const totals = await store.summary()
         const result = await store.query(filter.value, currentCursor.value, 50, operation)
         summary.value = totals
+        loaded.value = true
         events.value = result.events
         nextCursor.value = result.nextCursor
         unavailableDays.value = [...new Set([...totals.unavailableDays, ...result.unavailableDays])]
@@ -363,4 +367,9 @@ time { min-width: 150px; font-variant-numeric: tabular-nums; }
 .send-statistics-filters input, .send-statistics-filters select { width: 100%; min-width: 0; min-height: 34px; box-sizing: border-box; padding: 6px 8px; border: 1px solid var(--border); border-radius: 6px; color: inherit; background: var(--surface); font: inherit; }
 .send-statistics-filters :is(input, select):focus-visible { outline: 2px solid #fd8101; outline-offset: 2px; }
 .send-statistics-pagination { display: flex; justify-content: flex-end; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; }
+</style>
+
+<style scoped>
+.send-statistics-skeleton { display: flex; gap: 12px; min-height: 72px; padding-block: 12px; }
+.send-statistics-skeleton span { flex: 1; background: var(--surface-soft, #f7f5f2); border-radius: 8px; }
 </style>

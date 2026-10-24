@@ -65,6 +65,7 @@ export interface DouyinNativeSettings {
 }
 
 export interface ExtensionSettings {
+  performanceMode: boolean
   douyinNativeSettings: DouyinNativeSettings
   actions: ActionSettings
   altClick: boolean
