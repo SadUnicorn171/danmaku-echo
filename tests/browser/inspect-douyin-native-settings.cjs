@@ -140,6 +140,17 @@ module.exports = async function inspectDouyinNativeSettings({ evaluateValue, iso
   await waitFor(`${state} === ${JSON.stringify(filtered)} && !${notice}`)
   await patch(preferences(false))
   await drain()
+  const transientClicks = await evaluateValue(`${fixture}.clicks.length`)
+  const transientLeaves = await evaluateValue(`${fixture}.leaves`)
+  await evaluateValue(`(${fixture}.reset(true, true, true), true)`)
+  await patch(preferences(true))
+  await waitFor(`${state} === ${JSON.stringify(filtered)} && ${fixture}.leaves >= ${transientLeaves + 2} && !document.querySelector('#native .panel')`)
+  // Observe the real five-second failure deadline after both native menus unmount.
+  await evaluateValue('new Promise(resolve => setTimeout(() => resolve(true), 5100))')
+  await snapshot('transient-already-matching-menus', filtered, transientClicks)
+  if (await evaluateValue(`Boolean(${notice})`)) assertionFailures.push('verified-settings-lost-after-menu-unmount')
+  await patch(preferences(false))
+  await drain()
   if (await evaluateValue(`Boolean(${notice})`)) assertionFailures.push('disabled-notice-remained')
   return { assertionFailures, samples, failureNotice }
 }

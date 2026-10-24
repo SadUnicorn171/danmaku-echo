@@ -108,6 +108,9 @@ export function createDouyinNativeSettingsController(options: {
   let attempted = new WeakSet<HTMLElement>()
   const attempts = new Map<Key, number>()
   const reported = new Set<Key>()
+  // Native menus unmount when closed and need not coexist. Keep only states
+  // actually observed in this application cycle; recheck controls when they return.
+  const confirmed = new Map<Key, HTMLElement>()
   const roots = new Map<
     HTMLElement,
     { anchor: HTMLElement; panel: Panel; observer: MutationObserver }
@@ -160,7 +163,8 @@ export function createDouyinNativeSettingsController(options: {
   }
   function reconcile(): void {
     const prefs = options.settings().douyinNativeSettings
-    const matched = new Set<Key>()
+    for (const [key, anchor] of confirmed) if (!anchor.isConnected) confirmed.delete(key)
+    const matched = new Set(confirmed.keys())
     for (const [root, entry] of roots) {
       if (!root.isConnected || !entry.anchor.isConnected) {
         entry.observer.disconnect()
@@ -173,16 +177,21 @@ export function createDouyinNativeSettingsController(options: {
       for (const rule of rules) {
         const control = findControl(root, rule)
         if (!control) {
-          missing = true
-          settled = false
+          if (!confirmed.has(rule.key)) {
+            missing = true
+            settled = false
+          }
           continue
         }
         const state = checked(control)
         if (state === rule.checked) {
           matched.add(rule.key)
+          confirmed.set(rule.key, entry.anchor)
           attempts.delete(rule.key)
           continue
         }
+        matched.delete(rule.key)
+        confirmed.delete(rule.key)
         settled = false
         if (expired || doc.visibilityState === 'hidden' || state === null || control.closest('[disabled], [aria-disabled="true"]')) {
           report(rule.key)
@@ -272,6 +281,7 @@ export function createDouyinNativeSettingsController(options: {
     hovered = new WeakSet()
     attempted = new WeakSet()
     attempts.clear()
+    confirmed.clear()
     const settings = options.settings()
     signature = JSON.stringify([settings.enabled, settings.platforms.douyin, settings.douyinNativeSettings])
     const url = new URL(options.href())

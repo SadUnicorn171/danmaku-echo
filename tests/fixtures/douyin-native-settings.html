@@ -41,22 +41,25 @@
   <script>
     // Native DOM/state follows the user's supplied markup; no production test hook.
     const fixture = (window.__nativeSettingsFixture = { clicks: [], enters: 0, leaves: 0 })
-    const control = (key, on) =>
+    let nativeState
+    const control = (key, on = nativeState[key]) =>
       `<div data-fixture-setting="${key}" class="_h3OuAw5 ${on ? 'G9q7tTop' : ''} hkTSP43k"><div class="FCG9Aotc ${on ? 'frP5WL3d' : ''}"></div></div>`
     const danmakuRows =
-      () => `<div class="row"><span>送礼信息</span><div>${control('gift', true)}</div></div>
-    <div class="row"><span>福袋口令</span><div>${control('lucky', true)}</div></div>
-    <div data-e2e="danmaku-switch">${control('danmaku', true)}</div>`
+      () => `<div class="row"><span>送礼信息</span><div>${control('gift')}</div></div>
+    <div class="row"><span>福袋口令</span><div>${control('lucky')}</div></div>
+    <div data-e2e="danmaku-switch">${control('danmaku')}</div>`
     const giftRows =
-      () => `<div class="row"><span>屏蔽礼物特效</span><div data-e2e="effect-switch">${control('effect', false)}</div></div>
-    <div data-e2e="gift-audio-switch">${control('audio', true)}</div>
-    <div data-e2e="gift-shortcut-key-switch">${control('shortcut', true)}</div>`
-    fixture.reset = (lazy = false) => {
+      () => `<div class="row"><span>屏蔽礼物特效</span><div data-e2e="effect-switch">${control('effect')}</div></div>
+    <div data-e2e="gift-audio-switch">${control('audio')}</div>
+    <div data-e2e="gift-shortcut-key-switch">${control('shortcut')}</div>`
+    fixture.reset = (lazy = false, transient = false, matching = false) => {
+      nativeState = { gift: !matching, lucky: !matching, danmaku: true, effect: matching, audio: true, shortcut: true }
       document.querySelector('#native').innerHTML =
         '<section><div data-e2e="danmaku-setting-icon">弹幕设置</div></section><section><div data-e2e="gift-setting">礼物设置</div></section>'
       document.querySelectorAll('#native section').forEach((root, index) => {
         const mount = () => {
           if (root.querySelector('.panel')) return
+          if (transient) document.querySelectorAll('#native .panel').forEach(panel => panel.remove())
           const panel = document.createElement('div')
           panel.className = 'panel'
           panel.innerHTML = index ? giftRows() : danmakuRows()
@@ -64,6 +67,7 @@
             node.addEventListener('click', () => {
               const on = node.classList.toggle('G9q7tTop')
               node.firstElementChild.classList.toggle('frP5WL3d', on)
+              nativeState[node.dataset.fixtureSetting] = on
               fixture.clicks.push(node.dataset.fixtureSetting)
             }),
           )
@@ -75,17 +79,12 @@
         })
         root.firstElementChild.addEventListener('mouseleave', () => {
           fixture.leaves++
+          if (transient) root.querySelector('.panel')?.remove()
         })
         if (!lazy) mount()
       })
     }
-    fixture.read = () =>
-      Object.fromEntries(
-        [...document.querySelectorAll('[data-fixture-setting]')].map((node) => [
-          node.dataset.fixtureSetting,
-          node.classList.contains('G9q7tTop'),
-        ]),
-      )
+    fixture.read = () => ({ ...nativeState })
     fixture.reset()
   </script>
 </html>

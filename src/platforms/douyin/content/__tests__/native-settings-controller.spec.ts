@@ -134,6 +134,68 @@ describe('Douyin native viewing settings', () => {
     expect(clicks!).toHaveBeenCalledTimes(2)
     expect(leave).toHaveBeenCalledOnce()
   })
+  it.each([true, false])('keeps verified settings after temporary menus unmount (already matching: %s)', async matching => {
+    vi.useFakeTimers()
+    document.body.innerHTML = '<section><div data-e2e="danmaku-setting-icon"></div></section><section><div data-e2e="gift-setting"></div></section>'
+    const native = { gift: !matching, lucky: !matching, effect: matching }
+    const clicks = vi.fn<(key: keyof typeof native) => void>()
+    document.querySelectorAll<HTMLElement>('section').forEach((root, index) => {
+      vi.spyOn(root, 'matches').mockReturnValue(false)
+      const anchor = root.firstElementChild!
+      anchor.addEventListener('mouseover', () => {
+        document.querySelectorAll('.panel').forEach(panel => panel.remove())
+        const panel = document.createElement('div')
+        panel.className = 'panel'
+        panel.innerHTML = index
+          ? `<div data-e2e="effect-switch">${switchHtml(native.effect)}</div>`
+          : `<div><span>送礼信息</span>${switchHtml(native.gift)}</div><div><span>福袋口令</span>${switchHtml(native.lucky)}</div>`
+        panel.querySelectorAll<HTMLElement>('._h3OuAw5').forEach((control, position) => {
+          const key = index ? 'effect' : position ? 'lucky' : 'gift'
+          control.addEventListener('click', () => {
+            native[key] = control.classList.toggle('G9q7tTop')
+            control.firstElementChild!.classList.toggle('frP5WL3d', native[key])
+            clicks(key)
+          })
+        })
+        root.append(panel)
+      })
+      anchor.addEventListener('mouseleave', () => root.querySelector('.panel')?.remove())
+    })
+    const h = harness()
+    h.controller.start()
+    await flush()
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(native).toEqual({ gift: false, lucky: false, effect: true })
+    expect(clicks).toHaveBeenCalledTimes(matching ? 0 : 3)
+    expect(document.querySelector('.panel')).toBeNull()
+    expect(h.controller.state()).toEqual({ status: 'applied', failed: [], showNotice: false })
+    expect(h.onUnavailable).not.toHaveBeenCalled()
+    h.controller.retry()
+    await flush(); await vi.advanceTimersByTimeAsync(6000)
+    expect(h.controller.state()).toEqual({ status: 'applied', failed: [], showNotice: false })
+    expect(clicks).toHaveBeenCalledTimes(matching ? 0 : 3)
+  })
+  it('rechecks remounted controls and does not carry confirmations into another room', async () => {
+    vi.useFakeTimers()
+    document.body.innerHTML = fixture()
+    installClicks()
+    const h = harness()
+    h.controller.start(); await flush()
+    expect(h.controller.state().status).toBe('applied')
+    const panel = document.querySelector<HTMLElement>('.panel')!
+    panel.innerHTML = `<div><span>送礼信息</span>${switchHtml(true)}</div><div><span>福袋口令</span>${switchHtml(false)}</div>`
+    const unresponsive = installClicks(panel, false)
+    await flush(); await vi.advanceTimersByTimeAsync(5000)
+    expect(unresponsive).toHaveBeenCalledOnce()
+    expect(h.controller.state()).toEqual({ status: 'unavailable', failed: ['hideGiftMessages'], showNotice: true })
+    panel.querySelector('._h3OuAw5')!.setAttribute('aria-checked', 'false')
+    await flush()
+    expect(h.controller.state()).toEqual({ status: 'applied', failed: [], showNotice: false })
+    document.body.replaceChildren()
+    h.route('https://live.douyin.com/200')
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(h.controller.state()).toEqual({ status: 'unavailable', failed: Object.keys(enabled), showNotice: true })
+  })
   it('finds replaced controls, supports SPA live routes and stops after leaving the live route', async () => {
     const h = harness()
     h.route('https://www.douyin.com/')
